@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #11120f;
+  --bg-card: #171814;
+  --bg-elevated: #1e201a;
+  --border-subtle: #292a24;
+  --border-sage: #3a4433;
+  --text-primary: #eeeae2;
+  --text-muted: #a3a198;
+  --text-subtle: #6e6d66;
+  --sage-accent: #b8d99e;
+  --sage-deep: #21291d;
+}
+
+@layer base {
+  body {
+    background-color: #11120f;
+    color: #eeeae2;
+    font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+.font-serif-display {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.font-mono {
+  font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Vinyl rotation animation */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 20s linear infinite;
+}
+
+.animate-spin-slow-paused {
+  animation: spinSlow 20s linear infinite;
+  animation-play-state: paused;
+}
+
+/* Vinyl Grooves Styling */
+.vinyl-grooves {
+  background: radial-gradient(
+    circle,
+    #171814 0%,
+    #11120f 18%,
+    #252922 19%,
+    #151713 20%,
+    #22261f 25%,
+    #131511 26%,
+    #293025 32%,
+    #141612 33%,
+    #242820 42%,
+    #11120f 43%,
+    #272d23 52%,
+    #121310 53%,
+    #242820 64%,
+    #131511 65%,
+    #272d23 78%,
+    #11120f 79%,
+    #1c2019 92%,
+    #0d0e0b 100%
+  );
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.92), 0 12px 34px rgba(0, 0, 0, 0.75);
+}
+
+/* Custom Scrollbar for Dark Sage Theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #11120f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #292a24;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #43543b;
+}

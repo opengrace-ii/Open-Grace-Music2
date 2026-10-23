@@ -1,0 +1,8 @@
+{
+  "name": "Open Grace Music",
+  "description": "Open Grace Music — Offline personal music library, audio extractor & converter, and audio player.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

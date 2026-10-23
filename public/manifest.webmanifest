@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Open Grace Music",
+  "short_name": "OGM",
+  "description": "Open Grace Music — Offline personal music library, audio extractor & converter, and audio player.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111411",
+  "theme_color": "#111411",
+  "categories": ["music", "entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
