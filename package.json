@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "start": "tsx server.ts",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:convert": "node scripts/test-youtube-convert.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

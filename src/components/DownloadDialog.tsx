@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
+import { apiUrl, fetchWithTimeout, humanizeConverterError } from '../services/converterApi';
 
 interface DownloadDialogProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface DownloadDialogProps {
   isDownloading: boolean;
   downloadProgress: number;
   downloadStatus: string;
+  downloadError?: string | null;
   onClose: () => void;
   onStartDownload: (
     url: string,
@@ -37,6 +39,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   isDownloading,
   downloadProgress,
   downloadStatus,
+  downloadError,
   onClose,
   onStartDownload,
   onOpenYouTubeBrowser,
@@ -76,7 +79,9 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
     setIsLoadingPreview(true);
     setValidationError(null);
     try {
-      const res = await fetch(`/api/validate-url?url=${encodeURIComponent(trimmed)}`);
+      const res = await fetchWithTimeout(apiUrl(`/api/validate-url?url=${encodeURIComponent(trimmed)}`), {
+        timeoutMs: 20_000,
+      });
       const data = await res.json();
       if (res.ok && data.valid) {
         setPreviewData({
@@ -91,8 +96,9 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
         setPreviewData(null);
         setValidationError(data.error || 'Enter a valid YouTube or audio stream URL.');
       }
-    } catch {
+    } catch (err: unknown) {
       const ytId = extractYouTubeId(trimmed);
+      const { message, code } = humanizeConverterError(err);
       if (ytId) {
         setPreviewData({
           valid: true,
@@ -102,8 +108,12 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
           author: 'YouTube Music',
           thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
         });
+        if (code === 'NETWORK') {
+          setValidationError(message);
+        }
       } else {
         setPreviewData(null);
+        setValidationError(message);
       }
     } finally {
       setIsLoadingPreview(false);
@@ -345,6 +355,16 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
                   className="h-full bg-gradient-to-r from-[#b8d99e] to-[#e2c986] transition-all duration-150 rounded-full"
                   style={{ width: `${Math.round(downloadProgress * 100)}%` }}
                 />
+              </div>
+            </div>
+          )}
+
+          {downloadError && !isDownloading && (
+            <div className="p-3.5 rounded-xl bg-[#2a1616] border border-[#522929] flex items-start gap-2.5 text-xs text-[#fca5a5]">
+              <span className="cassette-led cassette-led-rec shrink-0 mt-1" />
+              <div className="min-w-0">
+                <p className="font-mono font-bold uppercase tracking-wide">Recording failed</p>
+                <p className="mt-1 leading-snug">{downloadError}</p>
               </div>
             </div>
           )}

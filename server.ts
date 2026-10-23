@@ -20,6 +20,55 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
+const YT_DLP_TIMEOUT_MS = 120_000;
+const FFMPEG_TIMEOUT_MS = 120_000;
+
+type ConvertErrorCode = 'YOUTUBE_BOT_CHECK' | 'TIMEOUT' | 'FFMPEG_FAILED' | 'EXTRACTION_FAILED';
+
+function pipelineErrorText(err: unknown): string {
+  if (!err || typeof err !== 'object') return String(err);
+  const e = err as { message?: string; stderr?: string | Buffer };
+  const stderr = e.stderr ? String(e.stderr) : '';
+  return [stderr, e.message].filter(Boolean).join(' ').trim();
+}
+
+function classifyPipelineError(
+  err: unknown,
+  phase: 'extract' | 'ffmpeg'
+): { code: ConvertErrorCode; error: string } {
+  const raw = pipelineErrorText(err);
+  const lower = raw.toLowerCase();
+  const killed = !!(err && typeof err === 'object' && (err as { killed?: boolean }).killed);
+
+  if (killed || lower.includes('timed out') || lower.includes('etimedout')) {
+    return {
+      code: 'TIMEOUT',
+      error: 'Conversion timed out after 2 minutes. Try MP3 on Wi‑Fi or retry shortly.',
+    };
+  }
+  if (/sign in to confirm|not a bot|http error 429|http error 403|cookies are needed/i.test(lower)) {
+    return {
+      code: 'YOUTUBE_BOT_CHECK',
+      error:
+        'YouTube blocked automated extraction. Paste Studio Key cookies in the recorder or retry later.',
+    };
+  }
+  if (phase === 'ffmpeg') {
+    return {
+      code: 'FFMPEG_FAILED',
+      error: `Audio mastering failed: ${raw.slice(0, 200) || 'FFmpeg error'}`,
+    };
+  }
+  return {
+    code: 'EXTRACTION_FAILED',
+    error: raw.slice(0, 220) || 'Could not extract an audio stream for this link.',
+  };
+}
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'ogm-converter' });
+});
+
 /** Prevent cached index.html / SW; allow long cache on Vite content-hashed assets. */
 app.use((req, res, next) => {
   const reqPath = req.path;
@@ -361,6 +410,8 @@ async function handleConvertAudio(req: express.Request, res: express.Response) {
         }
       }
 
+      let lastExtractFailure: { code: ConvertErrorCode; error: string } | null = null;
+
       // Step 1: Attempt direct yt-dlp extraction from YouTube first
       try {
         await execFileAsync(
@@ -375,7 +426,7 @@ async function handleConvertAudio(req: express.Request, res: express.Response) {
             rawInputTemplate,
             canonicalWatchUrl,
           ],
-          { timeout: 35000 }
+          { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }
         );
 
         const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
@@ -386,8 +437,12 @@ async function handleConvertAudio(req: express.Request, res: express.Response) {
             extractionMethod = 'youtube-direct';
           }
         }
-      } catch {
-        // Direct YouTube failed (e.g. datacenter bot check without cookies) — proceed to exact-song resolver
+      } catch (directErr) {
+        lastExtractFailure = classifyPipelineError(directErr, 'extract');
+        console.warn(
+          `[convert-audio] YouTube direct failed (${ytId}):`,
+          lastExtractFailure.error
+        );
       }
 
       // Step 2: Automatic fallback to SoundCloud exact-track search via yt-dlp scsearch1:
@@ -406,7 +461,7 @@ async function handleConvertAudio(req: express.Request, res: express.Response) {
                 rawInputTemplate,
                 `scsearch1:${query}`,
               ],
-              { timeout: 45000 }
+              { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }
             );
 
             const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
@@ -418,42 +473,59 @@ async function handleConvertAudio(req: express.Request, res: express.Response) {
                 break;
               }
             }
-          } catch {
-            // Try next query variant
+          } catch (fallbackErr) {
+            lastExtractFailure = classifyPipelineError(fallbackErr, 'extract');
+            console.warn(`[convert-audio] Mirror search failed (${query}):`, lastExtractFailure.error);
           }
         }
       }
 
       if (!downloadedRawPath) {
         cleanup();
+        const failure = lastExtractFailure || {
+          code: 'EXTRACTION_FAILED' as ConvertErrorCode,
+          error: `Could not extract audio stream for "${title}". Verify the link or add YouTube cookies.`,
+        };
+        console.error(`[convert-audio] Extraction exhausted for ${ytId}:`, failure.error);
         return res.status(502).json({
-          error: `Could not extract audio stream for "${title}". Please verify the link or provide YouTube cookies.`,
+          error: failure.error,
+          code: failure.code,
         });
       }
 
       // Step 3: Transcode through FFmpeg into requested Audiophile format (FLAC 24-bit, ALAC, DSD 192kHz, WAV 24-bit, or MP3 320kbps)
       const outputFilePath = path.join(workDir, `master_output.${formatSpec.extension}`);
-      await execFileAsync(
-        '/usr/bin/ffmpeg',
-        [
-          '-y',
-          '-i',
-          downloadedRawPath,
-          ...formatSpec.ffmpegArgs,
-          '-metadata',
-          `title=${title}`,
-          '-metadata',
-          `artist=${artist}`,
-          '-metadata',
-          'album=Open Grace Music · Audiophile Master',
-          outputFilePath,
-        ],
-        { timeout: 90000 }
-      );
+      try {
+        await execFileAsync(
+          '/usr/bin/ffmpeg',
+          [
+            '-y',
+            '-i',
+            downloadedRawPath,
+            ...formatSpec.ffmpegArgs,
+            '-metadata',
+            `title=${title}`,
+            '-metadata',
+            `artist=${artist}`,
+            '-metadata',
+            'album=Open Grace Music · Audiophile Master',
+            outputFilePath,
+          ],
+          { timeout: FFMPEG_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 }
+        );
+      } catch (ffmpegErr) {
+        cleanup();
+        const failure = classifyPipelineError(ffmpegErr, 'ffmpeg');
+        console.error(`[convert-audio] FFmpeg failed for ${ytId}:`, failure.error);
+        return res.status(500).json({ error: failure.error, code: failure.code });
+      }
 
       if (!fs.existsSync(outputFilePath) || fs.statSync(outputFilePath).size < 30000) {
         cleanup();
-        return res.status(500).json({ error: 'FFmpeg transcoding produced an invalid output file.' });
+        return res.status(500).json({
+          error: 'FFmpeg transcoding produced an invalid output file.',
+          code: 'FFMPEG_FAILED',
+        });
       }
 
       // Step 4: Probe real duration and stream properties with ffprobe
@@ -597,10 +669,13 @@ async function handleConvertAudio(req: express.Request, res: express.Response) {
       readStream.on('error', cleanup);
       return readStream.pipe(res);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     cleanup();
+    const failure = classifyPipelineError(error, 'extract');
+    console.error('[convert-audio] Unhandled error:', failure.error);
     return res.status(500).json({
-      error: error.message || 'Audio conversion failed',
+      error: failure.error || 'Audio conversion failed',
+      code: failure.code,
     });
   }
 }

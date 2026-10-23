@@ -48,6 +48,13 @@ import { AndroidProjectModal } from './components/AndroidProjectModal';
 import { InstallGuideModal } from './components/InstallGuideModal';
 import { Toast, ToastMessage } from './components/Toast';
 import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
+import {
+  apiUrl,
+  checkConverterApiAvailable,
+  fetchWithTimeout,
+  humanizeConverterError,
+  readConverterError,
+} from './services/converterApi';
 
 export default function App() {
   const { isInstallable, install, isAndroid, isInstalled } = usePWAInstall();
@@ -90,6 +97,8 @@ export default function App() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState('');
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [converterApiOnline, setConverterApiOnline] = useState<boolean | null>(null);
   const [convertingTrackId, setConvertingTrackId] = useState<string | null>(null);
   const [convertingProgress, setConvertingProgress] = useState(0);
 
@@ -112,13 +121,14 @@ export default function App() {
   const addToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     setToasts((prev) => [...prev, { id, text, type }]);
+    const ttl = type === 'error' ? 10_000 : 4_000;
     setTimeout(() => {
       setToasts((prev) => {
         const toast = prev.find((t) => t.id === id);
         if (toast?.persist) return prev;
         return prev.filter((t) => t.id !== id);
       });
-    }, 4000);
+    }, ttl);
   };
 
   const removeToast = (id: string) => {
@@ -152,6 +162,16 @@ export default function App() {
 
   useEffect(() => {
     loadLibrary();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    checkConverterApiAvailable().then((ok) => {
+      if (!cancelled) setConverterApiOnline(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -246,7 +266,9 @@ export default function App() {
     setIsValidatingInline(true);
     setInlineValidationError(null);
     try {
-      const res = await fetch(`/api/validate-url?url=${encodeURIComponent(trimmed)}`);
+      const res = await fetchWithTimeout(apiUrl(`/api/validate-url?url=${encodeURIComponent(trimmed)}`), {
+        timeoutMs: 20_000,
+      });
       const data = await res.json();
       if (res.ok && data.valid) {
         setInlinePreview({
@@ -261,9 +283,20 @@ export default function App() {
         setInlinePreview(null);
         setInlineValidationError(data.error || 'Enter a valid YouTube or audio URL.');
       }
-    } catch {
+    } catch (err: unknown) {
       const ytId = extractYouTubeId(trimmed);
-      if (ytId) {
+      const { message, code } = humanizeConverterError(err);
+      if (ytId && code === 'NETWORK') {
+        setInlinePreview({
+          valid: true,
+          isYouTube: true,
+          id: ytId,
+          title: `YouTube Track (${ytId})`,
+          author: 'YouTube Music',
+          thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+        });
+        setInlineValidationError(message);
+      } else if (ytId) {
         setInlinePreview({
           valid: true,
           isYouTube: true,
@@ -274,6 +307,7 @@ export default function App() {
         });
       } else {
         setInlinePreview(null);
+        setInlineValidationError(message);
       }
     } finally {
       setIsValidatingInline(false);
@@ -497,16 +531,26 @@ export default function App() {
     const formatObj = AUDIOPHILE_FORMATS.find((f) => f.id === format) || AUDIOPHILE_FORMATS[0];
 
     setIsDownloading(true);
-    setDownloadProgress(0.2);
+    setDownloadError(null);
+    setDownloadProgress(0.12);
     setDownloadStatus(`RECORDING ${format} (${formatObj.badge})...`);
+
+    const progressTicker = window.setInterval(() => {
+      setDownloadProgress((prev) => {
+        if (prev >= 0.78) return prev;
+        return Math.min(0.78, prev + 0.03);
+      });
+    }, 4_000);
 
     try {
       const ytId = extractYouTubeId(trimmedUrl);
-      setDownloadProgress(0.45);
+      setDownloadProgress(0.28);
+      setDownloadStatus(`EXTRACTING ${format} MASTER (up to 2 min)...`);
 
-      const response = await fetch('/api/convert-audio', {
+      const response = await fetchWithTimeout(apiUrl('/api/convert-audio'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 150_000,
         body: JSON.stringify({
           url: trimmedUrl,
           format,
@@ -518,14 +562,12 @@ export default function App() {
       });
 
       if (!response.ok) {
-        let errMsg = `HTTP ${response.status}`;
-        try {
-          const errJson = await response.json();
-          if (errJson.error) errMsg = errJson.error;
-        } catch {
-          // ignore
-        }
-        throw new Error(errMsg);
+        throw await readConverterError(response);
+      }
+
+      const responseType = response.headers.get('content-type') || '';
+      if (responseType.includes('application/json')) {
+        throw await readConverterError(response);
       }
 
       setDownloadProgress(0.8);
@@ -611,9 +653,16 @@ export default function App() {
 
       addToast(`♪ Recorded "${headerTitle}" (${headerFormat})`, 'success');
       playTrack(saved);
-    } catch (err: any) {
-      addToast(`Recorder error: ${err.message || 'Failed to process audio'}`, 'error');
+    } catch (err: unknown) {
+      const { message, code } = humanizeConverterError(err);
+      const display =
+        code === 'YOUTUBE_BOT_CHECK'
+          ? `${message} Open Studio Key in the recorder to paste cookies.`
+          : message;
+      setDownloadError(display);
+      addToast(`Recorder error: ${display}`, 'error');
     } finally {
+      window.clearInterval(progressTicker);
       setIsDownloading(false);
       setDownloadProgress(0);
       setDownloadStatus('');
@@ -1105,6 +1154,16 @@ export default function App() {
 
         {/* Studio Master Tape Deck (Streamlined URL / YouTube Recorder) */}
         <section className="cassette-card rounded-3xl p-5 sm:p-6 space-y-4">
+          {converterApiOnline === false && (
+            <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <p className="leading-snug">
+                Converter API is not reachable on this origin ({typeof window !== 'undefined' ? window.location.origin : ''}).
+                Open the hosted app URL (same server as /api) — installed PWAs must use that host, not an offline copy.
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <span className="cassette-led cassette-led-rec" />
@@ -1310,6 +1369,16 @@ export default function App() {
                   className="h-full bg-gradient-to-r from-[#b8d99e] to-[#e2c986] transition-all duration-200 rounded-full"
                   style={{ width: `${Math.round(downloadProgress * 100)}%` }}
                 />
+              </div>
+            </div>
+          )}
+
+          {downloadError && !isDownloading && (
+            <div className="p-3.5 rounded-xl bg-[#2a1616] border border-[#522929] flex items-start gap-2.5 text-xs text-[#fca5a5]">
+              <span className="cassette-led cassette-led-rec shrink-0 mt-1" />
+              <div className="min-w-0">
+                <p className="font-mono font-bold uppercase tracking-wide">Recording failed</p>
+                <p className="mt-1 leading-snug">{downloadError}</p>
               </div>
             </div>
           )}
@@ -1535,7 +1604,11 @@ export default function App() {
         isDownloading={isDownloading}
         downloadProgress={downloadProgress}
         downloadStatus={downloadStatus}
-        onClose={() => setShowDownloadDialog(false)}
+        downloadError={downloadError}
+        onClose={() => {
+          setShowDownloadDialog(false);
+          setDownloadError(null);
+        }}
         onStartDownload={handleStartDownload}
         onOpenYouTubeBrowser={(url) => {
           setShowDownloadDialog(false);
@@ -1549,9 +1622,17 @@ export default function App() {
         isOpen={showYouTubeBrowser}
         initialUrl={prefilledUrl}
         onClose={() => setShowYouTubeBrowser(false)}
-        onConvertVideo={(videoUrl) => {
+        onConvertVideo={(videoUrl, meta) => {
           setShowYouTubeBrowser(false);
-          handleStartDownload(videoUrl, inlineFormat, activeInlineFormatObj.bitrateKbps, true);
+          handleStartDownload(
+            videoUrl,
+            inlineFormat,
+            inlineFormat === 'MP3' ? inlineMp3Bitrate : activeInlineFormatObj.bitrateKbps,
+            inlineSaveToDevice,
+            inlineCookies.trim() || undefined,
+            meta?.title,
+            meta?.author
+          );
         }}
       />
 

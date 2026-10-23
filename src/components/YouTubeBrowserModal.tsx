@@ -6,7 +6,10 @@ interface YouTubeBrowserModalProps {
   isOpen: boolean;
   initialUrl?: string | null;
   onClose: () => void;
-  onConvertVideo: (videoUrl: string) => void;
+  onConvertVideo: (
+    videoUrl: string,
+    meta?: { title?: string; author?: string }
+  ) => void;
 }
 
 type TunerMode = 'browse' | 'watch';
@@ -223,7 +226,12 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => watchUrl && onConvertVideo(watchUrl)}
+                  onClick={() =>
+                    watchUrl &&
+                    onConvertVideo(watchUrl, previewInfo
+                      ? { title: previewInfo.title, author: previewInfo.author }
+                      : undefined)
+                  }
                   className="cassette-btn cassette-btn-primary w-full sm:w-auto px-5 py-2.5 text-xs font-mono shrink-0"
                 >
                   <Radio className="w-4 h-4" />
