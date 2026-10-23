@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Download Open Grace Music APK</title>
+    <meta name="description" content="Download the Open Grace Music Android APK (~25 MB)" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #11120f;
+        --card: #171814;
+        --border: #3a4433;
+        --text: #eeeae2;
+        --muted: #a3a198;
+        --accent: #b8d99e;
+        --warn: #fbbf24;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+        padding: 1.25rem;
+      }
+      .wrap {
+        max-width: 28rem;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin: 0 0 0.35rem;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 0.875rem;
+        margin-bottom: 1.25rem;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        text-align: center;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 1rem;
+        padding: 1rem 1.25rem;
+        border-radius: 1rem;
+        background: var(--accent);
+        color: #11120f;
+        margin: 1rem 0;
+      }
+      .btn:active {
+        transform: scale(0.98);
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1rem;
+        font-size: 0.8125rem;
+      }
+      .card h2 {
+        font-size: 0.875rem;
+        margin: 0 0 0.5rem;
+        color: var(--accent);
+      }
+      ol {
+        margin: 0;
+        padding-left: 1.2rem;
+      }
+      li {
+        margin-bottom: 0.45rem;
+      }
+      .note {
+        border-color: #5c4a2a;
+        background: #2a1f14;
+      }
+      .note strong {
+        color: var(--warn);
+      }
+      code {
+        font-size: 0.75rem;
+        word-break: break-all;
+        color: var(--accent);
+      }
+      a.link {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Open Grace Music</h1>
+      <p class="sub">Native Android app (~25 MB). Open this page in <strong>Chrome</strong> on your phone.</p>
+
+      <a class="btn" id="apk-btn" href="/OpenGraceMusic.apk" download="OpenGraceMusic.apk">
+        Download Open Grace Music APK (25 MB)
+      </a>
+
+      <p class="sub" style="margin-top: 0">
+        Direct link:
+        <a class="link" id="apk-link" href="/OpenGraceMusic.apk" download="OpenGraceMusic.apk"
+          >/OpenGraceMusic.apk</a
+        >
+      </p>
+
+      <div class="card note">
+        <h2>Using Cursor on your phone?</h2>
+        <p>
+          Links inside Cursor chat or in-app preview often use <code>localhost</code> or embedded
+          webviews that <strong>cannot download APK files</strong>. Copy your agent’s
+          <strong>public HTTPS URL</strong>, paste it into <strong>Chrome</strong>, then open
+          <code id="download-path">/download</code> on that same host.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>Samsung Galaxy S25 — install steps</h2>
+        <ol>
+          <li>After download, open the APK from <strong>My Files → Downloads</strong>.</li>
+          <li>
+            <strong>Settings → Security → Install unknown apps</strong> — allow
+            <strong>My Files</strong> or <strong>Chrome</strong>.
+          </li>
+          <li>
+            <strong>Auto Blocker</strong>: Settings → Security and privacy → Auto Blocker — allow
+            your install source or pause for this install.
+          </li>
+          <li>If you see <strong>Advanced Protection</strong> blocking the install, use
+            <strong>Add to Home screen</strong> (PWA) from the main site instead — no sideload needed.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2>Prefer no sideload?</h2>
+        <p>
+          Open the main app in Chrome → menu (⋮) → <strong>Install app</strong> or
+          <strong>Add to Home screen</strong>.
+          <a class="link" href="/">Open Open Grace Music web app</a>
+        </p>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var origin = window.location.origin;
+        var apk = origin + '/OpenGraceMusic.apk';
+        var btn = document.getElementById('apk-btn');
+        var link = document.getElementById('apk-link');
+        var pathEl = document.getElementById('download-path');
+        if (btn) btn.href = apk;
+        if (link) {
+          link.href = apk;
+          link.textContent = apk;
+        }
+        if (pathEl) pathEl.textContent = origin + '/download';
+      })();
+    </script>
+  </body>
+</html>

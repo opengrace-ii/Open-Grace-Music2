@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Smartphone,
@@ -9,6 +9,12 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { GramophoneDiscLogo } from './GramophoneDiscLogo';
+import {
+  apkDownloadLandingUrl,
+  apkDownloadUrl,
+  isMobileDevice,
+  mobileApkDownloadHint,
+} from '../utils/apkDownload';
 
 const REPO_URL =
   import.meta.env.VITE_GITHUB_REPO_URL ||
@@ -29,6 +35,10 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
   isInstallable,
   onPwaInstall,
 }) => {
+  const [showMobileApkHint, setShowMobileApkHint] = useState(false);
+  const apkUrl = useMemo(() => apkDownloadUrl(), []);
+  const downloadPageUrl = useMemo(() => apkDownloadLandingUrl(), []);
+
   if (!isOpen) return null;
 
   return (
@@ -108,6 +118,24 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </section>
         )}
 
+        {(isMobileDevice() || showMobileApkHint) && (
+          <div className="mb-4 p-3.5 rounded-2xl bg-[#2a1f14]/50 border border-[#5c4a2a] text-xs text-[#eeeae2] leading-relaxed">
+            <p className="font-semibold text-[#fbbf24] mb-1">Cursor on phone?</p>
+            <p>
+              In-app preview often cannot download APKs. Open{' '}
+              <a
+                href={downloadPageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#b8d99e] underline break-all"
+              >
+                {downloadPageUrl}
+              </a>{' '}
+              in <strong>Chrome</strong> using your agent&apos;s public URL (not localhost).
+            </p>
+          </div>
+        )}
+
         <section className="space-y-3 mb-5">
           <h4 className="text-sm font-semibold text-[#e2c986] flex items-center gap-2">
             <Smartphone className="w-4 h-4" />
@@ -119,8 +147,8 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </p>
           <ol className="list-decimal list-inside space-y-2 text-xs text-[#eeeae2] leading-relaxed pl-1">
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> from the APK
-              button in the header.
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB) below or
+              from the mobile download page.
             </li>
             <li>
               Settings → Security → <strong>Install unknown apps</strong> → allow{' '}
@@ -136,14 +164,31 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Protect notice — tap <strong>Install anyway</strong> only if you trust this source.
             </li>
           </ol>
-          <a
-            href="/OpenGraceMusic.apk"
-            download="OpenGraceMusic.apk"
-            className="inline-flex px-4 py-2.5 rounded-xl bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] font-semibold text-xs items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Download OpenGraceMusic.apk
-          </a>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <a
+              href={apkUrl}
+              download="OpenGraceMusic.apk"
+              onClick={() => {
+                if (isMobileDevice()) setShowMobileApkHint(true);
+              }}
+              className="inline-flex px-4 py-2.5 rounded-xl bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] font-semibold text-xs items-center gap-2 justify-center"
+            >
+              <Download className="w-4 h-4" />
+              Download OpenGraceMusic.apk (25 MB)
+            </a>
+            <a
+              href={downloadPageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex px-4 py-2.5 rounded-xl bg-[#171814] text-[#a3a198] hover:text-[#eeeae2] border border-[#292a24] font-semibold text-xs items-center gap-2 justify-center"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open download page
+            </a>
+          </div>
+          {showMobileApkHint && (
+            <p className="text-[11px] text-[#fbbf24] leading-relaxed">{mobileApkDownloadHint()}</p>
+          )}
         </section>
 
         <section className="p-4 rounded-2xl bg-[#2a1f14]/40 border border-[#5c4a2a] space-y-2">

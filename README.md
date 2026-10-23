@@ -97,11 +97,26 @@ Google **Advanced Protection** blocks sideloaded APKs that are not from Google P
 
 Use the in-app **INSTALL / Samsung Install** button for step-by-step help.
 
+### Download APK on your phone
+
+You **can** download APK files on Android in general. What often fails is tapping a link **inside Cursor on mobile**: chat links and in-app preview use embedded webviews, `localhost`, or relative paths that do not trigger a real file download.
+
+**Do this instead:**
+
+1. Copy your Cloud Agent’s **public HTTPS URL** (the same host where the app is deployed — not `localhost` and not the Cursor preview iframe).
+2. Open **Chrome** on your phone and paste one of:
+   - **`https://YOUR-PUBLIC-HOST/download`** — mobile-friendly landing page with a large download button and Samsung S25 install notes
+   - **`https://YOUR-PUBLIC-HOST/OpenGraceMusic.apk`** — direct APK (~25 MB)
+   - Alternate direct route: **`https://YOUR-PUBLIC-HOST/download/apk`**
+3. After the file downloads, install from **My Files → Downloads** (see steps below).
+
+The in-app **APK / INSTALL** button uses `window.location.origin + '/OpenGraceMusic.apk'` so it works when you are already on the public site in Chrome; if nothing happens, use the `/download` page in Chrome as above.
+
 ### Optional: Native APK sideload
 
 When Advanced Protection is **off** and **Auto Blocker** allows your install source:
 
-1. Download `OpenGraceMusic.apk` from the app or `/OpenGraceMusic.apk`.
+1. Download `OpenGraceMusic.apk` from `/download`, `/OpenGraceMusic.apk`, or the in-app install guide.
 2. **Settings → Security → Install unknown apps** — allow **My Files** or **Chrome**.
 3. **Samsung Auto Blocker**: Settings → Security and privacy → Auto Blocker — allow installation from your chosen source for this install.
 4. Open the APK and tap Install. Play Protect may warn on sideload builds not from Play; only proceed if you trust this repository.

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Download,
@@ -10,6 +10,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { GramophoneDiscLogo } from './GramophoneDiscLogo';
+import { apkDownloadUrl, isMobileDevice, mobileApkDownloadHint } from '../utils/apkDownload';
 
 interface AndroidProjectModalProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({
   onOpenInstallGuide,
 }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'KOTLIN_CODE' | 'BUILD_INSTRUCTIONS'>('OVERVIEW');
+  const [showMobileApkHint, setShowMobileApkHint] = useState(false);
+  const apkUrl = useMemo(() => apkDownloadUrl(), []);
 
   if (!isOpen) return null;
 
@@ -137,14 +140,22 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({
                 </div>
 
                 <a
-                  href="/OpenGraceMusic.apk"
+                  href={apkUrl}
                   download="OpenGraceMusic.apk"
+                  onClick={() => {
+                    if (isMobileDevice()) setShowMobileApkHint(true);
+                  }}
                   className="px-4 py-2.5 rounded-xl bg-[#b8d99e] text-[#11120f] hover:bg-[#c8e6b0] font-bold text-xs flex items-center gap-2 shadow-md transition-all active:scale-95"
                 >
                   <Download className="w-4 h-4" />
                   <span>Download Android .APK</span>
                 </a>
               </div>
+              {showMobileApkHint && (
+                <p className="text-[11px] text-[#fbbf24] leading-relaxed px-1">
+                  {mobileApkDownloadHint()}
+                </p>
+              )}
 
               <div className="p-3.5 rounded-xl bg-[#171814] border border-[#292a24] flex flex-wrap items-center justify-between gap-3">
                 <div>

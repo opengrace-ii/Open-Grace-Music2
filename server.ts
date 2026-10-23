@@ -685,20 +685,47 @@ app.get('/api/convert-audio', handleConvertAudio);
 app.post('/api/convert-mp3', handleConvertAudio);
 app.get('/api/convert-mp3', handleConvertAudio);
 
-// Direct Android APK & Android Studio ZIP routes
-app.get('/OpenGraceMusic.apk', (_req, res) => {
-  const apkCandidates = [
-    path.join(__dirname, 'public', 'OpenGraceMusic.apk'),
-    path.join(__dirname, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
-  ];
-  for (const candidate of apkCandidates) {
-    if (fs.existsSync(candidate)) {
-      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      res.setHeader('Content-Disposition', 'attachment; filename="OpenGraceMusic.apk"');
-      return res.sendFile(candidate);
-    }
+const APK_FILENAME = 'OpenGraceMusic.apk';
+
+function resolveApkPath(): string | null {
+  const publicApk = path.join(__dirname, 'public', APK_FILENAME);
+  if (fs.existsSync(publicApk)) return publicApk;
+  const debugApk = path.join(__dirname, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+  if (fs.existsSync(debugApk)) return debugApk;
+  return null;
+}
+
+function resolvePublicAsset(name: string): string | null {
+  const publicPath = path.join(__dirname, 'public', name);
+  if (fs.existsSync(publicPath)) return publicPath;
+  const distPath = path.join(__dirname, 'dist', name);
+  if (fs.existsSync(distPath)) return distPath;
+  return null;
+}
+
+function sendApkDownload(_req: express.Request, res: express.Response) {
+  const apkPath = resolveApkPath();
+  if (!apkPath) {
+    return res.status(404).json({ error: 'APK file not found. Run ./gradlew assembleDebug.' });
   }
-  return res.status(404).json({ error: 'APK file not found. Run ./gradlew assembleDebug.' });
+  const stat = fs.statSync(apkPath);
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', `attachment; filename="${APK_FILENAME}"`);
+  res.setHeader('Content-Length', String(stat.size));
+  return res.sendFile(apkPath);
+}
+
+app.get('/OpenGraceMusic.apk', sendApkDownload);
+app.get('/download/apk', sendApkDownload);
+
+app.get('/download', (_req, res) => {
+  const htmlPath = resolvePublicAsset('download.html');
+  if (!htmlPath) {
+    return res.status(404).send('Download page not found.');
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(htmlPath);
 });
 
 app.get('/OpenGraceMusic-Android.zip', (_req, res) => {
