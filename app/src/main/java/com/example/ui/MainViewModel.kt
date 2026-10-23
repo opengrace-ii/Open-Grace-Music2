@@ -25,9 +25,9 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 enum class LibraryTab(val title: String) {
-    ALL("All Tracks"),
+    ALL("All Music"),
     LOSSLESS("Lossless (FLAC/ALAC/DSD)"),
-    DOWNLOADS("Downloads"),
+    DOWNLOADS("Your Downloads"),
     DEVICE_MUSIC("Phone Music"),
     MP3("MP3 Audio")
 }

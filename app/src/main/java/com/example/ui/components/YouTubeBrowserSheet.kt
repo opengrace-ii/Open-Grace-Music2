@@ -273,7 +273,7 @@ fun YouTubeBrowserSheet(
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save MP3", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = OnSageGreen)
+                            Text("Record to Library", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = OnSageGreen)
                         }
                     }
                 }
@@ -430,25 +430,25 @@ fun YouTubeBrowserSheet(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Bottom Floating Action Card when a video is detected
-                    if (detectedVideoId != null) {
-                        val videoUrl = YouTubeStreamResolver.canonicalWatchUrl(detectedVideoId!!)
-                        Card(
+                    // Bottom action bar — always visible while browsing
+                    val videoUrl = detectedVideoId?.let { YouTubeStreamResolver.canonicalWatchUrl(it) }
+                    Card(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                            .testTag("convert_current_video_card"),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = DarkCard),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+                    ) {
+                        Column(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
                                 .padding(14.dp)
-                                .testTag("convert_current_video_card"),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(containerColor = DarkCard),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp)
-                            ) {
+                            if (detectedVideoId != null && videoUrl != null) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
@@ -470,7 +470,6 @@ fun YouTubeBrowserSheet(
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
-
                                 Text(
                                     text = videoUrl,
                                     fontSize = 11.sp,
@@ -479,50 +478,66 @@ fun YouTubeBrowserSheet(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(vertical = 4.dp)
                                 )
+                            } else {
+                                Text(
+                                    text = "Browse YouTube — open a video to copy or record it",
+                                    fontSize = 12.sp,
+                                    color = TextMuted,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { copyCurrentVideoUrl() },
+                                    enabled = detectedVideoId != null,
+                                    shape = RoundedCornerShape(999.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("copy_detected_url_btn")
                                 ) {
-                                    // 1. Directly Copy Clean URL
-                                    OutlinedButton(
-                                        onClick = { copyCurrentVideoUrl() },
-                                        shape = RoundedCornerShape(999.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("copy_detected_url_btn")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = null,
-                                            tint = SageGreen,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Copy URL", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = null,
+                                        tint = SageGreen,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Copy URL", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
 
-                                    // 2. Direct 1-Tap Convert & Save MP3
-                                    Button(
-                                        onClick = { onConvertVideo(videoUrl, capturedStreamUrl, capturedHeaders) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = SageGreen),
-                                        shape = RoundedCornerShape(999.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("convert_current_video_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = null,
-                                            tint = OnSageGreen,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Save MP3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = OnSageGreen)
-                                    }
+                                Button(
+                                    onClick = {
+                                        if (videoUrl != null) {
+                                            onConvertVideo(videoUrl, capturedStreamUrl, capturedHeaders)
+                                        }
+                                    },
+                                    enabled = detectedVideoId != null,
+                                    colors = ButtonDefaults.buttonColors(containerColor = SageGreen),
+                                    shape = RoundedCornerShape(999.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("convert_current_video_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = OnSageGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Record to Library",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = OnSageGreen
+                                    )
                                 }
                             }
                         }

@@ -417,6 +417,32 @@ fun OgmApp(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "Cassette Library",
+                        fontSize = 20.sp,
+                        fontFamily = PlayfairDisplayFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = TextLight
+                    )
+                    Text(
+                        text = "Your downloads & imports · ${tracks.size} track${if (tracks.size == 1) "" else "s"}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SageGreen
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             if (tracks.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -457,6 +483,15 @@ fun OgmApp(
                             fontFamily = PlayfairDisplayFontFamily,
                             fontWeight = FontWeight.Bold,
                             color = TextLight
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Recorded tracks from YouTube, URLs, and imports appear here.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Search, Youtube, Radio, Play } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { X, Search, Youtube, Radio, Play, ClipboardPaste, ExternalLink } from 'lucide-react';
 import { extractYouTubeId } from '../services/mediaResolver';
 
 interface YouTubeBrowserModalProps {
@@ -9,38 +9,78 @@ interface YouTubeBrowserModalProps {
   onConvertVideo: (videoUrl: string) => void;
 }
 
+type TunerMode = 'browse' | 'watch';
+
+const embedUrl = (videoId: string) =>
+  `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
+    typeof window !== 'undefined' ? window.location.origin : ''
+  )}`;
+
 export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   isOpen,
   initialUrl,
   onClose,
   onConvertVideo,
 }) => {
+  const initialId = extractYouTubeId(initialUrl || '');
+  const [mode, setMode] = useState<TunerMode>(initialId ? 'watch' : 'browse');
   const [searchInput, setSearchInput] = useState(initialUrl || '');
-  const [selectedYtId, setSelectedYtId] = useState<string | null>(
-    extractYouTubeId(initialUrl || '') || 'Xc6JIstj8GY'
-  );
+  const [selectedYtId, setSelectedYtId] = useState<string | null>(initialId);
   const [previewInfo, setPreviewInfo] = useState<{ title: string; author: string } | null>(null);
+  const [embedReady, setEmbedReady] = useState(false);
 
-  if (!isOpen) return null;
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = extractYouTubeId(searchInput.trim());
-    if (id) {
-      setSelectedYtId(id);
-      fetchInfo(id);
-    }
-  };
-
-  const fetchInfo = async (id: string) => {
+  const fetchInfo = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`);
+      const res = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`
+      );
       if (res.ok) {
         const json = await res.json();
         setPreviewInfo({ title: json.title, author: json.author_name });
       }
     } catch {
       // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = extractYouTubeId(initialUrl || '');
+    setSearchInput(initialUrl || '');
+    setSelectedYtId(id);
+    setMode(id ? 'watch' : 'browse');
+    setEmbedReady(false);
+    if (id) fetchInfo(id);
+  }, [isOpen, initialUrl, fetchInfo]);
+
+  useEffect(() => {
+    if (selectedYtId) fetchInfo(selectedYtId);
+  }, [selectedYtId, fetchInfo]);
+
+  if (!isOpen) return null;
+
+  const applyVideoId = (id: string) => {
+    setSelectedYtId(id);
+    setSearchInput(`https://www.youtube.com/watch?v=${id}`);
+    setMode('watch');
+    setEmbedReady(false);
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = extractYouTubeId(searchInput.trim());
+    if (id) applyVideoId(id);
+  };
+
+  const pasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) return;
+      setSearchInput(text.trim());
+      const id = extractYouTubeId(text.trim());
+      if (id) applyVideoId(id);
+    } catch {
+      // clipboard denied
     }
   };
 
@@ -51,114 +91,185 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     { id: '5qap5aO4i9A', title: 'Warm Vinyl Chillhop Beats', author: 'Chillhop Music' },
   ];
 
+  const watchUrl = selectedYtId ? `https://www.youtube.com/watch?v=${selectedYtId}` : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl cassette-card rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto">
-        {/* Top Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#272c23]">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0c09]/95 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="flex flex-col flex-1 min-h-0 w-full max-w-5xl mx-auto sm:my-2 sm:rounded-3xl sm:border sm:border-[#2b3326] cassette-card shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#272c23] shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-[#2a1818] text-[#f87171] border border-[#4a2626]">
               <Youtube className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-serif-display text-lg font-bold text-[#f0ece1]">
-                YouTube Studio Tuner
-              </h3>
-            </div>
+            <h3 className="font-serif-display text-base sm:text-lg font-bold text-[#f0ece1]">
+              YouTube Studio Tuner
+            </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="cassette-btn p-2 text-[#9fa396]"
-          >
+          <button onClick={onClose} className="cassette-btn p-2 text-[#9fa396]" type="button">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Search / URL input */}
-        <form onSubmit={handleSearchSubmit} className="mt-4 flex gap-2">
-          <div className="relative flex-1 cassette-window rounded-xl flex items-center px-3">
+        {/* Mode toggle */}
+        <div className="cassette-bank flex gap-1.5 px-4 py-2 shrink-0 border-b border-[#1f241c]">
+          {(
+            [
+              { id: 'browse' as const, label: 'Browse YouTube' },
+              { id: 'watch' as const, label: 'Watch & Record' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setMode(tab.id)}
+              className={`cassette-btn px-3 py-1.5 text-xs font-mono ${
+                mode === tab.id ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+              }`}
+            >
+              <span className={`cassette-led ${mode === tab.id ? 'cassette-led-on' : ''}`} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* URL bar */}
+        <form onSubmit={handleSearchSubmit} className="px-4 py-2 flex gap-2 shrink-0">
+          <div className="relative flex-1 cassette-window rounded-xl flex items-center px-3 min-w-0">
             <Search className="w-4 h-4 text-[#686b60] shrink-0" />
             <input
               type="text"
-              placeholder="Paste YouTube Link or Video ID..."
+              placeholder="Paste YouTube watch link or video ID…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full px-2.5 py-2.5 bg-transparent text-[#f0ece1] placeholder-[#686b60] text-xs sm:text-sm focus:outline-none font-mono"
+              className="w-full px-2.5 py-2.5 bg-transparent text-[#f0ece1] placeholder-[#686b60] text-xs sm:text-sm focus:outline-none font-mono truncate"
             />
           </div>
           <button
-            type="submit"
-            className="cassette-btn px-4 py-2 text-xs font-mono text-[#b8d99e] shrink-0"
+            type="button"
+            onClick={pasteFromClipboard}
+            className="cassette-btn px-3 py-2 text-[#b8d99e] shrink-0"
+            title="Paste from clipboard"
           >
+            <ClipboardPaste className="w-4 h-4" />
+          </button>
+          <button type="submit" className="cassette-btn px-4 py-2 text-xs font-mono text-[#b8d99e] shrink-0">
             TUNE
           </button>
         </form>
 
-        {/* Video Player Preview Stage */}
-        {selectedYtId && (
-          <div className="mt-4 rounded-2xl overflow-hidden border border-[#2b3326] bg-black aspect-video relative shadow-lg">
-            <iframe
-              src={`https://www.youtube.com/embed/${selectedYtId}?autoplay=0&enablejsapi=1`}
-              title="YouTube video player"
-              className="w-full h-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        )}
+        {/* Main viewing surface */}
+        <div className="flex-1 min-h-0 flex flex-col px-4 pb-2 gap-2">
+          {mode === 'browse' ? (
+            <div className="flex-1 min-h-[60vh] sm:min-h-[70vh] flex flex-col rounded-2xl overflow-hidden border border-[#2b3326] bg-[#000] relative">
+              <iframe
+                title="Browse YouTube"
+                src="https://m.youtube.com"
+                className="w-full flex-1 min-h-[58vh] sm:min-h-[68vh] border-0 bg-black"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowFullScreen
+                referrerPolicy="origin-when-cross-origin"
+              />
+              <div className="absolute bottom-0 inset-x-0 px-3 py-2 bg-gradient-to-t from-black/90 to-transparent flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] sm:text-xs font-mono text-[#9fa396]">
+                  On a video page, copy its link and tap Paste above.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => window.open('https://m.youtube.com', '_blank', 'noopener,noreferrer')}
+                  className="cassette-btn px-2.5 py-1 text-[10px] font-mono text-[#e2c986] shrink-0"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Open in browser
+                </button>
+              </div>
+            </div>
+          ) : selectedYtId ? (
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
+              <div
+                className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg flex-1 min-h-[280px] max-h-[min(70vh,720px)]"
+                style={{ aspectRatio: '16 / 9' }}
+              >
+                {!embedReady && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-[#141812] z-10">
+                    <div className="text-center space-y-2 px-4">
+                      <div className="w-8 h-8 border-2 border-[#b8d99e] border-t-transparent rounded-full animate-spin mx-auto" />
+                      <p className="text-xs font-mono text-[#9fa396]">Loading player…</p>
+                    </div>
+                  </div>
+                )}
+                <iframe
+                  key={selectedYtId}
+                  src={embedUrl(selectedYtId)}
+                  title="YouTube video player"
+                  className="absolute inset-0 w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  allowFullScreen
+                  onLoad={() => setEmbedReady(true)}
+                />
+              </div>
 
-        {/* Selected Video Action bar */}
-        {selectedYtId && (
-          <div className="mt-3 p-3.5 rounded-2xl cassette-window flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate">
-                {previewInfo?.title || `YouTube Master (${selectedYtId})`}
-              </h4>
-              <p className="text-xs font-mono text-[#b8d99e] mt-0.5">
-                {previewInfo?.author || 'Studio Stream Ready'}
+              <div className="p-3 rounded-2xl cassette-window flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate">
+                    {previewInfo?.title || `YouTube Master (${selectedYtId})`}
+                  </h4>
+                  <p className="text-xs font-mono text-[#b8d99e] mt-0.5 truncate">
+                    {previewInfo?.author || 'Studio Stream Ready'}
+                  </p>
+                  {watchUrl && (
+                    <p className="text-[10px] font-mono text-[#686b60] mt-1 truncate">{watchUrl}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => watchUrl && onConvertVideo(watchUrl)}
+                  className="cassette-btn cassette-btn-primary w-full sm:w-auto px-5 py-2.5 text-xs font-mono shrink-0"
+                >
+                  <Radio className="w-4 h-4" />
+                  <span>⏺ RECORD TO CASSETTE LIBRARY</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-[40vh] flex items-center justify-center cassette-window rounded-2xl">
+              <p className="text-sm font-mono text-[#9fa396] text-center px-6">
+                Paste a YouTube link or pick a featured track below.
               </p>
             </div>
-            <button
-              onClick={() => onConvertVideo(`https://www.youtube.com/watch?v=${selectedYtId}`)}
-              className="cassette-btn cassette-btn-primary w-full sm:w-auto px-5 py-2.5 text-xs font-mono shrink-0"
-            >
-              <Radio className="w-4 h-4" />
-              <span>⏺ RECORD TO CASSETTE LIBRARY</span>
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Curated Stations */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {curatedVideos.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => {
-                setSelectedYtId(v.id);
-                setSearchInput(`https://www.youtube.com/watch?v=${v.id}`);
-                fetchInfo(v.id);
-              }}
-              className={`cassette-btn justify-start p-2.5 text-left ${
-                selectedYtId === v.id ? 'cassette-btn-engaged' : ''
-              }`}
-            >
-              <div className="w-11 h-8 rounded bg-[#1c2418] overflow-hidden shrink-0 relative">
-                <img
-                  src={`https://img.youtube.com/vi/${v.id}/hqdefault.jpg`}
-                  alt={v.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
-                  <Play className="w-3 h-3 text-white fill-white" />
+        {/* Featured */}
+        <div className="px-4 pb-4 shrink-0">
+          <p className="text-[10px] font-mono text-[#686b60] uppercase tracking-wider mb-2">Featured</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[22vh] overflow-y-auto scrollbar-none">
+            {curatedVideos.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => applyVideoId(v.id)}
+                className={`cassette-btn justify-start p-2.5 text-left ${
+                  selectedYtId === v.id ? 'cassette-btn-engaged' : ''
+                }`}
+              >
+                <div className="w-11 h-8 rounded bg-[#1c2418] overflow-hidden shrink-0 relative">
+                  <img
+                    src={`https://img.youtube.com/vi/${v.id}/hqdefault.jpg`}
+                    alt={v.title}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                    <Play className="w-3 h-3 text-white fill-white" />
+                  </div>
                 </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-[#f0ece1] truncate">{v.title}</p>
-                <p className="text-[10px] font-mono text-[#9fa396] truncate">{v.author}</p>
-              </div>
-            </button>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-[#f0ece1] truncate">{v.title}</p>
+                  <p className="text-[10px] font-mono text-[#9fa396] truncate">{v.author}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

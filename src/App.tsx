@@ -789,6 +789,21 @@ export default function App() {
           {/* Cassette Transport Bank in Header */}
           <div className="cassette-bank flex items-center gap-1.5 shrink-0">
             <button
+              type="button"
+              onClick={() => {
+                document.getElementById('cassette-library')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              title="Your Cassette Library"
+              className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#f0ece1]"
+            >
+              <Disc3 className="w-3.5 h-3.5 text-[#e2c986]" />
+              <span className="hidden sm:inline">LIBRARY</span>
+              {tracks.length > 0 && (
+                <span className="text-[10px] text-[#b8d99e]">({tracks.length})</span>
+              )}
+            </button>
+
+            <button
               onClick={() => {
                 setPrefilledUrl(null);
                 setShowYouTubeBrowser(true);
@@ -1225,12 +1240,15 @@ export default function App() {
               </div>
 
               {inlinePreview.isYouTube && (
-                <div className="rounded-xl overflow-hidden aspect-video bg-black border border-[#272c23]">
+                <div
+                  className="relative w-full rounded-xl overflow-hidden border border-[#272c23] bg-[#0e0f0d] min-h-[200px]"
+                  style={{ aspectRatio: '16 / 9' }}
+                >
                   <iframe
-                    src={`https://www.youtube.com/embed/${inlinePreview.id}?autoplay=0&enablejsapi=1`}
+                    src={`https://www.youtube-nocookie.com/embed/${inlinePreview.id}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}`}
                     title="YouTube Monitor"
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    className="absolute inset-0 w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                     allowFullScreen
                   />
                 </div>
@@ -1257,12 +1275,25 @@ export default function App() {
           )}
         </section>
 
-        {/* Cassette Rack Selector Bank & Search */}
+        {/* Cassette Library — all downloads & imports */}
+        <section id="cassette-library" className="scroll-mt-24 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <h2 className="font-serif-display text-xl sm:text-2xl font-bold text-[#f0ece1]">
+                Cassette Library
+              </h2>
+              <p className="text-xs font-mono text-[#b8d99e] mt-0.5">
+                Your downloads &amp; imports · {tracks.length} track{tracks.length === 1 ? '' : 's'}
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="cassette-bank flex items-center gap-1.5 overflow-x-auto scrollbar-none">
             {(
               [
-                { id: 'ALL', label: 'ALL TAPES', count: tracks.length },
+                { id: 'ALL', label: 'ALL MUSIC', count: tracks.length },
                 {
                   id: 'LOSSLESS',
                   label: 'LOSSLESS',
@@ -1272,7 +1303,7 @@ export default function App() {
                 },
                 {
                   id: 'DOWNLOADS',
-                  label: 'YOUTUBE',
+                  label: 'DOWNLOADS',
                   count: tracks.filter(
                     (t) => t.source === 'YOUTUBE' || t.source === 'DIRECT_URL'
                   ).length,
@@ -1363,6 +1394,9 @@ export default function App() {
               <h3 className="font-serif-display text-xl font-bold text-[#f0ece1]">
                 Insert Your First Master Tape
               </h3>
+              <p className="text-xs font-mono text-[#9fa396] max-w-sm">
+                Recorded tracks from YouTube, URLs, and imports appear in your Cassette Library above.
+              </p>
 
               <div className="cassette-bank flex flex-wrap items-center justify-center gap-2">
                 <button
