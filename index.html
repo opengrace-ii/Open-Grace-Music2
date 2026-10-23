@@ -16,16 +16,49 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Open Grace Music" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="/manifest.webmanifest?v=3" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="alternate icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        if (localStorage.getItem('ogm-sw-reset') === 'v3') return;
+        var finish = function () {
+          try {
+            localStorage.setItem('ogm-sw-reset', 'v3');
+          } catch (e) {}
+          window.location.reload();
+        };
+        var tasks = [];
+        if ('serviceWorker' in navigator) {
+          tasks.push(
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(regs.map(function (r) { return r.unregister(); }));
+            })
+          );
+        }
+        if ('caches' in window) {
+          tasks.push(
+            caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            })
+          );
+        }
+        if (tasks.length === 0) {
+          try {
+            localStorage.setItem('ogm-sw-reset', 'v3');
+          } catch (e) {}
+          return;
+        }
+        Promise.all(tasks).then(finish).catch(finish);
+      })();
+    </script>
   </head>
   <body class="bg-[#11120f] text-[#eeeae2] selection:bg-[#b8d99e] selection:text-[#11120f] antialiased overflow-x-hidden">
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx?v=3"></script>
   </body>
 </html>

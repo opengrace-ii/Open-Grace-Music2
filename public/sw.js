@@ -1,8 +1,8 @@
-/* Open Grace Music — versioned service worker (BUILD_ID injected at build time) */
+/* Open Grace Music — v3 gramophone force cache bust (BUILD_ID injected at build time) */
 const BUILD_ID = '__OGM_BUILD_ID__';
-const CACHE_PREFIX = 'ogm-v2-gramophone-';
-const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-${BUILD_ID}`;
-const SHELL_CACHE = `${CACHE_PREFIX}shell-${BUILD_ID}`;
+const CACHE_PREFIX = `ogm-v3-gramophone-force-${BUILD_ID}-`;
+const RUNTIME_CACHE = `${CACHE_PREFIX}runtime`;
+const SHELL_CACHE = `${CACHE_PREFIX}shell`;
 
 const SHELL_ASSETS = [
   '/manifest.webmanifest',
@@ -13,6 +13,10 @@ const SHELL_ASSETS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
+
+function isCurrentCacheKey(key) {
+  return key === RUNTIME_CACHE || key === SHELL_CACHE;
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -28,17 +32,7 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => {
-              if (key.startsWith(CACHE_PREFIX)) {
-                return key !== RUNTIME_CACHE && key !== SHELL_CACHE;
-              }
-              // Purge legacy caches (ogm-shell-v1, etc.)
-              return true;
-            })
-            .map((key) => caches.delete(key))
-        )
+        Promise.all(keys.filter((key) => !isCurrentCacheKey(key)).map((key) => caches.delete(key)))
       )
       .then(() => self.clients.claim())
       .then(() =>
@@ -56,18 +50,40 @@ function isNavigationRequest(request, url) {
     request.mode === 'navigate' ||
     request.destination === 'document' ||
     url.pathname === '/' ||
-    url.pathname === '/index.html'
+    url.pathname === '/index.html' ||
+    url.pathname.endsWith('.html')
   );
 }
 
-function isScriptOrStyle(url) {
-  return /\.(js|css|mjs)(\?|$)/.test(url.pathname) || url.pathname.startsWith('/assets/');
+function isHashedAsset(url) {
+  return /\/assets\/[^/]+\.[a-f0-9]{8,}\.(js|css|mjs)$/i.test(url.pathname);
 }
 
-async function networkFirst(request, fallbackUrl) {
+function isScriptOrStyle(url) {
+  return (
+    isHashedAsset(url) ||
+    /\.(js|css|mjs)(\?|$)/.test(url.pathname) ||
+    url.pathname.startsWith('/assets/')
+  );
+}
+
+/** HTML/navigation: always network — never read or write document cache. */
+async function networkOnlyNavigation(request) {
+  try {
+    return await fetch(request, { cache: 'no-store' });
+  } catch {
+    return new Response('Offline — connect to the internet to load Open Grace Music.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+}
+
+/** Assets: network-first so stale JS/CSS cannot flash the legacy UI. */
+async function networkFirstAsset(request) {
   try {
     const response = await fetch(request);
-    if (response && response.status === 200) {
+    if (response && response.status === 200 && response.type === 'basic') {
       const cache = await caches.open(RUNTIME_CACHE);
       cache.put(request, response.clone());
     }
@@ -75,35 +91,8 @@ async function networkFirst(request, fallbackUrl) {
   } catch {
     const cached = await caches.match(request);
     if (cached) return cached;
-    if (fallbackUrl) {
-      const fallback = await caches.match(fallbackUrl);
-      if (fallback) return fallback;
-    }
-    throw new Error('Offline and no cached document');
+    throw new Error('Offline and asset not cached');
   }
-}
-
-async function staleWhileRevalidate(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
-  const cached = await cache.match(request);
-
-  const networkPromise = fetch(request)
-    .then((response) => {
-      if (response && response.status === 200 && response.type === 'basic') {
-        cache.put(request, response.clone());
-      }
-      return response;
-    })
-    .catch(() => null);
-
-  if (cached) {
-    networkPromise.catch(() => {});
-    return cached;
-  }
-
-  const network = await networkPromise;
-  if (network) return network;
-  return caches.match('/index.html');
 }
 
 self.addEventListener('fetch', (event) => {
@@ -112,20 +101,25 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
-  // Never cache the service worker script itself
   if (url.pathname === '/sw.js') return;
 
+  // Legacy AI Studio bundle removed — purge any cached requests to it
+  if (url.pathname.includes('/assets/aistudio/')) {
+    event.respondWith(new Response('Legacy bundle removed', { status: 410 }));
+    return;
+  }
+
   if (isNavigationRequest(event.request, url)) {
-    event.respondWith(networkFirst(event.request, '/index.html'));
+    event.respondWith(networkOnlyNavigation(event.request));
     return;
   }
 
   if (isScriptOrStyle(url)) {
-    event.respondWith(staleWhileRevalidate(event.request));
+    event.respondWith(networkFirstAsset(event.request));
     return;
   }
 
-  event.respondWith(staleWhileRevalidate(event.request));
+  event.respondWith(networkFirstAsset(event.request));
 });
 
 self.addEventListener('message', (event) => {

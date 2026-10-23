@@ -20,6 +20,20 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
+/** Prevent cached index.html / SW; allow long cache on Vite content-hashed assets. */
+app.use((req, res, next) => {
+  const reqPath = req.path;
+  if (reqPath === '/' || reqPath === '/index.html') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+  } else if (reqPath === '/sw.js' || reqPath === '/manifest.webmanifest') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  } else if (/^\/assets\/[^/]+\.[a-zA-Z0-9_-]{8,}\.(js|css|mjs)$/i.test(reqPath)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  next();
+});
+
 // Extract clean 11-character YouTube Video ID from any URL variant
 export function extractYouTubeId(rawUrl: string): string | null {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
@@ -731,14 +745,24 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use((req, res, next) => {
-      if (req.path === '/sw.js') {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      }
-      next();
-    });
-    app.use(express.static(path.join(__dirname, 'dist')));
+    app.use(
+      express.static(path.join(__dirname, 'dist'), {
+        setHeaders(res, filePath) {
+          const base = path.basename(filePath);
+          if (base === 'index.html') {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+          } else if (/\.[a-zA-Z0-9_-]{8,}\.(js|css|mjs)$/i.test(base)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          } else if (base === 'sw.js' || base === 'manifest.webmanifest') {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   }

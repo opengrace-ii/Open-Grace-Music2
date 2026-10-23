@@ -34,6 +34,18 @@ function ogmServiceWorkerBuildIdPlugin() {
     configureServer(server: { middlewares: { use: (fn: (req: any, res: any, next: () => void) => void) => void } }) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0];
+        if (url === '/' || url === '/index.html') {
+          const origEnd = res.end.bind(res);
+          res.end = (...args: unknown[]) => {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            return origEnd(...args);
+          };
+        }
+        next();
+      });
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0];
         if (url === '/sw.js') {
           const template = fs.readFileSync(
             path.resolve(__dirname, 'public/sw.js'),
