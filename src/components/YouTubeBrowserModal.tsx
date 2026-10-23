@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Search, Youtube, Download, ExternalLink, Play, Sparkles } from 'lucide-react';
+import { X, Search, Youtube, Radio, Play } from 'lucide-react';
 import { extractYouTubeId } from '../services/mediaResolver';
 
 interface YouTubeBrowserModalProps {
@@ -45,61 +45,58 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   };
 
   const curatedVideos = [
-    { id: 'jfKfPfyJRdk', title: 'Lofi Girl - Relaxing Beats to Study/Chill to', author: 'Lofi Girl' },
-    { id: '5qap5aO4i9A', title: 'Lofi Hip Hop Radio - Beats to Sleep/Chill to', author: 'Lofi Records' },
-    { id: 'DWcJFNfaw9c', title: 'Acoustic Guitar Peaceful Meditation', author: 'Acoustic Morning' },
+    { id: 'DWcJFNfaw9c', title: 'Acoustic Guitar Peaceful Sanctuary', author: 'Acoustic Morning' },
     { id: '0T8NnR21s0Q', title: 'Open Grace Classical Masterpieces', author: 'Symphony Hall' },
+    { id: 'jfKfPfyJRdk', title: 'Midnight Instrumental Sessions', author: 'Lofi Studio' },
+    { id: '5qap5aO4i9A', title: 'Warm Vinyl Chillhop Beats', author: 'Chillhop Music' },
   ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl bg-[#141814] border border-[#282E27] rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto">
+      <div className="relative w-full max-w-3xl cassette-card rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto">
         {/* Top Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#242A23]">
+        <div className="flex items-center justify-between pb-4 border-b border-[#272c23]">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#3A1E1E] text-[#F87171]">
+            <div className="p-2 rounded-xl bg-[#2a1818] text-[#f87171] border border-[#4a2626]">
               <Youtube className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-serif-display text-lg font-bold text-[#F1F5EC]">
-                YouTube Audio Browser
+              <h3 className="font-serif-display text-lg font-bold text-[#f0ece1]">
+                YouTube Studio Tuner
               </h3>
-              <p className="text-xs text-[#A2ACA0]">
-                Search or paste video URL to extract and keep in your offline library
-              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-[#A2ACA0] hover:text-[#F1F5EC] hover:bg-[#252C24] transition-colors"
+            className="cassette-btn p-2 text-[#9fa396]"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Search / URL input */}
         <form onSubmit={handleSearchSubmit} className="mt-4 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-[#6F796E] absolute left-3 top-3" />
+          <div className="relative flex-1 cassette-window rounded-xl flex items-center px-3">
+            <Search className="w-4 h-4 text-[#686b60] shrink-0" />
             <input
               type="text"
-              placeholder="Paste YouTube Link or Video ID (e.g. https://youtu.be/0T8NnR21s0Q)"
+              placeholder="Paste YouTube Link or Video ID..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#1A1F1A] border border-[#2E372C] text-[#F1F5EC] placeholder-[#6F796E] text-xs sm:text-sm focus:outline-none focus:border-[#B8D99E]"
+              className="w-full px-2.5 py-2.5 bg-transparent text-[#f0ece1] placeholder-[#686b60] text-xs sm:text-sm focus:outline-none font-mono"
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 rounded-xl bg-[#2B3626] text-[#B8D99E] hover:bg-[#34422E] font-medium text-xs border border-[#43543B] transition-colors shrink-0"
+            className="cassette-btn px-4 py-2 text-xs font-mono text-[#b8d99e] shrink-0"
           >
-            Load Video
+            TUNE
           </button>
         </form>
 
         {/* Video Player Preview Stage */}
         {selectedYtId && (
-          <div className="mt-4 rounded-2xl overflow-hidden border border-[#282E27] bg-black aspect-video relative shadow-lg">
+          <div className="mt-4 rounded-2xl overflow-hidden border border-[#2b3326] bg-black aspect-video relative shadow-lg">
             <iframe
               src={`https://www.youtube.com/embed/${selectedYtId}?autoplay=0&enablejsapi=1`}
               title="YouTube video player"
@@ -112,63 +109,56 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
 
         {/* Selected Video Action bar */}
         {selectedYtId && (
-          <div className="mt-3 p-3.5 rounded-xl bg-[#1A201A] border border-[#2B3529] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="mt-3 p-3.5 rounded-2xl cassette-window flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-[#F1F5EC] truncate">
-                {previewInfo?.title || `YouTube Video (${selectedYtId})`}
+              <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate">
+                {previewInfo?.title || `YouTube Master (${selectedYtId})`}
               </h4>
-              <p className="text-xs text-[#B8D99E] mt-0.5">
-                {previewInfo?.author || 'Selected Audio Source'}
+              <p className="text-xs font-mono text-[#b8d99e] mt-0.5">
+                {previewInfo?.author || 'Studio Stream Ready'}
               </p>
             </div>
             <button
               onClick={() => onConvertVideo(`https://www.youtube.com/watch?v=${selectedYtId}`)}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#B8D99E] text-[#0F150C] hover:bg-[#C9E7B1] font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 shrink-0"
+              className="cassette-btn cassette-btn-primary w-full sm:w-auto px-5 py-2.5 text-xs font-mono shrink-0"
             >
-              <Download className="w-4 h-4" />
-              <span>Convert & Save to Library</span>
+              <Radio className="w-4 h-4" />
+              <span>⏺ RECORD TO CASSETTE LIBRARY</span>
             </button>
           </div>
         )}
 
-        {/* Curated Recommendations */}
-        <div className="mt-4">
-          <label className="text-xs font-semibold text-[#6F796E] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-[#B8D99E]" />
-            Featured Listening Inspirations:
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-            {curatedVideos.map((v) => (
-              <div
-                key={v.id}
-                onClick={() => {
-                  setSelectedYtId(v.id);
-                  setSearchInput(`https://www.youtube.com/watch?v=${v.id}`);
-                  fetchInfo(v.id);
-                }}
-                className={`p-2.5 rounded-xl border flex items-center gap-3 cursor-pointer transition-colors ${
-                  selectedYtId === v.id
-                    ? 'bg-[#222A20] border-[#B8D99E]'
-                    : 'bg-[#181D18] border-[#262C25] hover:border-[#384236]'
-                }`}
-              >
-                <div className="w-12 h-9 rounded bg-[#2B3626] overflow-hidden shrink-0 relative">
-                  <img
-                    src={`https://img.youtube.com/vi/${v.id}/hqdefault.jpg`}
-                    alt={v.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <Play className="w-3 h-3 text-white fill-white" />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[#F1F5EC] truncate">{v.title}</p>
-                  <p className="text-[10px] text-[#A2ACA0] truncate mt-0.5">{v.author}</p>
+        {/* Curated Stations */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {curatedVideos.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => {
+                setSelectedYtId(v.id);
+                setSearchInput(`https://www.youtube.com/watch?v=${v.id}`);
+                fetchInfo(v.id);
+              }}
+              className={`cassette-btn justify-start p-2.5 text-left ${
+                selectedYtId === v.id ? 'cassette-btn-engaged' : ''
+              }`}
+            >
+              <div className="w-11 h-8 rounded bg-[#1c2418] overflow-hidden shrink-0 relative">
+                <img
+                  src={`https://img.youtube.com/vi/${v.id}/hqdefault.jpg`}
+                  alt={v.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                  <Play className="w-3 h-3 text-white fill-white" />
                 </div>
               </div>
-            ))}
-          </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-[#f0ece1] truncate">{v.title}</p>
+                <p className="text-[10px] font-mono text-[#9fa396] truncate">{v.author}</p>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
     </div>

@@ -1,8 +1,103 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/ic_ogm_logo"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Gramophone Vinyl Disc (centered in safe zone) -->
+    <path
+        android:fillColor="#141812"
+        android:strokeColor="#B8D99E"
+        android:strokeWidth="1.2"
+        android:pathData="M50,58m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+
+    <!-- Concentric Golden-Sage Vinyl Grooves -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4D663E"
+        android:strokeWidth="0.6"
+        android:pathData="M50,58m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#789662"
+        android:strokeWidth="0.6"
+        android:pathData="M50,58m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4D663E"
+        android:strokeWidth="0.6"
+        android:pathData="M50,58m-16,0a16,16 0,1 1,32 0a16,16 0,1 1,-32 0" />
+
+    <!-- Vinyl Sheen Highlights -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#E8D8A0"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:pathData="M33,44 A22,22 0 0,1 43,37" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#E8D8A0"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:pathData="M67,72 A22,22 0 0,1 57,79" />
+
+    <!-- Warm Sage-and-Gold Center Label -->
+    <path
+        android:fillColor="#B8D99E"
+        android:strokeColor="#E8D8A0"
+        android:strokeWidth="1.0"
+        android:pathData="M50,58m-10.5,0a10.5,10.5 0,1 1,21 0a10.5,10.5 0,1 1,-21 0" />
+    <path
+        android:fillColor="#253020"
+        android:pathData="M50,58m-6.5,0a6.5,6.5 0,1 1,13 0a6.5,6.5 0,1 1,-13 0" />
+    <path
+        android:fillColor="#11140F"
+        android:strokeColor="#E8D8A0"
+        android:strokeWidth="0.8"
+        android:pathData="M50,58m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+
+    <!-- Vintage Brass & Golden-Sage Gramophone Horn & Tonearm -->
+    <!-- Pivot Base -->
+    <path
+        android:fillColor="#D4B86A"
+        android:strokeColor="#141812"
+        android:strokeWidth="0.8"
+        android:pathData="M78,46m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+
+    <!-- Gramophone Neck Tube -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#D4B86A"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:pathData="M78,46 C82,40 81,31 74,27 C70,25 65,26 61,29" />
+
+    <!-- Flared Morning-Glory Horn Bell -->
+    <path
+        android:fillColor="#C9B26D"
+        android:strokeColor="#F6E7B2"
+        android:strokeWidth="0.9"
+        android:pathData="M63,28 C57,22 49,17 41,17 C35,23 36,34 43,40 C51,39 58,34 63,28 Z" />
+
+    <!-- Horn Mouth Interior -->
+    <path
+        android:fillColor="#222B1D"
+        android:strokeColor="#F6E7B2"
+        android:strokeWidth="1.1"
+        android:pathData="M42,29m-6.5,0a6.5,10.5 0,1 1,13 0a6.5,10.5 0,1 1,-13 0" />
+
+    <!-- Tonearm & Stylus Needle -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#E8D8A0"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:pathData="M78,46 L72,63 L64,68" />
+    <path
+        android:fillColor="#B8D99E"
+        android:strokeColor="#F6E7B2"
+        android:strokeWidth="0.7"
+        android:pathData="M62,67m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+</vector>

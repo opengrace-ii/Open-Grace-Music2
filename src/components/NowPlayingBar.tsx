@@ -13,6 +13,7 @@ import {
   Disc3,
 } from 'lucide-react';
 import { LoopMode, Track } from '../types';
+import { GramophoneDiscLogo } from './GramophoneDiscLogo';
 
 interface NowPlayingBarProps {
   currentTrack: Track | null;
@@ -61,9 +62,9 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[#141814]/95 backdrop-blur-md border-t border-[#282E27] px-4 py-2.5 sm:py-3 shadow-2xl">
-      {/* Top Scrubber Line */}
-      <div className="absolute -top-1 left-0 right-0 group cursor-pointer h-2">
+    <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[#121510]/95 backdrop-blur-md border-t border-[#2b3326] px-3 sm:px-6 py-2.5 shadow-[0_-12px_32px_rgba(0,0,0,0.85)]">
+      {/* Top Analog Tape Scrubber Ribbon */}
+      <div className="absolute -top-1.5 left-0 right-0 group cursor-pointer h-3">
         <input
           type="range"
           min={0}
@@ -72,124 +73,111 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
           onChange={(e) => onSeek(parseFloat(e.target.value))}
           className="w-full absolute inset-0 opacity-0 cursor-pointer z-10"
         />
-        <div className="h-1 bg-[#252C24] w-full">
+        <div className="h-1.5 bg-[#0a0c09] w-full border-b border-[#252c21]">
           <div
-            className="h-full bg-[#B8D99E] transition-all relative"
+            className="h-full bg-gradient-to-r from-[#b8d99e] to-[#e2c986] transition-all relative"
             style={{ width: `${progressPercent}%` }}
           >
-            <div className="absolute right-0 -top-1 w-2.5 h-2.5 rounded-full bg-[#F1F5EC] shadow scale-0 group-hover:scale-100 transition-transform" />
+            <div className="absolute right-0 -top-1 w-3 h-3 rounded-full bg-[#f0ece1] border border-[#121510] shadow scale-0 group-hover:scale-100 transition-transform" />
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        {/* Left: Track Info & Vinyl Art */}
+      <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+        {/* Left: Spinning Gramophone Disc & Track Title */}
         <div
           onClick={onOpenFullPlayer}
-          className="flex items-center gap-3 min-w-0 cursor-pointer group flex-1 sm:flex-initial"
+          className="flex items-center gap-3 min-w-0 cursor-pointer group flex-1 sm:flex-initial max-w-[44%] sm:max-w-xs"
         >
-          <div className="relative w-11 h-11 rounded-full overflow-hidden shrink-0 border border-[#3E4D37] shadow-md bg-[#181C18]">
-            {currentTrack.thumbnailUrl ? (
-              <img
-                src={currentTrack.thumbnailUrl}
-                alt={currentTrack.title}
-                className={`w-full h-full object-cover ${
-                  isPlaying ? 'animate-spin-slow' : 'animate-spin-slow-paused'
-                }`}
-              />
-            ) : (
-              <div
-                className={`w-full h-full flex items-center justify-center bg-[#2B3626] text-[#B8D99E] ${
-                  isPlaying ? 'animate-spin-slow' : 'animate-spin-slow-paused'
-                }`}
-              >
-                <Disc3 className="w-6 h-6" />
-              </div>
-            )}
-            {/* Center vinyl hole */}
-            <div className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full bg-[#111411] border border-[#282E27]" />
-          </div>
+          <GramophoneDiscLogo
+            isPlaying={isPlaying}
+            size={48}
+            showHornOverlay={true}
+            badgeFrame={true}
+            thumbnailUrl={currentTrack.thumbnailUrl}
+            title="Expand Gramophone Turntable Player"
+          />
 
           <div className="min-w-0">
-            <h5 className="text-sm font-semibold text-[#F1F5EC] truncate group-hover:text-[#B8D99E] transition-colors">
-              {currentTrack.title}
-            </h5>
-            <p className="text-xs text-[#A2ACA0] truncate">
-              {currentTrack.artist || 'Open Grace Music'}
+            <div className="flex items-center gap-1.5">
+              <span className={`cassette-led shrink-0 ${isPlaying ? 'cassette-led-on' : ''}`} />
+              <h5 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate group-hover:text-[#b8d99e] transition-colors">
+                {currentTrack.title}
+              </h5>
+            </div>
+            <p className="text-[11px] font-mono text-[#9fa396] truncate mt-0.5">
+              {currentTrack.artist || 'Open Grace Music'} · {formatTime(currentTime)} / {formatTime(duration)}
             </p>
           </div>
         </div>
 
-        {/* Center: Controls */}
-        <div className="flex flex-col items-center gap-1">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <button
-              onClick={onToggleShuffle}
-              title={isShuffle ? 'Shuffle on' : 'Shuffle off'}
-              className={`p-1.5 rounded-lg transition-colors hidden sm:block ${
-                isShuffle ? 'text-[#B8D99E] bg-[#2B3626]' : 'text-[#6F796E] hover:text-[#F1F5EC]'
-              }`}
-            >
-              <Shuffle className="w-4 h-4" />
-            </button>
+        {/* Center: Tactile Cassette Deck Transport Keys */}
+        <div className="cassette-bank flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={onToggleShuffle}
+            title="Shuffle"
+            className={`cassette-btn px-2.5 py-2 text-xs hidden sm:inline-flex ${
+              isShuffle ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+            }`}
+          >
+            <Shuffle className="w-3.5 h-3.5" />
+          </button>
 
-            <button
-              onClick={onPrevious}
-              title="Previous Track"
-              className="p-1.5 text-[#A2ACA0] hover:text-[#F1F5EC] transition-colors"
-            >
-              <SkipBack className="w-5 h-5 fill-current" />
-            </button>
+          <button
+            onClick={onPrevious}
+            title="Rewind / Previous"
+            className="cassette-btn px-2.5 sm:px-3 py-2 text-xs font-mono"
+          >
+            <SkipBack className="w-4 h-4 fill-current" />
+          </button>
 
-            <button
-              onClick={onTogglePlayPause}
-              title={isPlaying ? 'Pause' : 'Play'}
-              className="w-10 h-10 rounded-full bg-[#B8D99E] text-[#0F150C] hover:bg-[#C9E7B1] flex items-center justify-center shadow-lg transition-transform active:scale-95"
-            >
-              {isPlaying ? (
-                <Pause className="w-5 h-5 fill-current" />
-              ) : (
-                <Play className="w-5 h-5 fill-current translate-x-0.5" />
-              )}
-            </button>
+          <button
+            onClick={onTogglePlayPause}
+            title={isPlaying ? 'Pause' : 'Play'}
+            className="cassette-btn cassette-btn-primary px-4 py-2 text-xs font-mono font-bold"
+          >
+            {isPlaying ? (
+              <>
+                <Pause className="w-4 h-4 fill-current" />
+                <span className="hidden xs:inline">PAUSE</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 fill-current" />
+                <span className="hidden xs:inline">PLAY</span>
+              </>
+            )}
+          </button>
 
-            <button
-              onClick={onNext}
-              title="Next Track"
-              className="p-1.5 text-[#A2ACA0] hover:text-[#F1F5EC] transition-colors"
-            >
-              <SkipForward className="w-5 h-5 fill-current" />
-            </button>
+          <button
+            onClick={onNext}
+            title="Fast Forward / Next"
+            className="cassette-btn px-2.5 sm:px-3 py-2 text-xs font-mono"
+          >
+            <SkipForward className="w-4 h-4 fill-current" />
+          </button>
 
-            <button
-              onClick={onCycleLoop}
-              title={`Loop: ${loopMode}`}
-              className={`p-1.5 rounded-lg transition-colors hidden sm:block ${
-                loopMode !== 'OFF' ? 'text-[#B8D99E] bg-[#2B3626]' : 'text-[#6F796E] hover:text-[#F1F5EC]'
-              }`}
-            >
-              {loopMode === 'ONE' ? (
-                <Repeat1 className="w-4 h-4" />
-              ) : (
-                <Repeat className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-
-          <div className="hidden sm:flex items-center gap-2 text-[11px] font-mono text-[#6F796E]">
-            <span>{formatTime(currentTime)}</span>
-            <span>/</span>
-            <span>{formatTime(duration)}</span>
-          </div>
+          <button
+            onClick={onCycleLoop}
+            title={`Loop: ${loopMode}`}
+            className={`cassette-btn px-2.5 py-2 text-xs hidden sm:inline-flex ${
+              loopMode !== 'OFF' ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+            }`}
+          >
+            {loopMode === 'ONE' ? (
+              <Repeat1 className="w-3.5 h-3.5" />
+            ) : (
+              <Repeat className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
 
-        {/* Right: Volume & Expand */}
-        <div className="flex items-center gap-3">
-          {/* Volume slider (desktop) */}
-          <div className="hidden md:flex items-center gap-2">
+        {/* Right: Volume & Gramophone Stage Button */}
+        <div className="flex items-center gap-2.5">
+          <div className="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#0b0d0a] border border-[#262c22]">
             <button
-              onClick={() => onVolumeChange(volume === 0 ? 0.8 : 0)}
-              className="text-[#A2ACA0] hover:text-[#F1F5EC]"
+              onClick={() => onVolumeChange(volume === 0 ? 0.85 : 0)}
+              className="text-[#9fa396] hover:text-[#f0ece1]"
             >
               {volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
@@ -200,17 +188,17 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
               step="0.01"
               value={volume}
               onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-              className="w-20 accent-[#B8D99E] cursor-pointer h-1.5 bg-[#252C24] rounded-lg"
+              className="w-16 accent-[#b8d99e] cursor-pointer h-1.5 bg-[#252c24] rounded-lg"
             />
           </div>
 
           <button
             onClick={onOpenFullPlayer}
-            title="Expand Full Vinyl Player"
-            className="p-2 rounded-lg bg-[#252C24] text-[#B8D99E] hover:bg-[#2F382E] transition-colors flex items-center gap-1 text-xs font-medium"
+            title="Open Gramophone Stage"
+            className="cassette-btn px-3 py-2 text-xs font-mono text-[#b8d99e]"
           >
-            <Maximize2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Vinyl View</span>
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">TURNTABLE</span>
           </button>
         </div>
       </div>

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.player.PlayerState
+import com.example.ui.OgmBrandEmblem
 import com.example.ui.theme.DarkCard
 import com.example.ui.theme.DarkCardBorder
 import com.example.ui.theme.DarkCardHover
@@ -86,26 +87,13 @@ fun NowPlayingBar(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SageGreenDeep),
+                        .size(44.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!track.thumbnailUrl.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = track.thumbnailUrl,
-                            contentDescription = "Cover",
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Text(
-                            text = "♪",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SageGreen
-                        )
-                    }
+                    OgmBrandEmblem(
+                        isPlaying = playerState.isPlaying,
+                        size = 44.dp
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))

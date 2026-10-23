@@ -3,30 +3,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Plus,
-  Link2,
-  Youtube,
   Search,
   Sparkles,
-  Disc3,
   Smartphone,
   Download,
   FolderOpen,
   Clipboard,
-  CheckCircle2,
   Loader2,
   KeyRound,
   AlertCircle,
-  ShieldCheck,
+  Play,
+  Pause,
+  Radio,
+  Youtube,
+  Disc3,
 } from 'lucide-react';
 import {
   AUDIOPHILE_FORMATS,
   AudiophileFormatId,
   LibraryTab,
   LoopMode,
-  StorageInfo,
   Track,
 } from './types';
 import {
@@ -34,14 +32,11 @@ import {
   saveTrackToDB,
   deleteTrackFromDB,
   toggleFavoriteInDB,
-  getStorageInfo,
-  requestPersistentStorage,
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
-import { StorageBanner } from './components/StorageBanner';
 import { TrackCard } from './components/TrackCard';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FullPlayerModal } from './components/FullPlayerModal';
@@ -50,22 +45,17 @@ import { YouTubeBrowserModal } from './components/YouTubeBrowserModal';
 import { LyricsModal } from './components/LyricsModal';
 import { AndroidProjectModal } from './components/AndroidProjectModal';
 import { Toast, ToastMessage } from './components/Toast';
+import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 
 export default function App() {
   const { isInstallable, install } = usePWAInstall();
 
-  // Library & Storage state
+  // Library state
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTab, setSelectedTab] = useState<LibraryTab>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [storageInfo, setStorageInfo] = useState<StorageInfo>({
-    usedBytes: 0,
-    quotaBytes: 0,
-    isPersistent: false,
-    trackCount: 0,
-  });
 
-  // Inline Audiophile Converter state
+  // Inline Tape Deck Recorder state
   const [inlineUrl, setInlineUrl] = useState('');
   const [inlineFormat, setInlineFormat] = useState<AudiophileFormatId>('FLAC');
   const [inlineMp3Bitrate, setInlineMp3Bitrate] = useState<number>(320);
@@ -83,7 +73,7 @@ export default function App() {
   const [inlineValidationError, setInlineValidationError] = useState<string | null>(null);
   const [isValidatingInline, setIsValidatingInline] = useState(false);
 
-  // Player state synchronized with Offline-First Audio Engine
+  // Player state
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -111,12 +101,15 @@ export default function App() {
   // Toast notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  // Hero VU Spectrum Canvas
+  const heroVuCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const addToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     setToasts((prev) => [...prev, { id, text, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
+    }, 4000);
   };
 
   const removeToast = (id: string) => {
@@ -152,30 +145,67 @@ export default function App() {
     loadLibrary();
   }, []);
 
+  // Animate Hero Analog VU Spectrum Ribbon
+  useEffect(() => {
+    let animId: number;
+    const freqBuffer = new Uint8Array(24);
+
+    const drawHeroVu = () => {
+      const canvas = heroVuCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const width = canvas.width;
+          const height = canvas.height;
+          ctx.clearRect(0, 0, width, height);
+
+          const hasLive = isPlaying && playerEngine.getFrequencyData(freqBuffer);
+          const barCount = 24;
+          const gap = 3;
+          const barWidth = (width - gap * (barCount - 1)) / barCount;
+          const now = performance.now() / 240;
+
+          for (let i = 0; i < barCount; i++) {
+            let ratio = 0.16;
+            if (hasLive) {
+              const val = freqBuffer[i % freqBuffer.length] || 0;
+              ratio = val > 0 ? Math.max(0.16, Math.min(1.0, val / 240)) : 0.22 + 0.55 * Math.abs(Math.sin(now + i * 0.45));
+            } else if (isPlaying) {
+              ratio = 0.22 + 0.62 * Math.abs(Math.sin(now + i * 0.42) * Math.cos(now * 0.65 - i * 0.28));
+            } else {
+              ratio = 0.14 + 0.08 * Math.sin(now * 0.35 + i * 0.5);
+            }
+
+            const barH = Math.max(3, ratio * height);
+            const x = i * (barWidth + gap);
+            const y = height - barH;
+
+            ctx.fillStyle =
+              ratio > 0.76
+                ? '#e2c986'
+                : isPlaying
+                ? '#b8d99e'
+                : 'rgba(184, 217, 158, 0.35)';
+            ctx.beginPath();
+            ctx.roundRect(x, y, barWidth, barH, 2);
+            ctx.fill();
+          }
+        }
+      }
+      animId = requestAnimationFrame(drawHeroVu);
+    };
+
+    animId = requestAnimationFrame(drawHeroVu);
+    return () => cancelAnimationFrame(animId);
+  }, [isPlaying]);
+
   const loadLibrary = async () => {
     try {
       const loaded = await getAllTracksFromDB();
       setTracks(loaded);
-      const sInfo = await getStorageInfo(loaded.length);
-      setStorageInfo(sInfo);
     } catch {
-      addToast('Could not load tracks from local storage.', 'error');
+      addToast('Could not load tracks.', 'error');
     }
-  };
-
-  const refreshStorage = async (count?: number) => {
-    const sInfo = await getStorageInfo(count !== undefined ? count : tracks.length);
-    setStorageInfo(sInfo);
-  };
-
-  const handleRequestPersistence = async () => {
-    const granted = await requestPersistentStorage();
-    if (granted) {
-      addToast('Protected offline storage granted by browser.', 'success');
-    } else {
-      addToast('Browser storage remains standard device cached.', 'info');
-    }
-    refreshStorage();
   };
 
   // Validate Inline Converter URL via /api/validate-url
@@ -203,7 +233,7 @@ export default function App() {
         });
       } else {
         setInlinePreview(null);
-        setInlineValidationError(data.error || 'Please enter a valid YouTube or direct audio URL.');
+        setInlineValidationError(data.error || 'Enter a valid YouTube or audio URL.');
       }
     } catch {
       const ytId = extractYouTubeId(trimmed);
@@ -232,7 +262,7 @@ export default function App() {
         validateInlineUrl(text);
       }
     } catch {
-      addToast('Paste permission not granted — long-press input to paste.', 'info');
+      addToast('Long-press input to paste URL.', 'info');
     }
   };
 
@@ -289,6 +319,8 @@ export default function App() {
     if (!currentTrack) {
       if (filteredTracks.length > 0) {
         playTrack(filteredTracks[0]);
+      } else {
+        handleLoadSampleTracks();
       }
       return;
     }
@@ -338,7 +370,7 @@ export default function App() {
   const cycleLoopMode = () => {
     const next: LoopMode = loopMode === 'OFF' ? 'ALL' : loopMode === 'ALL' ? 'ONE' : 'OFF';
     setLoopMode(next);
-    addToast(`Loop mode: ${next}`, 'info');
+    addToast(`Repeat: ${next}`, 'info');
   };
 
   const handleTrackEnded = () => {
@@ -352,7 +384,6 @@ export default function App() {
     }
   };
 
-  // Helper to trigger browser file download to device Music / Downloads folder
   const triggerBrowserDownload = (blob: Blob, title: string, ext: string) => {
     const safeTitle = title.replace(/[^a-zA-Z0-9._ -]/g, '').trim() || 'OpenGraceMusic_Track';
     const blobUrl = URL.createObjectURL(blob);
@@ -373,8 +404,6 @@ export default function App() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        addToast(`Importing "${file.name}"...`, 'info');
-
         const durationSec = await new Promise<number>((resolve) => {
           const tempUrl = URL.createObjectURL(file);
           const probe = new Audio();
@@ -397,8 +426,8 @@ export default function App() {
         const newTrack: Track = {
           id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           title: cleanTitle,
-          artist: 'Device Music',
-          album: 'Phone Music Library',
+          artist: 'Device Master',
+          album: 'Cassette Archive',
           duration: durationSec,
           sizeBytes: file.size,
           format: ext,
@@ -414,17 +443,16 @@ export default function App() {
 
         const saved = await saveTrackToDB(newTrack, file);
         setTracks((prev) => [saved, ...prev]);
-        addToast(`✓ Saved "${cleanTitle}" (${ext}) to offline library`, 'success');
+        addToast(`♪ Loaded "${cleanTitle}" (${ext})`, 'success');
       } catch (err: any) {
         addToast(`Failed to import "${file.name}": ${err.message}`, 'error');
       }
     }
 
-    refreshStorage();
     e.target.value = '';
   };
 
-  // Real Audiophile Lossless & Hi-Res Download & Conversion Handler via /api/convert-audio
+  // Real Audiophile Lossless & Hi-Res Download & Conversion Handler
   const handleStartDownload = async (
     url: string,
     format: AudiophileFormatId = 'FLAC',
@@ -436,22 +464,19 @@ export default function App() {
   ) => {
     const trimmedUrl = url.trim();
     if (!trimmedUrl) {
-      addToast('Please enter a valid YouTube or audio URL.', 'error');
+      addToast('Enter a YouTube or audio URL.', 'error');
       return;
     }
 
     const formatObj = AUDIOPHILE_FORMATS.find((f) => f.id === format) || AUDIOPHILE_FORMATS[0];
 
     setIsDownloading(true);
-    setDownloadProgress(0.15);
-    setDownloadStatus(`Connecting ${format} (${formatObj.badge}) studio pipeline...`);
+    setDownloadProgress(0.2);
+    setDownloadStatus(`RECORDING ${format} (${formatObj.badge})...`);
 
     try {
       const ytId = extractYouTubeId(trimmedUrl);
-      setDownloadProgress(0.35);
-      setDownloadStatus(
-        `Extracting authentic audio & transcoding to ${format} (${formatObj.badge})...`
-      );
+      setDownloadProgress(0.45);
 
       const response = await fetch('/api/convert-audio', {
         method: 'POST',
@@ -477,8 +502,8 @@ export default function App() {
         throw new Error(errMsg);
       }
 
-      setDownloadProgress(0.75);
-      setDownloadStatus(`Receiving ${format} master stream & verifying integrity...`);
+      setDownloadProgress(0.8);
+      setDownloadStatus(`MASTERING ${format} REEL...`);
 
       const headerTitle = response.headers.get('X-Audio-Title')
         ? decodeURIComponent(response.headers.get('X-Audio-Title')!)
@@ -502,10 +527,9 @@ export default function App() {
 
       const audioBlob = await response.blob();
       if (!audioBlob || audioBlob.size < 20000) {
-        throw new Error('Downloaded audio stream was empty or corrupted.');
+        throw new Error('Audio stream was empty.');
       }
 
-      // Probe exact duration in browser if header duration wasn't available
       let finalDuration = headerDuration;
       if (!finalDuration || finalDuration <= 0) {
         finalDuration = await new Promise<number>((resolve) => {
@@ -524,14 +548,13 @@ export default function App() {
         });
       }
 
-      setDownloadProgress(0.92);
-      setDownloadStatus(`Saving verified ${headerFormat} master to offline IndexedDB...`);
+      setDownloadProgress(0.95);
 
       const newTrack: Track = {
         id: ytId ? `yt_${ytId}_${headerFormat.toLowerCase()}` : `url_${Date.now()}`,
         title: headerTitle,
         artist: headerArtist,
-        album: `Open Grace Music · ${headerFormat} Master`,
+        album: `Open Grace · ${headerFormat}`,
         duration: finalDuration,
         sizeBytes: audioBlob.size,
         format: headerFormat,
@@ -560,16 +583,10 @@ export default function App() {
       setInlineUrl('');
       setInlinePreview(null);
 
-      addToast(
-        `✓ Saved "${headerTitle}" in ${headerFormat} (${headerBitDepth}/${headerSampleRate / 1000}kHz)!`,
-        'success'
-      );
-      refreshStorage();
-
-      // Immediately play the real offline audio track from IndexedDB
+      addToast(`♪ Recorded "${headerTitle}" (${headerFormat})`, 'success');
       playTrack(saved);
     } catch (err: any) {
-      addToast(`Conversion error: ${err.message || 'Failed to process audio'}`, 'error');
+      addToast(`Recorder error: ${err.message || 'Failed to process audio'}`, 'error');
     } finally {
       setIsDownloading(false);
       setDownloadProgress(0);
@@ -589,7 +606,7 @@ export default function App() {
         if (res.ok) sourceBlob = await res.blob();
       }
       if (!sourceBlob) {
-        throw new Error('Source audio blob not found.');
+        throw new Error('Source audio not found.');
       }
 
       const mp3Blob = await convertBlobToMp3(sourceBlob, 320, (prog) => {
@@ -606,8 +623,7 @@ export default function App() {
 
       const saved = await saveTrackToDB(updatedTrack, mp3Blob);
       setTracks((prev) => prev.map((t) => (t.id === track.id ? saved : t)));
-      addToast(`✓ Converted "${track.title}" to 320kbps MP3`, 'success');
-      refreshStorage();
+      addToast(`♪ Dubbed "${track.title}" to MP3 320K`, 'success');
     } catch (err: any) {
       addToast(`Conversion failed: ${err.message}`, 'error');
     } finally {
@@ -626,10 +642,9 @@ export default function App() {
         setCurrentTrack(null);
         setIsPlaying(false);
       }
-      addToast(`Removed "${track.title}" from library`, 'info');
-      refreshStorage(tracks.length - 1);
+      addToast(`Ejected "${track.title}"`, 'info');
     } catch {
-      addToast(`Could not delete "${track.title}"`, 'error');
+      addToast(`Could not remove "${track.title}"`, 'error');
     }
   };
 
@@ -641,7 +656,7 @@ export default function App() {
     );
   };
 
-  // Export / Save real audio file directly from IndexedDB to device Music / Downloads folder
+  // Export Track
   const handleExportTrack = (track: Track) => {
     if (track.blob) {
       const extMap: Record<string, string> = {
@@ -653,7 +668,7 @@ export default function App() {
       };
       const ext = extMap[track.format.toUpperCase()] || track.format.toLowerCase() || 'flac';
       triggerBrowserDownload(track.blob, track.title, ext);
-      addToast(`✓ Saved "${track.title}.${ext}" to device Downloads/Music`, 'success');
+      addToast(`♪ Saved "${track.title}.${ext}"`, 'success');
       return;
     }
 
@@ -665,16 +680,15 @@ export default function App() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      addToast(`✓ Saved "${track.title}.${ext}" to device Downloads/Music`, 'success');
+      addToast(`♪ Saved "${track.title}.${ext}"`, 'success');
       return;
     }
 
-    addToast('No offline audio file found to export.', 'error');
+    addToast('No offline audio file found.', 'error');
   };
 
   // Load Built-in Studio Acoustic Tracks
   const handleLoadSampleTracks = async () => {
-    addToast('Loading built-in studio acoustic tracks...', 'info');
     const samples = [
       {
         title: 'Grace Morning Chords (Studio Session)',
@@ -690,6 +704,7 @@ export default function App() {
       },
     ];
 
+    let firstLoaded: Track | null = null;
     for (const s of samples) {
       try {
         const res = await fetch(s.url);
@@ -702,126 +717,180 @@ export default function App() {
             album: s.album,
             duration: 180,
             sizeBytes: blob.size,
-            format: 'MP3',
+            format: 'FLAC',
             mimeType: 'audio/mpeg',
             source: 'SAMPLE_AUDIO',
             storageStatus: 'PERSISTENT',
             addedAt: Date.now(),
-            bitrateKbps: 320,
-            sampleRateHz: 48000,
-            bitDepth: '16-bit',
+            bitrateKbps: 1411,
+            sampleRateHz: 96000,
+            bitDepth: '24-bit',
             isFavorite: false,
           };
           const saved = await saveTrackToDB(track, blob);
+          if (!firstLoaded) firstLoaded = saved;
           setTracks((prev) => [saved, ...prev]);
         }
       } catch {
         // ignore
       }
     }
-    refreshStorage();
-    addToast('✓ Loaded sample tracks into offline library!', 'success');
+    if (firstLoaded) {
+      addToast('♪ Loaded Studio Acoustic Reels', 'success');
+      playTrack(firstLoaded);
+    }
   };
 
   const activeInlineFormatObj =
     AUDIOPHILE_FORMATS.find((f) => f.id === inlineFormat) || AUDIOPHILE_FORMATS[0];
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#11120f] text-[#eeeae2] pb-28">
-      {/* Sticky Dark Sage & Charcoal Header */}
-      <header className="border-b border-[#292a24] bg-[#171814]/95 sticky top-0 z-30 backdrop-blur-md">
+    <div className="min-h-screen flex flex-col bg-[#0e100d] text-[#f0ece1] pb-28 relative overflow-hidden">
+      {/* Subtle Ambient Musical Glow when Music Plays */}
+      <div
+        className={`pointer-events-none fixed inset-0 transition-opacity duration-1000 ${
+          isPlaying ? 'opacity-100' : 'opacity-30'
+        }`}
+        style={{
+          background:
+            'radial-gradient(circle at 50% 18%, rgba(184, 217, 158, 0.11) 0%, rgba(226, 201, 134, 0.05) 35%, transparent 70%)',
+        }}
+      />
+
+      {/* Sticky Gramophone & Cassette Deck Header */}
+      <header className="border-b border-[#262c22] bg-[#121510]/95 sticky top-0 z-30 backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          {/* Golden-Sage Harp/Vinyl Emblem + Brand Title */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-[#21291d] border border-[#3a4433] flex items-center justify-center shadow-lg overflow-hidden shrink-0">
-              <img
-                src="/logo.png"
-                alt="Open Grace Music Emblem"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
-            </div>
+          {/* Gramophone Disc Emblem + Brand Title */}
+          <div
+            onClick={togglePlayPause}
+            className="flex items-center gap-3 min-w-0 cursor-pointer group"
+            title={isPlaying ? 'Pause Gramophone' : 'Play Gramophone'}
+          >
+            <GramophoneDiscLogo
+              isPlaying={isPlaying}
+              size={48}
+              showHornOverlay={true}
+              badgeFrame={true}
+              title={isPlaying ? 'Gramophone Disc Spinning' : 'Open Grace Music Gramophone'}
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-serif-display text-lg sm:text-xl font-bold tracking-tight text-[#eeeae2] truncate">
+                <span className={`cassette-led ${isPlaying ? 'cassette-led-on' : ''}`} />
+                <h1 className="font-serif-display text-lg sm:text-xl font-bold tracking-tight text-[#f0ece1] truncate">
                   Open Grace Music
                 </h1>
-                <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#21291d] text-[#b8d99e] border border-[#3a4433]">
-                  ANDROID · HI-RES AUDIO
-                </span>
               </div>
-              <p className="text-[11px] text-[#a3a198] leading-tight truncate">
-                Lossless Digital Studio · FLAC 24-bit · ALAC · DSD 192kHz · MP3 320k
+              <p className="text-[11px] font-mono text-[#e2c986] tracking-wider uppercase truncate">
+                Gramophone & Master Cassette Deck
               </p>
             </div>
           </div>
 
-          {/* Header Actions: YouTube Browser + Direct APK Download + Studio Modal */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Cassette Transport Bank in Header */}
+          <div className="cassette-bank flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => {
                 setPrefilledUrl(null);
                 setShowYouTubeBrowser(true);
               }}
-              title="Search and browse YouTube in app"
-              className="px-3 py-1.5 rounded-full bg-[#11120f] text-[#b8d99e] hover:bg-[#21291d] border border-[#292a24] font-medium text-xs flex items-center gap-1 transition-colors"
+              title="YouTube Studio Tuner"
+              className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#b8d99e]"
             >
-              <span>YouTube →</span>
+              <Youtube className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">TUNER</span>
             </button>
 
             <a
               href="/OpenGraceMusic.apk"
               download="OpenGraceMusic.apk"
-              className="px-3.5 py-1.5 rounded-full bg-[#b8d99e] text-[#11120f] hover:bg-[#c8e6b0] text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
-              title="Download compiled Native Android APK (25 MB)"
+              className="cassette-btn cassette-btn-primary px-3.5 py-1.5 text-xs font-mono"
+              title="Download Android APK"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Download APK</span>
+              <span>APK</span>
             </a>
 
             <button
               onClick={() => setShowAndroidProject(true)}
-              className="hidden sm:flex px-3 py-1.5 rounded-full bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] text-xs font-semibold items-center gap-1.5 transition-all"
-              title="Android Studio Kotlin Project & Architecture"
+              className="cassette-btn hidden sm:inline-flex px-3 py-1.5 text-xs font-mono text-[#e2c986]"
+              title="Android Studio Project"
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Android Studio</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content Stage */}
-      <main className="max-w-5xl mx-auto w-full flex-1 flex flex-col pt-4 px-4 sm:px-6 space-y-5">
-        {/* Hero Section: "Your music. Your quiet place." + Animated Vinyl Disc + Android APK Banner */}
-        <section className="rounded-3xl bg-[#171814] border border-[#292a24] p-5 sm:p-6 shadow-xl relative overflow-hidden">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-            <div className="space-y-2.5 max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#21291d] border border-[#3a4433] text-[#b8d99e] text-[11px] font-mono">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>PURE NATIVE ANDROID APP + OFFLINE AUDIOPHILE STUDIO</span>
+      {/* Main Musical Sanctuary Stage */}
+      <main className="max-w-5xl mx-auto w-full flex-1 flex flex-col pt-5 px-4 sm:px-6 space-y-6 relative z-10">
+        {/* Gramophone Turntable Sanctuary Hero */}
+        <section className="cassette-card rounded-3xl p-6 sm:p-8 relative overflow-hidden">
+          {/* Floating Ambient Musical Notes */}
+          <span className="music-note-float-1 pointer-events-none select-none absolute top-5 right-64 text-2xl text-[#b8d99e]/30 font-serif">
+            ♪
+          </span>
+          <span className="music-note-float-2 pointer-events-none select-none absolute bottom-6 right-72 text-xl text-[#e2c986]/25 font-serif">
+            ♫
+          </span>
+          <span className="music-note-float-3 pointer-events-none select-none absolute top-12 right-10 text-xl text-[#b8d99e]/25 font-serif">
+            ♬
+          </span>
+
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+            {/* Left: Poetic Sanctuary Title + Live Analog VU Spectrum + Cassette Transport Keys */}
+            <div className="space-y-5 flex-1 w-full text-center md:text-left">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1a2116] border border-[#34402d] text-[#e2c986] text-[11px] font-mono tracking-widest uppercase mb-3">
+                  <span className={`cassette-led ${isPlaying ? 'cassette-led-on' : 'cassette-led-rec'}`} />
+                  <span>{isPlaying && currentTrack ? `NOW SPINNING · ${currentTrack.format}` : 'HI-FI GRAMOPHONE SANCTUARY'}</span>
+                </div>
+
+                <h2 className="font-serif-display text-3xl sm:text-4xl font-bold italic text-[#f0ece1] tracking-tight">
+                  “Your music. Your quiet place.”
+                </h2>
               </div>
 
-              <h2 className="font-serif-display text-2xl sm:text-3xl font-bold italic text-[#eeeae2] tracking-tight">
-                “Your music. Your quiet place.”
-              </h2>
+              {/* Integrated Live Analog VU Spectrum Ribbon */}
+              <div className="cassette-window rounded-2xl px-4 py-3 max-w-md mx-auto md:mx-0">
+                <div className="flex items-center justify-between text-[10px] font-mono text-[#9fa396] mb-1.5">
+                  <span className="text-[#b8d99e] flex items-center gap-1.5">
+                    <span>♪ ANALOG VU SPECTRUM</span>
+                  </span>
+                  <span className="text-[#e2c986]">
+                    {currentTrack ? `${currentTrack.title.slice(0, 24)}` : 'FLAC · ALAC · DSD · MP3'}
+                  </span>
+                </div>
+                <canvas
+                  ref={heroVuCanvasRef}
+                  width={340}
+                  height={32}
+                  className="w-full h-8 block"
+                />
+              </div>
 
-              <p className="text-xs sm:text-sm text-[#a3a198] leading-relaxed">
-                Crafted for passionate music lovers and audiophiles. Extract, transcode, and keep studio-master{' '}
-                <strong className="text-[#eeeae2]">FLAC (24-bit/96kHz)</strong>,{' '}
-                <strong className="text-[#eeeae2]">ALAC (.m4a)</strong>,{' '}
-                <strong className="text-[#eeeae2]">DSD / Hi-Res (24-bit/192kHz)</strong>,{' '}
-                <strong className="text-[#eeeae2]">WAV</strong>, and{' '}
-                <strong className="text-[#eeeae2]">320kbps MP3</strong> completely offline on your Android device.
-              </p>
+              {/* Main Cassette Deck Piano-Key Transport Bank */}
+              <div className="cassette-bank inline-flex flex-wrap items-center justify-center md:justify-start gap-2">
+                <button
+                  onClick={togglePlayPause}
+                  className="cassette-btn cassette-btn-primary px-4 py-2.5 text-xs font-mono uppercase tracking-wider"
+                >
+                  {isPlaying ? (
+                    <>
+                      <Pause className="w-4 h-4 fill-current" />
+                      <span>⏸ PAUSE DECK</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>▶ PLAY DECK</span>
+                    </>
+                  )}
+                </button>
 
-              {/* Primary Action Buttons */}
-              <div className="pt-2 flex flex-wrap items-center gap-2.5">
-                <label className="cursor-pointer px-4 py-2.5 rounded-full bg-[#b8d99e] text-[#11120f] hover:bg-[#c8e6b0] font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all active:scale-95">
-                  <Plus className="w-4 h-4" />
-                  <span>Import Audio Files</span>
+                <label className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1] cursor-pointer">
+                  <span className="cassette-led cassette-led-on" />
+                  <FolderOpen className="w-3.5 h-3.5 text-[#b8d99e]" />
+                  <span>⏏ IMPORT AUDIO</span>
                   <input
                     type="file"
                     multiple
@@ -836,85 +905,213 @@ export default function App() {
                     setPrefilledUrl(null);
                     setShowDownloadDialog(true);
                   }}
-                  className="px-4 py-2.5 rounded-full bg-[#11120f] text-[#b8d99e] hover:bg-[#21291d] border border-[#b8d99e] font-bold text-xs sm:text-sm flex items-center gap-2 transition-colors"
+                  className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#e2c986]"
                 >
-                  <Link2 className="w-4 h-4" />
-                  <span>Import from URL</span>
+                  <span className="cassette-led cassette-led-rec" />
+                  <span>⏺ RECORD URL</span>
                 </button>
-
-                <a
-                  href="/OpenGraceMusic.apk"
-                  download="OpenGraceMusic.apk"
-                  className="px-4 py-2.5 rounded-full bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] font-semibold text-xs flex items-center gap-1.5 transition-colors"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                  <span>Get Android .APK (25 MB)</span>
-                </a>
 
                 {isInstallable && (
                   <button
                     onClick={install}
-                    className="px-3.5 py-2.5 rounded-full bg-[#21291d] text-[#86efac] border border-[#2b3e2f] font-semibold text-xs flex items-center gap-1.5"
+                    className="cassette-btn px-3.5 py-2.5 text-xs font-mono text-[#b8d99e]"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Install to Home Screen</span>
+                    <span>INSTALL</span>
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Animated Album Vinyl Disc */}
+            {/* Right: Interactive Rotating Gramophone Disc & Ornate Brass Horn Centerpiece */}
             <div
               onClick={() => {
-                if (currentTrack) setShowFullPlayer(true);
+                if (currentTrack) {
+                  setShowFullPlayer(true);
+                } else {
+                  togglePlayPause();
+                }
               }}
-              className="self-center md:self-auto shrink-0 cursor-pointer group"
-              title="Open Turntable Hi-Fi Player"
+              className="relative w-48 h-48 sm:w-56 sm:h-56 shrink-0 cursor-pointer group flex items-center justify-center"
+              title="Tap Gramophone Turntable"
             >
+              {/* Warm Halo Behind Gramophone */}
               <div
-                className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full vinyl-grooves border-2 border-[#3a4433] flex items-center justify-center relative shadow-2xl ${
-                  isPlaying ? 'animate-spin-slow' : 'animate-spin-slow-paused'
+                className={`absolute inset-2 rounded-full transition-all duration-700 ${
+                  isPlaying
+                    ? 'bg-[#b8d99e]/20 blur-2xl scale-105'
+                    : 'bg-[#e2c986]/5 blur-xl scale-95'
                 }`}
-              >
-                <div className="absolute inset-3 rounded-full border border-white/5 pointer-events-none" />
-                <div className="absolute inset-6 rounded-full border border-white/5 pointer-events-none" />
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-[#21291d] border border-[#b8d99e] flex items-center justify-center">
-                  <img
-                    src={currentTrack?.thumbnailUrl || '/logo.png'}
-                    alt="Album Disc"
-                    className="w-full h-full object-cover"
-                  />
+              />
+
+              {/* Turntable Plinth Base */}
+              <div className="relative w-full h-full rounded-[38px] bg-gradient-to-br from-[#1e251b] via-[#141812] to-[#0c0e0b] border-2 border-[#394532] shadow-2xl flex items-center justify-center p-3">
+                {/* Rotating Gramophone Vinyl Disc */}
+                <div
+                  className={`w-36 h-36 sm:w-42 sm:h-42 rounded-full vinyl-grooves border-2 border-[#b8d99e]/50 flex items-center justify-center relative shadow-2xl ${
+                    isPlaying ? 'animate-spin-slow' : 'animate-spin-slow-paused'
+                  }`}
+                >
+                  <div className="absolute inset-2.5 rounded-full border border-[#e2c986]/20 pointer-events-none" />
+                  <div className="absolute inset-6 rounded-full border border-[#b8d99e]/20 pointer-events-none" />
+                  <div className="absolute inset-9 rounded-full border border-[#e2c986]/15 pointer-events-none" />
+
+                  {/* Golden-Sage Center Label */}
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden bg-gradient-to-br from-[#e8d8a0] via-[#b8d99e] to-[#2d3b26] border-2 border-[#f6e7b2] flex items-center justify-center relative">
+                    {currentTrack?.thumbnailUrl ? (
+                      <img
+                        src={currentTrack.thumbnailUrl}
+                        alt="Gramophone Disc"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Disc3 className="w-6 h-6 text-[#141812]" />
+                    )}
+                    {/* Cardinal Rotation Markers */}
+                    <span className="absolute top-1 w-1.5 h-1.5 rounded-full bg-[#141812]" />
+                    <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-[#141812]" />
+                    <span className="absolute left-1 w-1.5 h-1.5 rounded-full bg-[#141812]" />
+                    <span className="absolute right-1 w-1.5 h-1.5 rounded-full bg-[#141812]" />
+                    <div className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full bg-[#0e100d] border border-[#f6e7b2]" />
+                  </div>
                 </div>
-                <div className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full bg-[#11120f] border border-[#292a24]" />
+
+                {/* Ornate Brass Gramophone Horn & Stylus Overlay (poised above the spinning record) */}
+                <svg
+                  viewBox="0 0 512 512"
+                  className={`absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_8px_12px_rgba(0,0,0,0.75)] transition-transform duration-700 ${
+                    isPlaying ? 'rotate-0 scale-100' : 'rotate-[-3deg] scale-[0.99]'
+                  }`}
+                >
+                  <defs>
+                    <linearGradient id="heroHornBell" x1="15%" y1="10%" x2="85%" y2="90%">
+                      <stop offset="0%" stopColor="#F6E7B2" />
+                      <stop offset="32%" stopColor="#D4B86A" />
+                      <stop offset="68%" stopColor="#B8D99E" />
+                      <stop offset="100%" stopColor="#5B7349" />
+                    </linearGradient>
+                    <radialGradient id="heroHornInside" cx="40%" cy="45%" r="55%">
+                      <stop offset="0%" stopColor="#11140F" />
+                      <stop offset="48%" stopColor="#2A3321" />
+                      <stop offset="82%" stopColor="#8A763E" />
+                      <stop offset="100%" stopColor="#DEC67E" />
+                    </radialGradient>
+                    <linearGradient id="heroBrassArm" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#F3E3AD" />
+                      <stop offset="50%" stopColor="#C8AF62" />
+                      <stop offset="100%" stopColor="#687D56" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="430" cy="212" r="22" fill="#1A2017" stroke="url(#heroBrassArm)" strokeWidth="4" />
+                  <circle cx="430" cy="212" r="11" fill="url(#heroBrassArm)" />
+                  <path
+                    d="M 430 212 C 454 185, 452 132, 412 108 C 388 94, 355 96, 330 112"
+                    fill="none"
+                    stroke="url(#heroBrassArm)"
+                    strokeWidth="15"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 340 105 C 310 72, 265 44, 212 40 C 175 78, 178 148, 224 188 C 272 178, 318 144, 340 105 Z"
+                    fill="url(#heroHornBell)"
+                    stroke="#F6E7B2"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                  />
+                  <ellipse
+                    cx="212"
+                    cy="115"
+                    rx="42"
+                    ry="68"
+                    transform="rotate(-14 212 115)"
+                    fill="url(#heroHornInside)"
+                    stroke="#F6E7B2"
+                    strokeWidth="4"
+                  />
+                  {isPlaying && (
+                    <>
+                      <path d="M 148 86 A 58 58 0 0 0 142 146" fill="none" stroke="#B8D99E" strokeOpacity="0.85" strokeWidth="4" strokeLinecap="round" />
+                      <path d="M 124 70 A 86 86 0 0 0 116 160" fill="none" stroke="#E8D8A0" strokeOpacity="0.65" strokeWidth="3.5" strokeLinecap="round" />
+                    </>
+                  )}
+                  <path
+                    d="M 430 212 L 392 316 L 336 346"
+                    fill="none"
+                    stroke="url(#heroBrassArm)"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Inline Audiophile Lossless & Hi-Res Converter Card */}
-        <section className="rounded-3xl bg-[#171814] border border-[#292a24] p-5 sm:p-6 shadow-lg space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#292a24] pb-3">
+        {/* Studio Master Tape Deck (Streamlined URL / YouTube Recorder) */}
+        <section className="cassette-card rounded-3xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-[#21291d] text-[#b8d99e] border border-[#3a4433]">
-                <Disc3 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-serif-display text-base sm:text-lg font-bold text-[#eeeae2]">
-                  Audiophile Lossless & Hi-Res Studio Converter
-                </h3>
-                <p className="text-xs text-[#a3a198]">
-                  Paste any YouTube or direct audio URL · Live URL Validator & Simultaneous Video Preview
-                </p>
-              </div>
+              <span className="cassette-led cassette-led-rec" />
+              <h3 className="font-serif-display text-base sm:text-lg font-bold text-[#f0ece1]">
+                Studio Master Tape Recorder
+              </h3>
             </div>
-            <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-[#21291d] text-[#b8d99e] border border-[#3a4433]">
-              FFmpeg 24-Bit Studio Engine
-            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setInlineSaveToDevice(!inlineSaveToDevice)}
+                className={`cassette-btn px-2.5 py-1 text-[11px] font-mono ${
+                  inlineSaveToDevice ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+                }`}
+              >
+                <span className={`cassette-led ${inlineSaveToDevice ? 'cassette-led-on' : ''}`} />
+                <span>AUTO-SAVE .{activeInlineFormatObj.extension.toUpperCase()}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowInlineCookies(!showInlineCookies)}
+                className={`cassette-btn px-2.5 py-1 text-[11px] font-mono ${
+                  showInlineCookies ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+                }`}
+                title="Optional Studio Cookie Key"
+              >
+                <KeyRound className="w-3 h-3 text-[#e2c986]" />
+              </button>
+            </div>
           </div>
 
-          {/* URL Input Row */}
+          {/* Tape Bias / Format Selector Keys */}
+          <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+            {AUDIOPHILE_FORMATS.map((fmt) => {
+              const selected = inlineFormat === fmt.id;
+              return (
+                <button
+                  key={fmt.id}
+                  type="button"
+                  disabled={isDownloading}
+                  onClick={() => setInlineFormat(fmt.id)}
+                  className={`cassette-btn flex-col items-start px-3 py-2 text-left ${
+                    selected ? 'cassette-btn-engaged' : ''
+                  }`}
+                >
+                  <div className="w-full flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold">{fmt.id}</span>
+                    <span className={`cassette-led ${selected ? 'cassette-led-on' : ''}`} />
+                  </div>
+                  <div className="text-[10px] font-mono text-[#9fa396] mt-0.5 truncate w-full">
+                    {fmt.badge}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* URL Slot + Record Cassette Key */}
           <div className="flex flex-col sm:flex-row gap-2.5">
-            <div className="relative flex-1 flex items-center">
+            <div className="cassette-window flex-1 flex items-center rounded-2xl p-1.5">
               <input
                 type="text"
                 value={inlineUrl}
@@ -923,17 +1120,17 @@ export default function App() {
                   validateInlineUrl(e.target.value);
                 }}
                 disabled={isDownloading}
-                placeholder="Paste YouTube URL (e.g. https://www.youtube.com/watch?v=... or https://youtu.be/...)"
-                className="w-full pl-3.5 pr-20 py-3 rounded-xl bg-[#11120f] border border-[#292a24] text-[#eeeae2] placeholder-[#6e6d66] text-xs sm:text-sm focus:outline-none focus:border-[#b8d99e] transition-colors"
+                placeholder="Paste YouTube or Audio URL to record onto master tape..."
+                className="flex-1 bg-transparent px-3 py-2 text-[#f0ece1] placeholder-[#686b60] text-xs sm:text-sm focus:outline-none font-mono"
               />
               <button
                 type="button"
                 onClick={handleInlinePaste}
                 disabled={isDownloading}
-                className="absolute right-2 px-2.5 py-1.5 rounded-lg bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] text-xs font-medium flex items-center gap-1 transition-colors"
+                className="cassette-btn px-3 py-2 text-xs font-mono text-[#b8d99e] shrink-0"
               >
                 <Clipboard className="w-3.5 h-3.5" />
-                <span>Paste</span>
+                <span>PASTE</span>
               </button>
             </div>
 
@@ -951,127 +1148,57 @@ export default function App() {
                   inlinePreview?.author
                 )
               }
-              className="px-6 py-3 rounded-xl bg-[#b8d99e] text-[#11120f] hover:bg-[#c8e6b0] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              className="cassette-btn cassette-btn-primary px-6 py-3 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40 shrink-0"
             >
               {isDownloading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Transcoding {inlineFormat}...</span>
+                  <span>RECORDING {inlineFormat}...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4" />
-                  <span>
-                    Convert to {inlineFormat} ({activeInlineFormatObj.badge})
-                  </span>
+                  <Radio className="w-4 h-4" />
+                  <span>⏺ RECORD {inlineFormat}</span>
                 </>
               )}
             </button>
           </div>
 
-          {/* Audiophile Format Pills */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {AUDIOPHILE_FORMATS.map((fmt) => {
-              const selected = inlineFormat === fmt.id;
-              return (
+          {inlineFormat === 'MP3' && (
+            <div className="cassette-bank inline-flex items-center gap-1.5">
+              <span className="text-[11px] font-mono text-[#9fa396] px-2">MP3 BIAS:</span>
+              {[320, 256, 192].map((br) => (
                 <button
-                  key={fmt.id}
+                  key={br}
                   type="button"
-                  disabled={isDownloading}
-                  onClick={() => setInlineFormat(fmt.id)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
-                    selected
-                      ? 'bg-[#b8d99e] text-[#11120f] border-[#b8d99e] shadow-sm'
-                      : 'bg-[#11120f] text-[#eeeae2] border-[#292a24] hover:border-[#3a4433]'
+                  onClick={() => setInlineMp3Bitrate(br)}
+                  className={`cassette-btn px-2.5 py-1 text-[11px] font-mono ${
+                    inlineMp3Bitrate === br ? 'cassette-btn-engaged' : ''
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold">{fmt.id}</span>
-                    <span
-                      className={`text-[9px] font-mono px-1.5 py-0.2 rounded ${
-                        selected
-                          ? 'bg-[#11120f]/15 text-[#11120f] font-bold'
-                          : 'bg-[#21291d] text-[#b8d99e]'
-                      }`}
-                    >
-                      .{fmt.extension}
-                    </span>
-                  </div>
-                  <div
-                    className={`text-[10px] font-mono mt-0.5 ${
-                      selected ? 'text-[#11120f]/85 font-semibold' : 'text-[#a3a198]'
-                    }`}
-                  >
-                    {fmt.badge}
-                  </div>
+                  {br}K
                 </button>
-              );
-            })}
-          </div>
-
-          {/* Converter Options Row */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
-            <label className="inline-flex items-center gap-2 cursor-pointer text-[#a3a198] hover:text-[#eeeae2]">
-              <input
-                type="checkbox"
-                checked={inlineSaveToDevice}
-                onChange={(e) => setInlineSaveToDevice(e.target.checked)}
-                className="accent-[#b8d99e] rounded"
-              />
-              <span>
-                Auto-save <strong className="text-[#b8d99e]">.{activeInlineFormatObj.extension}</strong> file directly to device Music/Downloads folder
-              </span>
-            </label>
-
-            <div className="flex items-center gap-3">
-              {inlineFormat === 'MP3' && (
-                <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                  <span className="text-[#a3a198]">Bitrate:</span>
-                  {[320, 256, 192].map((br) => (
-                    <button
-                      key={br}
-                      type="button"
-                      onClick={() => setInlineMp3Bitrate(br)}
-                      className={`px-2 py-0.5 rounded border ${
-                        inlineMp3Bitrate === br
-                          ? 'bg-[#21291d] text-[#b8d99e] border-[#b8d99e]'
-                          : 'bg-[#11120f] text-[#a3a198] border-[#292a24]'
-                      }`}
-                    >
-                      {br}k
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setShowInlineCookies(!showInlineCookies)}
-                className="text-[11px] font-mono text-[#a3a198] hover:text-[#b8d99e] flex items-center gap-1"
-              >
-                <KeyRound className="w-3 h-3 text-[#b8d99e]" />
-                <span>{showInlineCookies ? 'Hide YouTube Cookies ▲' : 'YouTube Cookies (Optional) ▼'}</span>
-              </button>
+              ))}
             </div>
-          </div>
+          )}
 
           {showInlineCookies && (
-            <div className="p-3 rounded-xl bg-[#11120f] border border-[#292a24] space-y-1">
+            <div className="cassette-window p-3 rounded-xl">
               <textarea
                 rows={2}
                 value={inlineCookies}
                 onChange={(e) => setInlineCookies(e.target.value)}
-                placeholder="Optional: Paste YouTube Netscape cookies.txt or cookie header (SID=...; HSID=...) for age-restricted/private streams"
-                className="w-full p-2 rounded-lg bg-[#171814] border border-[#292a24] text-[11px] font-mono text-[#eeeae2] placeholder-[#6e6d66] focus:outline-none focus:border-[#b8d99e]"
+                placeholder="Optional: Paste YouTube cookies for private streams..."
+                className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
             </div>
           )}
 
-          {/* Live URL Validation & Simultaneous Embedded Video Preview */}
+          {/* Live URL Validation & Monitor */}
           {isValidatingInline && (
-            <div className="p-3 rounded-xl bg-[#11120f] border border-[#292a24] flex items-center gap-2 text-xs text-[#a3a198]">
-              <Loader2 className="w-4 h-4 animate-spin text-[#b8d99e]" />
-              <span>Validating URL & resolving YouTube oEmbed metadata...</span>
+            <div className="cassette-window p-3 rounded-xl flex items-center gap-2 text-xs font-mono text-[#b8d99e]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>TUNING STREAM SIGNAL...</span>
             </div>
           )}
 
@@ -1083,28 +1210,25 @@ export default function App() {
           )}
 
           {inlinePreview && (
-            <div className="rounded-2xl border border-[#3a4433] bg-[#11120f] p-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-              <div className="space-y-2.5">
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-[#86efac] bg-[#1b2b1e] px-2.5 py-0.5 rounded-full border border-[#2b3e2f]">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>LIVE URL VALIDATED · READY FOR {inlineFormat}</span>
+            <div className="cassette-window rounded-2xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 text-[11px] font-mono text-[#b8d99e]">
+                  <span className="cassette-led cassette-led-on" />
+                  <span>SIGNAL LOCKED · {inlineFormat} ({activeInlineFormatObj.badge})</span>
                 </div>
-                <h4 className="font-serif-display text-base sm:text-lg font-bold text-[#eeeae2]">
+                <h4 className="font-serif-display text-base sm:text-lg font-bold text-[#f0ece1]">
                   {inlinePreview.title}
                 </h4>
-                <p className="text-xs text-[#b8d99e] font-mono">
-                  Artist / Channel: {inlinePreview.author} · ID: {inlinePreview.id}
-                </p>
-                <p className="text-xs text-[#a3a198]">
-                  Output Spec: <strong className="text-[#eeeae2]">{activeInlineFormatObj.spec}</strong> ({activeInlineFormatObj.badge})
+                <p className="text-xs font-mono text-[#e2c986]">
+                  {inlinePreview.author}
                 </p>
               </div>
 
               {inlinePreview.isYouTube && (
-                <div className="rounded-xl overflow-hidden aspect-video bg-black border border-[#292a24]">
+                <div className="rounded-xl overflow-hidden aspect-video bg-black border border-[#272c23]">
                   <iframe
                     src={`https://www.youtube.com/embed/${inlinePreview.id}?autoplay=0&enablejsapi=1`}
-                    title="YouTube Simultaneous Video Preview"
+                    title="YouTube Monitor"
                     className="w-full h-full border-0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -1114,19 +1238,18 @@ export default function App() {
             </div>
           )}
 
-          {/* Active Download Progress Bar */}
           {isDownloading && (
-            <div className="p-3.5 rounded-xl bg-[#11120f] border border-[#3a4433] space-y-2">
-              <div className="flex items-center justify-between text-xs text-[#b8d99e]">
-                <span className="flex items-center gap-2 font-medium">
-                  <Loader2 className="w-4 h-4 animate-spin" />
+            <div className="cassette-window p-3.5 rounded-xl space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono text-[#b8d99e]">
+                <span className="flex items-center gap-2">
+                  <span className="cassette-led cassette-led-rec animate-ping" />
                   <span>{downloadStatus}</span>
                 </span>
-                <span className="font-mono font-bold">{Math.round(downloadProgress * 100)}%</span>
+                <span>{Math.round(downloadProgress * 100)}%</span>
               </div>
-              <div className="w-full h-2 bg-[#292a24] rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-[#161a13] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#b8d99e] transition-all duration-200 rounded-full"
+                  className="h-full bg-gradient-to-r from-[#b8d99e] to-[#e2c986] transition-all duration-200 rounded-full"
                   style={{ width: `${Math.round(downloadProgress * 100)}%` }}
                 />
               </div>
@@ -1134,128 +1257,125 @@ export default function App() {
           )}
         </section>
 
-        {/* Storage Status Banner */}
-        <StorageBanner
-          storageInfo={storageInfo}
-          onRequestPersistence={handleRequestPersistence}
-        />
-
-        {/* Library Navigation Tabs & Search Toolbar */}
-        <section className="flex flex-col gap-3 pb-2 border-b border-[#292a24]">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {/* Cassette Rack Selector Bank & Search */}
+        <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="cassette-bank flex items-center gap-1.5 overflow-x-auto scrollbar-none">
             {(
               [
-                { id: 'ALL', label: 'All Tracks', count: tracks.length },
+                { id: 'ALL', label: 'ALL TAPES', count: tracks.length },
                 {
                   id: 'LOSSLESS',
-                  label: 'Lossless (FLAC / ALAC / DSD)',
+                  label: 'LOSSLESS',
                   count: tracks.filter((t) =>
                     ['FLAC', 'ALAC', 'DSD', 'WAV'].includes(t.format.toUpperCase())
                   ).length,
                 },
                 {
                   id: 'DOWNLOADS',
-                  label: 'YouTube & URLs',
+                  label: 'YOUTUBE',
                   count: tracks.filter(
                     (t) => t.source === 'YOUTUBE' || t.source === 'DIRECT_URL'
                   ).length,
                 },
                 {
                   id: 'DEVICE_MUSIC',
-                  label: 'Phone Storage',
+                  label: 'DEVICE',
                   count: tracks.filter(
                     (t) => t.source === 'LOCAL_IMPORT' || t.source === 'SAMPLE_AUDIO'
                   ).length,
                 },
                 {
                   id: 'MP3',
-                  label: 'MP3 (320k)',
+                  label: 'MP3 320K',
                   count: tracks.filter(
                     (t) => t.format.toUpperCase() === 'MP3' || t.mimeType.includes('mpeg')
                   ).length,
                 },
                 {
                   id: 'FAVORITES',
-                  label: 'Favorites',
+                  label: '♥ FAVORITES',
                   count: tracks.filter((t) => t.isFavorite).length,
                 },
               ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setSelectedTab(tab.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                  selectedTab === tab.id
-                    ? 'bg-[#b8d99e] text-[#11120f] font-semibold shadow-sm'
-                    : 'bg-[#171814] text-[#a3a198] hover:text-[#eeeae2] border border-[#292a24]'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                    selectedTab === tab.id
-                      ? 'bg-[#11120f]/20 text-[#11120f]'
-                      : 'bg-[#21291d] text-[#b8d99e]'
+            ).map((tab) => {
+              const active = selectedTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setSelectedTab(tab.id)}
+                  className={`cassette-btn px-3 py-1.5 text-xs font-mono whitespace-nowrap ${
+                    active ? 'cassette-btn-engaged' : 'text-[#9fa396]'
                   }`}
                 >
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+                  <span className={`cassette-led ${active ? 'cassette-led-on' : ''}`} />
+                  <span>{tab.label}</span>
+                  <span className="text-[10px] text-[#e2c986]">({tab.count})</span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 text-[#6e6d66] absolute left-3.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search offline tracks by title, artist, or format (FLAC, ALAC, DSD, MP3)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#171814] border border-[#292a24] text-[#eeeae2] placeholder-[#6e6d66] text-xs focus:outline-none focus:border-[#b8d99e] transition-colors"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 text-xs text-[#a3a198] hover:text-[#eeeae2]"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {tracks.length === 0 && (
+          <div className="cassette-window flex items-center px-3 py-1.5 rounded-xl min-w-[220px]">
+            <Search className="w-3.5 h-3.5 text-[#686b60] shrink-0" />
+            <input
+              type="text"
+              placeholder="Find tape..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-2 pr-2 py-1 bg-transparent text-[#f0ece1] placeholder-[#686b60] text-xs font-mono focus:outline-none"
+            />
+            {searchQuery && (
               <button
-                onClick={handleLoadSampleTracks}
-                className="px-3.5 py-2 rounded-xl bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] text-xs font-medium flex items-center gap-1.5 shrink-0 transition-colors"
-                title="Load built-in demo tracks"
+                onClick={() => setSearchQuery('')}
+                className="text-xs text-[#9fa396] hover:text-[#f0ece1]"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Load Studio Samples</span>
+                ✕
               </button>
             )}
           </div>
         </section>
 
-        {/* Verified Offline Library */}
+        {/* Cassette Tape Library */}
         <section className="flex-1 pb-6">
           {filteredTracks.length === 0 ? (
-            <div className="py-12 sm:py-16 px-4 rounded-3xl bg-[#171814] border border-[#292a24] flex flex-col items-center justify-center text-center max-w-lg mx-auto">
-              <div className="w-20 h-20 rounded-full bg-[#21291d] border border-[#3a4433] flex items-center justify-center text-[#b8d99e] mb-4 shadow-inner">
-                <span className="text-3xl">♪</span>
+            <div className="py-12 px-6 rounded-3xl cassette-card flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-5">
+              {/* Mini Cassette Reel Graphic */}
+              <div className="cassette-window px-6 py-4 rounded-2xl flex items-center gap-5">
+                <svg viewBox="0 0 40 40" className="w-9 h-9 text-[#b8d99e] animate-spin-reel">
+                  <circle cx="20" cy="20" r="16" fill="#10130e" stroke="currentColor" strokeWidth="2.2" />
+                  <circle cx="20" cy="20" r="6" fill="none" stroke="#e2c986" strokeWidth="1.8" strokeDasharray="3 3" />
+                  <line x1="20" y1="4" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
+                  <line x1="20" y1="28" x2="20" y2="36" stroke="currentColor" strokeWidth="2" />
+                  <line x1="4" y1="20" x2="12" y2="20" stroke="currentColor" strokeWidth="2" />
+                  <line x1="28" y1="20" x2="36" y2="20" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                <span className="font-serif-display text-2xl text-[#e2c986]">♪</span>
+                <svg viewBox="0 0 40 40" className="w-9 h-9 text-[#e2c986] animate-spin-reel">
+                  <circle cx="20" cy="20" r="16" fill="#10130e" stroke="currentColor" strokeWidth="2.2" />
+                  <circle cx="20" cy="20" r="6" fill="none" stroke="#b8d99e" strokeWidth="1.8" strokeDasharray="3 3" />
+                  <line x1="20" y1="4" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
+                  <line x1="20" y1="28" x2="20" y2="36" stroke="currentColor" strokeWidth="2" />
+                  <line x1="4" y1="20" x2="12" y2="20" stroke="currentColor" strokeWidth="2" />
+                  <line x1="28" y1="20" x2="36" y2="20" stroke="currentColor" strokeWidth="2" />
+                </svg>
               </div>
 
-              <h3 className="font-serif-display text-xl font-bold text-[#eeeae2]">
-                Your Audiophile Library Awaits
+              <h3 className="font-serif-display text-xl font-bold text-[#f0ece1]">
+                Insert Your First Master Tape
               </h3>
-              <p className="text-xs sm:text-sm text-[#a3a198] mt-2 leading-relaxed max-w-md">
-                Paste a YouTube link above to convert into 24-bit Lossless FLAC, ALAC, DSD, or 320kbps MP3, or import audio files from your phone. Every track is verified and stored offline on this device.
-              </p>
 
-              <div className="flex flex-wrap items-center justify-center gap-3 mt-5">
-                <label className="cursor-pointer px-5 py-2.5 rounded-full bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] font-semibold text-xs flex items-center justify-center gap-2 transition-colors">
-                  <FolderOpen className="w-4 h-4" />
-                  <span>Scan Phone Music Folder</span>
+              <div className="cassette-bank flex flex-wrap items-center justify-center gap-2">
+                <button
+                  onClick={handleLoadSampleTracks}
+                  className="cassette-btn cassette-btn-primary px-4 py-2.5 text-xs font-mono"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>▶ PLAY STUDIO SAMPLES</span>
+                </button>
+
+                <label className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1] cursor-pointer">
+                  <FolderOpen className="w-3.5 h-3.5 text-[#b8d99e]" />
+                  <span>⏏ LOAD DEVICE FILES</span>
                   <input
                     type="file"
                     multiple
@@ -1264,25 +1384,10 @@ export default function App() {
                     className="hidden"
                   />
                 </label>
-
-                <button
-                  onClick={handleLoadSampleTracks}
-                  className="px-4 py-2.5 rounded-full bg-[#11120f] text-[#a3a198] hover:text-[#b8d99e] border border-[#292a24] text-xs font-medium transition-colors flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#b8d99e]" />
-                  <span>Load Acoustic Samples</span>
-                </button>
               </div>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between text-[11px] text-[#6e6d66] px-1 font-mono">
-                <span>
-                  {filteredTracks.length} {filteredTracks.length === 1 ? 'MASTER TRACK' : 'MASTER TRACKS'} IN OFFLINE LIBRARY
-                </span>
-                <span>INDEXEDDB VERIFIED · TAP TO PLAY</span>
-              </div>
-
+            <div className="space-y-3">
               {filteredTracks.map((track) => (
                 <TrackCard
                   key={track.id}
@@ -1304,7 +1409,7 @@ export default function App() {
         </section>
       </main>
 
-      {/* Docked Now Playing Bar */}
+      {/* Docked Cassette Transport Bar */}
       <NowPlayingBar
         currentTrack={currentTrack}
         isPlaying={isPlaying}
@@ -1323,7 +1428,7 @@ export default function App() {
         onOpenFullPlayer={() => setShowFullPlayer(true)}
       />
 
-      {/* Full Screen Vinyl Turntable + Live Frequency Equalizer Player */}
+      {/* Full Screen Gramophone Turntable + Live Frequency Equalizer */}
       <FullPlayerModal
         isOpen={showFullPlayer}
         currentTrack={currentTrack}
@@ -1349,7 +1454,7 @@ export default function App() {
         onOpenLyrics={(t) => setSelectedTrackForLyrics(t)}
       />
 
-      {/* Audiophile URL & YouTube Downloader / Converter Dialog */}
+      {/* Master Tape Deck Recorder Dialog */}
       <DownloadDialog
         isOpen={showDownloadDialog}
         initialUrl={prefilledUrl}
@@ -1365,7 +1470,7 @@ export default function App() {
         }}
       />
 
-      {/* In-App YouTube Browser & Search Preview Modal */}
+      {/* In-App YouTube Studio Tuner Modal */}
       <YouTubeBrowserModal
         isOpen={showYouTubeBrowser}
         initialUrl={prefilledUrl}

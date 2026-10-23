@@ -1,23 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #11120f;
-  --bg-card: #171814;
-  --bg-elevated: #1e201a;
-  --border-subtle: #292a24;
-  --border-sage: #3a4433;
-  --text-primary: #eeeae2;
-  --text-muted: #a3a198;
-  --text-subtle: #6e6d66;
+  --bg-primary: #0e100d;
+  --bg-card: #151813;
+  --bg-elevated: #1c2019;
+  --border-subtle: #272c23;
+  --border-sage: #3a4533;
+  --text-primary: #f0ece1;
+  --text-muted: #9fa396;
+  --text-subtle: #686b60;
   --sage-accent: #b8d99e;
-  --sage-deep: #21291d;
+  --brass-accent: #e2c986;
+  --sage-deep: #1e261a;
 }
 
 @layer base {
   body {
-    background-color: #11120f;
-    color: #eeeae2;
+    background-color: #0e100d;
+    color: #f0ece1;
     font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
   }
 }
 
@@ -33,7 +35,7 @@
   font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Vinyl rotation animation */
+/* Gramophone Vinyl & Cassette Spool Rotation */
 @keyframes spinSlow {
   from {
     transform: rotate(0deg);
@@ -44,12 +46,195 @@
 }
 
 .animate-spin-slow {
-  animation: spinSlow 20s linear infinite;
+  animation: spinSlow 14s linear infinite;
 }
 
 .animate-spin-slow-paused {
-  animation: spinSlow 20s linear infinite;
+  animation: spinSlow 14s linear infinite;
   animation-play-state: paused;
+}
+
+.animate-spin-reel {
+  animation: spinSlow 4.5s linear infinite;
+}
+
+.animate-spin-reel-paused {
+  animation: spinSlow 4.5s linear infinite;
+  animation-play-state: paused;
+}
+
+/* Floating Musical Notes Animation */
+@keyframes floatMusicNote {
+  0%, 100% {
+    transform: translateY(0px) rotate(-4deg);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translateY(-10px) rotate(6deg);
+    opacity: 0.48;
+  }
+}
+
+.music-note-float-1 {
+  animation: floatMusicNote 6s ease-in-out infinite;
+}
+
+.music-note-float-2 {
+  animation: floatMusicNote 8s ease-in-out 1.5s infinite;
+}
+
+.music-note-float-3 {
+  animation: floatMusicNote 7s ease-in-out 3s infinite;
+}
+
+/* Tactile 3D Analog Cassette Deck Keycaps */
+.cassette-bank {
+  background: linear-gradient(180deg, #0b0d0a 0%, #121510 100%);
+  border: 1px solid #262c22;
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 5px;
+}
+
+.cassette-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: linear-gradient(180deg, #282f23 0%, #1a1f17 65%, #151912 100%);
+  color: #f0ece1;
+  border: 1px solid #384231;
+  border-top-color: #515e47;
+  border-radius: 9px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 250, 235, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 4px 0 #090b08,
+    0 6px 10px rgba(0, 0, 0, 0.65);
+  transition: transform 90ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 90ms ease, background 150ms ease, border-color 150ms ease;
+  user-select: none;
+  cursor: pointer;
+}
+
+.cassette-btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #30392a 0%, #20261c 65%, #181d15 100%);
+  border-color: #4c5a43;
+  border-top-color: #6b7d5e;
+  color: #ffffff;
+}
+
+.cassette-btn:active:not(:disabled),
+.cassette-btn-engaged {
+  transform: translateY(3px);
+  background: linear-gradient(180deg, #1b2118 0%, #242b20 100%);
+  border-color: #b8d99e;
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.75),
+    0 1px 0 #090b08,
+    0 0 12px rgba(184, 217, 158, 0.18);
+  color: #b8d99e;
+}
+
+/* Primary Sage/Brass Illuminated Cassette Key */
+.cassette-btn-primary {
+  background: linear-gradient(180deg, #cce8b5 0%, #b8d99e 55%, #96ba7b 100%);
+  color: #0e110c;
+  border: 1px solid #7fa364;
+  border-top-color: #e8f7dc;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 4px 0 #394b2c,
+    0 6px 14px rgba(0, 0, 0, 0.7),
+    0 0 18px rgba(184, 217, 158, 0.18);
+}
+
+.cassette-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d7f0c2 0%, #c2e2a9 55%, #a3c788 100%);
+  color: #090b08;
+  border-color: #96ba7b;
+  border-top-color: #f4ffec;
+}
+
+.cassette-btn-primary:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    0 1px 0 #394b2c,
+    0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* Studio Record / Brass Accent Cassette Key */
+.cassette-btn-brass {
+  background: linear-gradient(180deg, #edd89c 0%, #d4b86a 55%, #b09348 100%);
+  color: #12110c;
+  border: 1px solid #8f7432;
+  border-top-color: #fbf0ce;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 4px 0 #4d3d16,
+    0 6px 14px rgba(0, 0, 0, 0.7);
+}
+
+.cassette-btn-brass:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f5e2ad 0%, #dec378 55%, #bd9f52 100%);
+  color: #0b0a07;
+}
+
+.cassette-btn-brass:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    0 1px 0 #4d3d16;
+}
+
+/* Cassette LED Indicator Dot */
+.cassette-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: #363c31;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+  transition: all 200ms ease;
+}
+
+.cassette-led-on {
+  background-color: #b8d99e;
+  box-shadow: 0 0 8px #b8d99e, 0 0 3px #ffffff;
+}
+
+.cassette-led-rec {
+  background-color: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b, 0 0 3px #fef08a;
+}
+
+/* Cassette Tape Card Housing */
+.cassette-card {
+  background: linear-gradient(180deg, #191d16 0%, #131611 100%);
+  border: 1px solid #2b3226;
+  border-top-color: #394333;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 20px rgba(0, 0, 0, 0.55);
+}
+
+.cassette-card-active {
+  background: linear-gradient(180deg, #1f261b 0%, #161b13 100%);
+  border: 1px solid #b8d99e;
+  box-shadow:
+    inset 0 1px 0 rgba(184, 217, 158, 0.2),
+    0 0 25px rgba(184, 217, 158, 0.12),
+    0 10px 24px rgba(0, 0, 0, 0.65);
+}
+
+.cassette-window {
+  background: radial-gradient(circle at center, #0e110c 0%, #080a07 100%);
+  border: 1px solid #2e3729;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9);
 }
 
 /* Vinyl Grooves Styling */
@@ -75,7 +260,7 @@
     #1c2019 92%,
     #0d0e0b 100%
   );
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.92), 0 12px 34px rgba(0, 0, 0, 0.75);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.92), 0 14px 36px rgba(0, 0, 0, 0.8);
 }
 
 /* Custom Scrollbar for Dark Sage Theme */
@@ -85,11 +270,11 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #11120f;
+  background: #0e100d;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #292a24;
+  background: #272c23;
   border-radius: 9999px;
 }
 

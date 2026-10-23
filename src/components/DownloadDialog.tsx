@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   X,
-  Download,
   Youtube,
   Clipboard,
   Loader2,
   KeyRound,
-  CheckCircle2,
   AlertCircle,
   Disc3,
+  Radio,
 } from 'lucide-react';
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
@@ -45,7 +44,6 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   const [url, setUrl] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<AudiophileFormatId>('FLAC');
   const [mp3Bitrate, setMp3Bitrate] = useState<number>(320);
-  const [hasRights, setHasRights] = useState(true);
   const [saveToPhoneFolder, setSaveToPhoneFolder] = useState(true);
   const [showCookieBox, setShowCookieBox] = useState(false);
   const [cookies, setCookies] = useState('');
@@ -91,7 +89,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
         });
       } else {
         setPreviewData(null);
-        setValidationError(data.error || 'Please enter a valid YouTube or direct audio URL.');
+        setValidationError(data.error || 'Enter a valid YouTube or audio stream URL.');
       }
     } catch {
       const ytId = extractYouTubeId(trimmed);
@@ -136,7 +134,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim() || !hasRights || isDownloading) return;
+    if (!url.trim() || isDownloading) return;
     const effectiveBitrate =
       selectedFormat === 'MP3' ? mp3Bitrate : activeFormatObj.bitrateKbps;
     onStartDownload(
@@ -152,123 +150,108 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-[#171814] border border-[#292a24] rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto">
+      <div className="relative w-full max-w-xl cassette-card rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-[#292a24]">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#21291d] text-[#b8d99e] border border-[#3a4433]">
-              <Disc3 className="w-5 h-5 text-[#b8d99e]" />
+        <div className="flex items-center justify-between pb-3.5 border-b border-[#272c23]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#1c2418] border border-[#3a4533] flex items-center justify-center text-[#b8d99e]">
+              <Disc3 className="w-5 h-5 animate-spin-slow" />
             </div>
             <div>
-              <h3 className="font-serif-display text-lg font-bold text-[#eeeae2]">
-                Audiophile Lossless & Hi-Res Converter
-              </h3>
-              <p className="text-xs text-[#a3a198]">
-                FLAC 24-bit/96kHz · ALAC · DSD 192kHz · WAV · MP3 320k
+              <div className="flex items-center gap-2">
+                <span className="cassette-led cassette-led-rec" />
+                <h3 className="font-serif-display text-lg font-bold text-[#f0ece1]">
+                  Master Tape Deck Recorder
+                </h3>
+              </div>
+              <p className="text-[11px] font-mono text-[#9fa396]">
+                {activeFormatObj.id} · {activeFormatObj.badge}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={isDownloading}
-            className="p-1.5 rounded-full text-[#a3a198] hover:text-[#eeeae2] hover:bg-[#252820] transition-colors disabled:opacity-50"
+            className="cassette-btn p-2 text-[#9fa396]"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-[11px] font-mono font-medium text-[#a3a198] uppercase tracking-wider mb-1.5">
-              PASTE YOUTUBE OR DIRECT AUDIO LINK
-            </label>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
-                value={url}
-                onChange={(e) => handleUrlChange(e.target.value)}
-                disabled={isDownloading}
-                className="w-full pl-3.5 pr-20 py-2.5 rounded-xl bg-[#11120f] border border-[#292a24] text-[#eeeae2] placeholder-[#6e6d66] text-xs sm:text-sm focus:outline-none focus:border-[#b8d99e] transition-colors"
-              />
-              <button
-                type="button"
-                onClick={handlePaste}
-                title="Paste link from clipboard"
-                className="absolute right-2 px-2.5 py-1 rounded-lg bg-[#21291d] text-[#b8d99e] hover:bg-[#2b3626] border border-[#3a4433] text-xs font-medium flex items-center gap-1 transition-colors"
-              >
-                <Clipboard className="w-3.5 h-3.5" />
-                <span>Paste</span>
-              </button>
-            </div>
+          {/* URL Slot */}
+          <div className="cassette-window p-2 rounded-2xl flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Paste YouTube or Audio Stream URL..."
+              value={url}
+              onChange={(e) => handleUrlChange(e.target.value)}
+              disabled={isDownloading}
+              className="flex-1 bg-transparent px-3 py-2 text-[#f0ece1] placeholder-[#686b60] text-xs sm:text-sm focus:outline-none font-mono"
+            />
+            <button
+              type="button"
+              onClick={handlePaste}
+              title="Paste link"
+              className="cassette-btn px-3 py-2 text-xs font-mono text-[#b8d99e] shrink-0"
+            >
+              <Clipboard className="w-3.5 h-3.5" />
+              <span>PASTE</span>
+            </button>
           </div>
 
-          {/* Audiophile Format Selector */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-mono font-medium text-[#a3a198] uppercase tracking-wider">
-                SELECT MASTER AUDIO FORMAT
-              </label>
-              <span className="text-[11px] font-mono text-[#b8d99e]">
-                {activeFormatObj.spec}
-              </span>
-            </div>
+          {/* Tape Bias / Master Format Selector Bank */}
+          <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+            {AUDIOPHILE_FORMATS.map((fmt) => {
+              const isSelected = selectedFormat === fmt.id;
+              return (
+                <button
+                  key={fmt.id}
+                  type="button"
+                  disabled={isDownloading}
+                  onClick={() => setSelectedFormat(fmt.id)}
+                  className={`cassette-btn flex-col items-start px-3 py-2 text-left ${
+                    isSelected ? 'cassette-btn-engaged' : ''
+                  }`}
+                >
+                  <div className="w-full flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold">{fmt.id}</span>
+                    <span className={`cassette-led ${isSelected ? 'cassette-led-on' : ''}`} />
+                  </div>
+                  <div className="text-[10px] font-mono text-[#9fa396] mt-0.5 truncate w-full">
+                    {fmt.badge}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {AUDIOPHILE_FORMATS.map((fmt) => {
-                const isSelected = selectedFormat === fmt.id;
-                return (
-                  <button
-                    key={fmt.id}
-                    type="button"
-                    disabled={isDownloading}
-                    onClick={() => setSelectedFormat(fmt.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
-                      isSelected
-                        ? 'bg-[#b8d99e] text-[#11120f] border-[#b8d99e] shadow-md'
-                        : 'bg-[#11120f] text-[#eeeae2] border-[#292a24] hover:border-[#3a4433]'
-                    }`}
-                  >
-                    <div className="font-mono text-xs font-bold">{fmt.id}</div>
-                    <div
-                      className={`text-[10px] font-mono mt-0.5 ${
-                        isSelected ? 'text-[#11120f]/80 font-semibold' : 'text-[#a3a198]'
-                      }`}
-                    >
-                      {fmt.badge}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {selectedFormat === 'MP3' && (
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-[11px] text-[#a3a198] font-mono">MP3 Bitrate:</span>
+          {selectedFormat === 'MP3' && (
+            <div className="cassette-bank flex items-center justify-between px-3 py-1.5">
+              <span className="text-[11px] font-mono text-[#9fa396]">TAPE BIAS BITRATE</span>
+              <div className="flex items-center gap-1.5">
                 {[320, 256, 192].map((br) => (
                   <button
                     key={br}
                     type="button"
                     onClick={() => setMp3Bitrate(br)}
-                    className={`px-2.5 py-0.5 rounded-lg text-[11px] font-mono border transition-colors ${
-                      mp3Bitrate === br
-                        ? 'bg-[#21291d] text-[#b8d99e] border-[#b8d99e]'
-                        : 'bg-[#11120f] text-[#a3a198] border-[#292a24]'
+                    className={`cassette-btn px-2.5 py-1 text-[11px] font-mono ${
+                      mp3Bitrate === br ? 'cassette-btn-engaged' : ''
                     }`}
                   >
-                    {br} kbps
+                    {br}K
                   </button>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Live URL Validation & Simultaneous Embedded Video Preview */}
+          {/* Live URL Validation & Monitor Screen */}
           {isLoadingPreview && (
-            <div className="p-3 rounded-xl bg-[#11120f] border border-[#292a24] flex items-center gap-2 text-xs text-[#a3a198]">
-              <Loader2 className="w-4 h-4 animate-spin text-[#b8d99e]" />
-              <span>Validating link & probing stream metadata...</span>
+            <div className="cassette-window p-3 rounded-xl flex items-center gap-2 text-xs font-mono text-[#b8d99e]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>TUNING STREAM SIGNAL...</span>
             </div>
           )}
 
@@ -280,153 +263,105 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
           )}
 
           {previewData && (
-            <div className="rounded-2xl border border-[#3a4433] bg-[#11120f] p-3.5 space-y-3">
+            <div className="cassette-window rounded-2xl p-3.5 space-y-3">
               <div className="flex items-center gap-3">
-                {previewData.thumbnailUrl ? (
-                  <img
-                    src={previewData.thumbnailUrl}
-                    alt={previewData.title}
-                    className="w-16 h-12 object-cover rounded-lg border border-[#3a4433] shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-[#21291d] border border-[#3a4433] flex items-center justify-center text-[#b8d99e]">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                )}
+                <span className="cassette-led cassette-led-on shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-xs sm:text-sm font-semibold text-[#eeeae2] truncate">
+                  <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate">
                     {previewData.title}
                   </h4>
-                  <p className="text-[11px] font-mono text-[#b8d99e] truncate mt-0.5">
-                    {previewData.author} · Target: {selectedFormat} ({activeFormatObj.badge})
+                  <p className="text-[11px] font-mono text-[#b8d99e] truncate">
+                    {previewData.author} · {selectedFormat} ({activeFormatObj.badge})
                   </p>
                 </div>
               </div>
 
               {previewData.isYouTube && (
-                <div className="rounded-xl overflow-hidden aspect-video bg-black border border-[#292a24] relative">
+                <div className="rounded-xl overflow-hidden aspect-video bg-black border border-[#272c23]">
                   <iframe
                     src={`https://www.youtube.com/embed/${previewData.id}?autoplay=0&enablejsapi=1`}
-                    title="YouTube Live Preview"
+                    title="YouTube Monitor"
                     className="w-full h-full border-0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
                 </div>
               )}
-
-              <div className="flex items-center justify-between text-[11px] text-[#86efac]">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#86efac] animate-pulse" />
-                  <span>Verified Audio Stream · Ready for {selectedFormat} Master Transcode</span>
-                </span>
-                <span className="font-mono text-[#b8d99e]">.{activeFormatObj.extension}</span>
-              </div>
             </div>
           )}
 
-          {/* Optional YouTube Account Cookies / Login Accordion */}
-          <div className="rounded-xl bg-[#11120f] border border-[#292a24] p-3">
+          {/* Compact Hardware Switches */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setSaveToPhoneFolder(!saveToPhoneFolder)}
+              className={`cassette-btn px-3 py-1.5 text-xs font-mono ${
+                saveToPhoneFolder ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+              }`}
+            >
+              <span className={`cassette-led ${saveToPhoneFolder ? 'cassette-led-on' : ''}`} />
+              <span>EXPORT .{activeFormatObj.extension.toUpperCase()} TO DEVICE</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowCookieBox(!showCookieBox)}
-              className="w-full flex items-center justify-between text-xs text-[#a3a198] hover:text-[#eeeae2]"
+              className={`cassette-btn px-3 py-1.5 text-xs font-mono ${
+                showCookieBox ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+              }`}
             >
-              <span className="flex items-center gap-1.5 font-medium">
-                <KeyRound className="w-3.5 h-3.5 text-[#b8d99e]" />
-                <span>YouTube Account / Cookie Login (Optional for Restricted Videos)</span>
-              </span>
-              <span className="font-mono text-[10px] text-[#b8d99e]">
-                {showCookieBox ? 'Hide ▲' : 'Configure ▼'}
-              </span>
+              <KeyRound className="w-3.5 h-3.5 text-[#e2c986]" />
+              <span>STUDIO KEY</span>
             </button>
-            {showCookieBox && (
-              <div className="mt-2.5 space-y-1.5">
-                <textarea
-                  rows={2}
-                  value={cookies}
-                  onChange={(e) => setCookies(e.target.value)}
-                  placeholder="Optional: Paste YouTube Netscape cookies.txt or SID=...; HSID=... for private/age-restricted streams"
-                  className="w-full p-2 rounded-lg bg-[#171814] border border-[#292a24] text-[11px] font-mono text-[#eeeae2] placeholder-[#6e6d66] focus:outline-none focus:border-[#b8d99e]"
-                />
-                <p className="text-[10px] text-[#6e6d66]">
-                  Standard public tracks convert automatically via our studio FFmpeg + yt-dlp engine without cookies.
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Toggle: Save directly to phone Music / Downloads folder */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-[#11120f] border border-[#292a24]">
-            <div>
-              <p className="text-xs font-medium text-[#eeeae2]">
-                Save directly to device Music / Downloads folder
-              </p>
-              <p className="text-[10px] text-[#a3a198]">
-                Downloads the .{activeFormatObj.extension} file to your phone + saves in offline IndexedDB
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={saveToPhoneFolder}
-                onChange={(e) => setSaveToPhoneFolder(e.target.checked)}
-                className="sr-only peer"
+          {showCookieBox && (
+            <div className="cassette-window p-2.5 rounded-xl">
+              <textarea
+                rows={2}
+                value={cookies}
+                onChange={(e) => setCookies(e.target.value)}
+                placeholder="Paste YouTube cookies if needed for private streams..."
+                className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
-              <div className="w-11 h-6 bg-[#292a24] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#b8d99e]"></div>
-            </label>
-          </div>
+            </div>
+          )}
 
-          {/* Rights Checkbox */}
-          <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
-            <input
-              type="checkbox"
-              checked={hasRights}
-              onChange={(e) => setHasRights(e.target.checked)}
-              className="mt-0.5 accent-[#b8d99e] rounded cursor-pointer"
-            />
-            <span className="text-xs text-[#a3a198] leading-relaxed">
-              I own or have authorized access to convert and store this media in my personal offline library.
-            </span>
-          </label>
-
-          {/* Converting / Loading indicator */}
+          {/* Recording Progress Meter */}
           {isDownloading && (
-            <div className="p-3.5 rounded-xl bg-[#11120f] border border-[#3a4433] space-y-2">
-              <div className="flex items-center justify-between text-xs text-[#b8d99e]">
-                <span className="flex items-center gap-1.5 font-medium">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  {downloadStatus || `Transcoding ${selectedFormat} Master...`}
+            <div className="cassette-window p-3.5 rounded-xl space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono text-[#b8d99e]">
+                <span className="flex items-center gap-2">
+                  <span className="cassette-led cassette-led-rec animate-ping" />
+                  <span>{downloadStatus || `RECORDING ${selectedFormat} MASTER...`}</span>
                 </span>
-                <span className="font-mono">{Math.round(downloadProgress * 100)}%</span>
+                <span>{Math.round(downloadProgress * 100)}%</span>
               </div>
-              <div className="w-full h-1.5 bg-[#292a24] rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-[#161a13] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#b8d99e] transition-all duration-150 rounded-full"
+                  className="h-full bg-gradient-to-r from-[#b8d99e] to-[#e2c986] transition-all duration-150 rounded-full"
                   style={{ width: `${Math.round(downloadProgress * 100)}%` }}
                 />
               </div>
             </div>
           )}
 
-          {/* Action button */}
-          <div className="pt-1 flex flex-col gap-2">
+          {/* Primary Cassette Transport Action Bank */}
+          <div className="cassette-bank flex flex-col sm:flex-row gap-2 pt-1">
             <button
               type="submit"
-              disabled={!url.trim() || !hasRights || isDownloading}
-              className="w-full py-3.5 rounded-2xl bg-[#b8d99e] text-[#11120f] hover:bg-[#c8e6b0] font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!url.trim() || isDownloading}
+              className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40"
             >
               {isDownloading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Transcoding {selectedFormat} Master...</span>
+                  <span>RECORDING {selectedFormat}...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4" />
-                  <span>
-                    Convert to {selectedFormat} ({activeFormatObj.badge}) & Save
-                  </span>
+                  <Radio className="w-4 h-4" />
+                  <span>⏺ RECORD {selectedFormat} TO LIBRARY</span>
                 </>
               )}
             </button>
@@ -434,10 +369,10 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             <button
               type="button"
               onClick={() => onOpenYouTubeBrowser(url || undefined)}
-              className="text-xs text-[#a3a198] hover:text-[#b8d99e] py-1 text-center transition-colors flex items-center justify-center gap-1"
+              className="cassette-btn px-4 py-3 text-xs font-mono text-[#e2c986]"
             >
-              <Youtube className="w-3.5 h-3.5 text-[#b8d99e]" />
-              <span>Search & Browse YouTube in app →</span>
+              <Youtube className="w-4 h-4" />
+              <span>YOUTUBE TUNER</span>
             </button>
           </div>
         </form>

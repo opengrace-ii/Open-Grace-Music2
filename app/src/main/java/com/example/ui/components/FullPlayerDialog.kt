@@ -75,6 +75,7 @@ import coil.compose.AsyncImage
 import com.example.data.model.Track
 import com.example.player.LoopMode
 import com.example.player.PlayerState
+import com.example.ui.OgmBrandEmblem
 import com.example.ui.theme.CinzelFontFamily
 import com.example.ui.theme.DarkBg
 import com.example.ui.theme.DarkCard
@@ -188,58 +189,32 @@ fun FullPlayerDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Vinyl Record / Album Disc
+                // Gramophone Vinyl Record / Album Disc
                 Box(
-                    modifier = Modifier
-                        .size(236.dp)
-                        .shadow(20.dp, CircleShape, ambientColor = SageGreen, spotColor = Color.Black)
-                        .clip(CircleShape)
-                        .background(Color(0xFF151915))
-                        .border(4.dp, Color(0xFF263024), CircleShape)
-                        .rotate(if (playerState.isPlaying) rotation else 0f),
+                    modifier = Modifier.size(240.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(190.dp)
-                            .border(1.dp, Color(0xFF1E251D), CircleShape)
+                    OgmBrandEmblem(
+                        isPlaying = playerState.isPlaying,
+                        size = 236.dp,
+                        badgeFrame = false
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(145.dp)
-                            .border(1.dp, Color(0xFF1E251D), CircleShape)
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .size(96.dp)
-                            .clip(CircleShape)
-                            .background(SageGreenDeep),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (!track.thumbnailUrl.isNullOrEmpty()) {
+                    if (!track.thumbnailUrl.isNullOrEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .rotate(if (playerState.isPlaying) rotation else 0f),
+                            contentAlignment = Alignment.Center
+                        ) {
                             AsyncImage(
                                 model = track.thumbnailUrl,
                                 contentDescription = "Album Art",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
-                        } else {
-                            Text(
-                                text = track.initials,
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = SageGreen
-                            )
                         }
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .size(14.dp)
-                            .clip(CircleShape)
-                            .background(DarkBg)
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
