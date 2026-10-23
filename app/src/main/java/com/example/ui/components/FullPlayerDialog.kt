@@ -7,8 +7,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,13 +33,6 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FolderSpecial
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +59,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,10 +68,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.example.R
 import com.example.data.model.Track
 import com.example.player.LoopMode
 import com.example.player.PlayerState
-import com.example.ui.OgmBrandEmblem
 import com.example.ui.theme.CinzelFontFamily
 import com.example.ui.theme.DarkBg
 import com.example.ui.theme.DarkCard
@@ -113,7 +109,7 @@ fun FullPlayerDialog(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 16000, easing = LinearEasing)
+            animation = tween(durationMillis = 14000, easing = LinearEasing)
         ),
         label = "rotation"
     )
@@ -141,7 +137,7 @@ fun FullPlayerDialog(
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                    .padding(horizontal = 22.dp, vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -164,47 +160,54 @@ fun FullPlayerDialog(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "AUDIOPHILE MASTER TURNTABLE",
-                            fontSize = 10.5.sp,
+                            text = "GRAMOPHONE MASTER DECK",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = CinzelFontFamily,
-                            color = SageGreen,
-                            letterSpacing = 1.2.sp
+                            color = Color(0xFFE2C986),
+                            letterSpacing = 1.4.sp
                         )
                         Text(
-                            text = "${track.audiophileBadge} · ${if (track.savedToDeviceMusic) "Saved in Music" else "Offline Ready"}",
+                            text = track.audiophileBadge,
                             fontSize = 10.sp,
-                            color = TextMuted
+                            color = SageGreen
                         )
                     }
 
                     IconButton(onClick = { showQueueSheet = true }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                            contentDescription = "View Queue",
+                            contentDescription = "Cassette Rack",
                             tint = TextLight
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // Gramophone Vinyl Record / Album Disc
+                // Rotating Gramophone Disc Platter
                 Box(
-                    modifier = Modifier.size(240.dp),
+                    modifier = Modifier
+                        .size(232.dp)
+                        .shadow(22.dp, CircleShape, ambientColor = SageGreen, spotColor = Color.Black)
+                        .clip(CircleShape)
+                        .background(Color(0xFF141812))
+                        .border(3.dp, SageGreen.copy(alpha = 0.55f), CircleShape)
+                        .rotate(if (playerState.isPlaying) rotation else 0f),
                     contentAlignment = Alignment.Center
                 ) {
-                    OgmBrandEmblem(
-                        isPlaying = playerState.isPlaying,
-                        size = 236.dp,
-                        badgeFrame = false
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_ogm_logo),
+                        contentDescription = "Gramophone Vinyl Disc",
+                        modifier = Modifier.fillMaxSize()
                     )
+
                     if (!track.thumbnailUrl.isNullOrEmpty()) {
                         Box(
                             modifier = Modifier
-                                .size(76.dp)
+                                .size(82.dp)
                                 .clip(CircleShape)
-                                .rotate(if (playerState.isPlaying) rotation else 0f),
+                                .border(2.dp, Color(0xFFF6E7B2), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             AsyncImage(
@@ -215,18 +218,26 @@ fun FullPlayerDialog(
                             )
                         }
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(DarkBg)
+                            .border(2.dp, Color(0xFFF6E7B2), CircleShape)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Real-Time Visual Frequency Equalizer Bars
+                // Analog VU Frequency Equalizer Window
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(DarkCard)
-                        .border(1.dp, DarkCardBorder, RoundedCornerShape(14.dp))
+                        .background(Color(0xFF0A0C09))
+                        .border(1.dp, Color(0xFF2E3729), RoundedCornerShape(14.dp))
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                         .testTag("visual_frequency_equalizer")
                 ) {
@@ -236,16 +247,16 @@ fun FullPlayerDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "LIVE VISUAL FREQUENCY EQUALIZER",
-                            fontSize = 9.sp,
+                            text = "♪ ANALOG VU SPECTRUM",
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = SageGreen,
+                            color = Color(0xFFE2C986),
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "${track.sampleRateLabel} / ${track.bitDepthLabel} · ${track.bitrateKbps} kbps",
-                            fontSize = 9.sp,
-                            color = TextSubtle
+                            text = "${track.sampleRateLabel} · ${track.bitDepthLabel}",
+                            fontSize = 9.5.sp,
+                            color = SageGreen
                         )
                     }
 
@@ -254,7 +265,7 @@ fun FullPlayerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp),
+                            .height(36.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
@@ -266,35 +277,20 @@ fun FullPlayerDialog(
                                 val wave3 = sin(eqPhase * 0.85f + i * 0.7f)
                                 ((wave1 + wave2 + wave3 + 3f) / 6f).coerceIn(0.18f, 1.0f)
                             } else {
-                                0.15f
+                                0.16f
                             }
                             Box(
                                 modifier = Modifier
                                     .width(5.5.dp)
-                                    .height((38f * normalizedHeight).dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .height((36f * normalizedHeight).dp)
+                                    .clip(RoundedCornerShape(2.dp))
                                     .background(
                                         when {
-                                            normalizedHeight > 0.78f -> SageGreen
-                                            normalizedHeight > 0.48f -> SageGreen.copy(alpha = 0.75f)
+                                            normalizedHeight > 0.76f -> Color(0xFFE2C986)
+                                            normalizedHeight > 0.45f -> SageGreen
                                             else -> SageGreen.copy(alpha = 0.45f)
                                         }
                                     )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        listOf("32Hz", "125Hz", "500Hz", "2kHz", "8kHz", "24kHz", "96kHz").forEach { band ->
-                            Text(
-                                text = band,
-                                fontSize = 8.sp,
-                                color = TextSubtle
                             )
                         }
                     }
@@ -309,7 +305,7 @@ fun FullPlayerDialog(
                 ) {
                     Text(
                         text = track.title,
-                        fontSize = 19.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = PlayfairDisplayFontFamily,
                         color = TextLight,
@@ -320,8 +316,8 @@ fun FullPlayerDialog(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = track.artist,
-                        fontSize = 13.5.sp,
-                        color = TextMuted,
+                        fontSize = 13.sp,
+                        color = Color(0xFFE2C986),
                         textAlign = TextAlign.Center
                     )
 
@@ -335,7 +331,7 @@ fun FullPlayerDialog(
                             FilterChip(
                                 selected = false,
                                 onClick = { onSaveToDeviceMusic(track) },
-                                label = { Text("Save to Music Folder", fontSize = 11.sp, color = TextLight) },
+                                label = { Text("⤓ Save Master", fontSize = 11.sp, color = TextLight) },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Default.FolderSpecial,
@@ -361,7 +357,7 @@ fun FullPlayerDialog(
                         FilterChip(
                             selected = playerState.playbackSpeed != 1.0f,
                             onClick = { onSetSpeed(nextSpeed) },
-                            label = { Text("${playerState.playbackSpeed}x", fontSize = 11.sp) },
+                            label = { Text("PITCH ${playerState.playbackSpeed}x", fontSize = 11.sp) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.FastForward,
@@ -417,95 +413,129 @@ fun FullPlayerDialog(
                     ) {
                         Text(
                             text = playerState.formattedCurrentTime,
-                            fontSize = 12.sp,
-                            color = TextSubtle
+                            fontSize = 11.5.sp,
+                            color = TextMuted
                         )
                         Text(
                             text = playerState.formattedDuration,
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             color = TextSubtle
                         )
                     }
                 }
 
-                // Main Playback Controls
+                // Tactile Cassette Deck Transport Bank
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF0B0D0A))
+                        .border(1.dp, Color(0xFF262C22), RoundedCornerShape(16.dp))
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onToggleShuffle,
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Shuffle,
-                            contentDescription = "Shuffle",
-                            tint = if (playerState.isShuffle) SageGreen else TextSubtle,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onPrevious,
-                        modifier = Modifier.size(52.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous Track",
-                            tint = TextLight,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onTogglePlayPause,
+                    // Shuffle Key
+                    Box(
                         modifier = Modifier
-                            .size(72.dp)
-                            .shadow(12.dp, CircleShape, ambientColor = SageGreen, spotColor = SageGreen)
-                            .clip(CircleShape)
+                            .weight(0.8f)
+                            .shadow(3.dp, RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (playerState.isShuffle) SageGreenDeep else DarkCardHover)
+                            .border(1.dp, if (playerState.isShuffle) SageGreen else Color(0xFF47543D), RoundedCornerShape(9.dp))
+                            .clickable { onToggleShuffle() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🔀",
+                            fontSize = 14.sp,
+                            color = if (playerState.isShuffle) SageGreen else TextMuted
+                        )
+                    }
+
+                    // REW Key
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .shadow(4.dp, RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF47543D), RoundedCornerShape(9.dp))
+                            .clickable { onPrevious() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⏮ REW",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextLight
+                        )
+                    }
+
+                    // PLAY / PAUSE Master Key
+                    Box(
+                        modifier = Modifier
+                            .weight(1.4f)
+                            .shadow(6.dp, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(SageGreen)
-                            .testTag("full_player_play_pause")
+                            .border(1.dp, Color(0xFFE8F7DC), RoundedCornerShape(10.dp))
+                            .clickable { onTogglePlayPause() }
+                            .padding(vertical = 13.dp)
+                            .testTag("full_player_play_pause"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playerState.isPlaying) "Pause" else "Play",
-                            tint = OnSageGreen,
-                            modifier = Modifier.size(38.dp)
+                        Text(
+                            text = if (playerState.isPlaying) "❚❚ PAUSE" else "▶ PLAY",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = OnSageGreen
                         )
                     }
 
-                    IconButton(
-                        onClick = onNext,
-                        modifier = Modifier.size(52.dp)
+                    // FF Key
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .shadow(4.dp, RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF47543D), RoundedCornerShape(9.dp))
+                            .clickable { onNext() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next Track",
-                            tint = TextLight,
-                            modifier = Modifier.size(32.dp)
+                        Text(
+                            text = "FF ⏭",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextLight
                         )
                     }
 
-                    IconButton(
-                        onClick = onCycleLoop,
-                        modifier = Modifier.size(44.dp)
+                    // Loop Key
+                    Box(
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .shadow(3.dp, RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (playerState.loopMode != LoopMode.OFF) SageGreenDeep else DarkCardHover)
+                            .border(1.dp, if (playerState.loopMode != LoopMode.OFF) SageGreen else Color(0xFF47543D), RoundedCornerShape(9.dp))
+                            .clickable { onCycleLoop() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        val (icon, tint) = when (playerState.loopMode) {
-                            LoopMode.OFF -> Icons.Default.Repeat to TextSubtle
-                            LoopMode.ALL -> Icons.Default.Repeat to SageGreen
-                            LoopMode.ONE -> Icons.Default.RepeatOne to SageGreen
-                        }
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = "Repeat Mode",
-                            tint = tint,
-                            modifier = Modifier.size(24.dp)
+                        Text(
+                            text = if (playerState.loopMode == LoopMode.ONE) "🔂" else "🔁",
+                            fontSize = 14.sp,
+                            color = if (playerState.loopMode != LoopMode.OFF) SageGreen else TextMuted
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
@@ -521,8 +551,9 @@ fun FullPlayerDialog(
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Text(
-                    text = "Playing Queue (${playerState.queue.size} songs)",
+                    text = "Cassette Rack (${playerState.queue.size})",
                     fontSize = 18.sp,
+                    fontFamily = PlayfairDisplayFontFamily,
                     fontWeight = FontWeight.Bold,
                     color = TextLight
                 )

@@ -4,7 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -13,7 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,38 +48,35 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.AudiophileFormat
 import com.example.ui.components.DownloadDialog
 import com.example.ui.components.FullPlayerDialog
 import com.example.ui.components.LyricsDialog
 import com.example.ui.components.NowPlayingBar
-import com.example.ui.components.StorageBanner
 import com.example.ui.components.TrackCard
 import com.example.ui.components.YouTubeBrowserSheet
 import com.example.ui.theme.DarkBg
+import com.example.ui.theme.DarkCard
+import com.example.ui.theme.DarkCardBorder
+import com.example.ui.theme.DarkCardHover
 import com.example.ui.theme.OnSageGreen
 import com.example.ui.theme.PlayfairDisplayFontFamily
 import com.example.ui.theme.SageGreen
 import com.example.ui.theme.SageGreenDeep
 import com.example.ui.theme.TextLight
 import com.example.ui.theme.TextMuted
-import com.example.ui.theme.TextSubtle
+import kotlin.math.sin
 
 @Composable
 fun OgmApp(
@@ -85,7 +84,6 @@ fun OgmApp(
     modifier: Modifier = Modifier
 ) {
     val tracks by viewModel.tracks.collectAsState()
-    val storageInfo by viewModel.storageInfo.collectAsState()
     val playerState by viewModel.playerState.collectAsState()
     val isDownloading by viewModel.isDownloading.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
@@ -98,6 +96,25 @@ fun OgmApp(
     val prefilledUrl by viewModel.prefilledUrl.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "gramophone_vibes")
+    val discRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 14000, easing = LinearEasing)
+        ),
+        label = "discRotation"
+    )
+    val vuPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28318f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 950, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "vuPhase"
+    )
 
     LaunchedEffect(userMessage) {
         userMessage?.let {
@@ -142,11 +159,11 @@ fun OgmApp(
                 .padding(innerPadding)
                 .statusBarsPadding()
         ) {
-            // Header (.app-header)
+            // Gramophone Header & Cassette Tuner Key
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -154,193 +171,312 @@ fun OgmApp(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    OgmBrandEmblem(
-                        isPlaying = playerState.isPlaying,
-                        size = 48.dp,
-                        modifier = Modifier.clickable {
-                            if (playerState.currentTrack != null) {
-                                viewModel.openFullPlayer()
-                            } else {
-                                viewModel.player.togglePlayPause()
-                            }
-                        }
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .shadow(8.dp, RoundedCornerShape(13.dp), ambientColor = SageGreen, spotColor = Color.Black)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(Color(0xFF141813))
+                            .border(1.dp, Color(0x55B8D99E), RoundedCornerShape(13.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_ogm_logo),
+                            contentDescription = "Open Grace Music Gramophone",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .rotate(if (playerState.isPlaying) discRotation else 0f)
+                        )
+                    }
 
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (playerState.isPlaying) SageGreen else Color(0xFFE2C986))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Grace Music",
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = com.example.ui.theme.ItalianaFontFamily,
+                                color = TextLight,
+                                letterSpacing = 0.75.sp
+                            )
+                        }
                         Text(
-                            text = "Open Grace Music",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = com.example.ui.theme.ItalianaFontFamily,
-                            color = TextLight,
-                            letterSpacing = 0.75.sp
-                        )
-                        Text(
-                            text = "Audiophile Lossless · FLAC · ALAC · DSD · MP3",
-                            fontSize = 11.sp,
-                            color = TextMuted
+                            text = "GRAMOPHONE & MASTER CASSETTE DECK",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFE2C986),
+                            letterSpacing = 0.8.sp
                         )
                     }
                 }
 
+                // Tactile Cassette Deck YouTube Tuner Key
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(SageGreenDeep)
+                        .shadow(4.dp, RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(DarkCardHover)
+                        .border(1.dp, Color(0xFF4A583F), RoundedCornerShape(10.dp))
                         .clickable { viewModel.openYouTubeBrowser() }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                         .testTag("youtube_browser_btn"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "YouTube ➔",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SageGreen
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(SageGreen)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "▶ TUNER",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SageGreen
+                        )
+                    }
                 }
             }
 
-            // Headline
-            Text(
-                text = "Your music. Your quiet place.",
-                fontSize = 15.sp,
-                fontStyle = FontStyle.Italic,
-                fontFamily = PlayfairDisplayFontFamily,
-                color = TextLight,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Action Buttons
-            Row(
+            // Gramophone Turntable & Analog VU Sanctuary Hero Card
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 18.dp)
+                    .shadow(10.dp, RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(DarkCard)
+                    .border(1.dp, DarkCardBorder, RoundedCornerShape(22.dp))
+                    .padding(16.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .shadow(6.dp, RoundedCornerShape(999.dp), ambientColor = SageGreen, spotColor = SageGreen)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(SageGreen)
-                        .clickable { filePickerLauncher.launch("audio/*") }
-                        .padding(vertical = 12.dp)
-                        .testTag("importBtn"),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = "＋ Import audio files",
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = OnSageGreen
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "“Your music. Your quiet place.”",
+                            fontSize = 18.sp,
+                            fontStyle = FontStyle.Italic,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = PlayfairDisplayFontFamily,
+                            color = TextLight
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = playerState.currentTrack?.let { "♪ ${it.title}" }
+                                ?: "♪ FLAC 24-BIT · ALAC · DSD · MP3",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFE2C986),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Live Analog VU Spectrum Ribbon
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth(0.92f)
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF0A0C09))
+                                .border(1.dp, Color(0xFF283022), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            for (i in 0 until 18) {
+                                val h = if (playerState.isPlaying) {
+                                    val w1 = sin(vuPhase + i * 0.45f)
+                                    val w2 = sin(vuPhase * 1.5f - i * 0.3f)
+                                    ((w1 + w2 + 2f) / 4f).coerceIn(0.22f, 1.0f)
+                                } else {
+                                    0.22f + (i % 3) * 0.08f
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(4.dp)
+                                        .height((18f * h).dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(
+                                            if (h > 0.74f) Color(0xFFE2C986) else SageGreen
+                                        )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Rotating Gramophone Disc Centerpiece
+                    Box(
+                        modifier = Modifier
+                            .size(84.dp)
+                            .shadow(12.dp, CircleShape, ambientColor = SageGreen, spotColor = Color.Black)
+                            .clip(CircleShape)
+                            .background(Color(0xFF121611))
+                            .border(2.dp, SageGreen.copy(alpha = 0.65f), CircleShape)
+                            .clickable {
+                                if (playerState.currentTrack != null) {
+                                    viewModel.openFullPlayer()
+                                } else if (tracks.isNotEmpty()) {
+                                    viewModel.playTrack(tracks.first())
+                                }
+                            }
+                            .rotate(if (playerState.isPlaying) discRotation else 0f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_ogm_logo),
+                            contentDescription = "Gramophone Vinyl Disc",
+                            modifier = Modifier.size(84.dp)
+                        )
+                    }
                 }
 
-                Box(
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Tactile Cassette Deck Transport Key Bank
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(999.dp))
-                        .border(1.5.dp, SageGreen, RoundedCornerShape(999.dp))
-                        .clickable { viewModel.openDownloadDialog() }
-                        .padding(vertical = 11.5.dp)
-                        .testTag("urlBtn"),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF0B0D0A))
+                        .border(1.dp, Color(0xFF262C22), RoundedCornerShape(14.dp))
+                        .padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "🔗 Import from URL",
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SageGreen
-                    )
+                    // Cassette Key 1: EJECT / IMPORT AUDIO
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .shadow(4.dp, RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(SageGreen)
+                            .border(1.dp, Color(0xFFE8F7DC), RoundedCornerShape(9.dp))
+                            .clickable { filePickerLauncher.launch("audio/*") }
+                            .padding(vertical = 11.dp)
+                            .testTag("importBtn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⏏ IMPORT AUDIO",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = OnSageGreen
+                        )
+                    }
+
+                    // Cassette Key 2: RECORD FROM URL
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .shadow(4.dp, RoundedCornerShape(9.dp))
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF515E47), RoundedCornerShape(9.dp))
+                            .clickable { viewModel.openDownloadDialog() }
+                            .padding(vertical = 11.dp)
+                            .testTag("urlBtn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFF59E0B))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "⏺ RECORD URL",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextLight
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            StorageBanner(
-                storageInfo = storageInfo,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Import audio you own or are licensed to use — Lossless FLAC (24-bit/96kHz), ALAC, DSD Hi-Res, WAV, or 320kbps MP3. Your library is saved offline on this Android device.",
-                fontSize = 11.5.sp,
-                color = TextSubtle,
-                lineHeight = 16.sp,
-                modifier = Modifier.padding(horizontal = 18.dp)
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             if (tracks.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 28.dp),
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(DarkCard)
+                            .border(1.dp, DarkCardBorder, RoundedCornerShape(22.dp))
+                            .padding(28.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(92.dp)
+                                .size(76.dp)
                                 .clip(CircleShape)
-                                .background(SageGreenDeep),
+                                .background(SageGreenDeep)
+                                .border(1.5.dp, SageGreen.copy(alpha = 0.5f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "♪",
-                                fontSize = 42.sp,
-                                color = SageGreen,
-                                fontWeight = FontWeight.Normal
+                                fontSize = 36.sp,
+                                color = SageGreen
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = "Your library awaits",
-                            fontSize = 20.sp,
+                            text = "Insert Your First Master Tape",
+                            fontSize = 18.sp,
+                            fontFamily = PlayfairDisplayFontFamily,
                             fontWeight = FontWeight.Bold,
                             color = TextLight
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Convert and keep the music you own in studio-grade Lossless FLAC, ALAC, DSD, or MP3. Once saved, tracks play anytime — even offline.",
-                            fontSize = 13.5.sp,
-                            color = TextMuted,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 21.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(SageGreenDeep)
+                                .shadow(4.dp, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SageGreen)
+                                .border(1.dp, Color(0xFFE8F7DC), RoundedCornerShape(10.dp))
                                 .clickable { viewModel.scanDeviceMusic() }
-                                .padding(horizontal = 18.dp, vertical = 9.dp)
+                                .padding(horizontal = 20.dp, vertical = 11.dp)
                                 .testTag("scan_phone_btn"),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Scan phone Music folder",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = SageGreen
+                                text = "⏏ SCAN PHONE MUSIC",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = OnSageGreen
                             )
                         }
                     }
@@ -351,10 +487,10 @@ fun OgmApp(
                         .fillMaxSize()
                         .testTag("trackGrid"),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(tracks, key = { it.id }) { track ->
-                        val isPlayingThis = playerState.currentTrack?.id == track.id
+                        val isPlayingThis = playerState.currentTrack?.id == track.id && playerState.isPlaying
                         TrackCard(
                             track = track,
                             isPlayingThis = isPlayingThis,
@@ -443,199 +579,3 @@ fun OgmApp(
         )
     }
 }
-
-/**
- * Reusable Audiophile Gramophone & Vinyl Disc Emblem drawn with Jetpack Compose Canvas.
- * Smoothly rotates the vinyl record grooves & golden-sage center label underneath the
- * vintage brass gramophone horn and stylus whenever `isPlaying == true`.
- */
-@Composable
-fun OgmBrandEmblem(
-    isPlaying: Boolean,
-    modifier: Modifier = Modifier,
-    size: Dp = 48.dp,
-    badgeFrame: Boolean = true
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "gramophone_disc_spin")
-    val spinDegrees by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 12000, easing = LinearEasing)
-        ),
-        label = "gramophone_rotation"
-    )
-    val currentAngle = if (isPlaying) spinDegrees else 0f
-
-    Box(
-        modifier = modifier
-            .size(size)
-            .then(
-                if (badgeFrame) {
-                    Modifier
-                        .shadow(8.dp, RoundedCornerShape(13.dp), ambientColor = SageGreen, spotColor = Color.Black)
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(Color(0xFF141813))
-                        .border(1.dp, Color(0x55B8D99E), RoundedCornerShape(13.dp))
-                } else {
-                    Modifier
-                }
-            )
-            .testTag("ogm_gramophone_emblem"),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = this.size.width
-            val h = this.size.height
-            val discCenter = Offset(w * 0.46f, h * 0.54f)
-            val discRadius = w * 0.37f
-
-            // 1. Rotating Gramophone Vinyl Disc Layer
-            rotate(degrees = currentAngle, pivot = discCenter) {
-                drawCircle(
-                    color = Color(0xFF121611),
-                    radius = discRadius,
-                    center = discCenter
-                )
-                drawCircle(
-                    color = Color(0xFFB8D99E).copy(alpha = 0.55f),
-                    radius = discRadius,
-                    center = discCenter,
-                    style = Stroke(width = w * 0.022f)
-                )
-
-                // Concentric Golden-Sage Vinyl Grooves
-                val grooveFractions = listOf(0.86f, 0.74f, 0.62f, 0.50f)
-                grooveFractions.forEachIndexed { idx, frac ->
-                    drawCircle(
-                        color = if (idx % 2 == 0) Color(0xFFB8D99E).copy(alpha = 0.25f)
-                        else Color(0xFFE8D8A0).copy(alpha = 0.22f),
-                        radius = discRadius * frac,
-                        center = discCenter,
-                        style = Stroke(width = w * 0.012f)
-                    )
-                }
-
-                // Specular Vinyl Sheen Arcs (make rotation visually unmistakable)
-                val arcRadius = discRadius * 0.76f
-                drawArc(
-                    color = Color(0xFFF6E7B2).copy(alpha = 0.42f),
-                    startAngle = 210f,
-                    sweepAngle = 48f,
-                    useCenter = false,
-                    topLeft = Offset(discCenter.x - arcRadius, discCenter.y - arcRadius),
-                    size = Size(arcRadius * 2f, arcRadius * 2f),
-                    style = Stroke(width = w * 0.026f, cap = StrokeCap.Round)
-                )
-                drawArc(
-                    color = Color(0xFFF6E7B2).copy(alpha = 0.36f),
-                    startAngle = 30f,
-                    sweepAngle = 48f,
-                    useCenter = false,
-                    topLeft = Offset(discCenter.x - arcRadius, discCenter.y - arcRadius),
-                    size = Size(arcRadius * 2f, arcRadius * 2f),
-                    style = Stroke(width = w * 0.026f, cap = StrokeCap.Round)
-                )
-
-                // Warm Sage-and-Gold Center Record Label
-                val labelRadius = discRadius * 0.36f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFFF3E3AD), Color(0xFFB8D99E), Color(0xFF4F6B3E)),
-                        center = discCenter,
-                        radius = labelRadius
-                    ),
-                    radius = labelRadius,
-                    center = discCenter
-                )
-                // 4 Cardinal Rotation Dots on Center Label
-                val dotDist = labelRadius * 0.68f
-                val dotR = w * 0.018f
-                drawCircle(Color(0xFF141812), radius = dotR, center = Offset(discCenter.x, discCenter.y - dotDist))
-                drawCircle(Color(0xFF141812), radius = dotR, center = Offset(discCenter.x + dotDist, discCenter.y))
-                drawCircle(Color(0xFF141812), radius = dotR, center = Offset(discCenter.x, discCenter.y + dotDist))
-                drawCircle(Color(0xFF141812), radius = dotR, center = Offset(discCenter.x - dotDist, discCenter.y))
-
-                // Center Spindle Hole
-                drawCircle(
-                    color = Color(0xFF0E110D),
-                    radius = discRadius * 0.09f,
-                    center = discCenter
-                )
-            }
-
-            // 2. Vintage Brass & Golden-Sage Gramophone Horn & Tonearm Overlay
-            val pivot = Offset(w * 0.84f, h * 0.41f)
-            drawCircle(
-                color = Color(0xFFD4B86A),
-                radius = w * 0.055f,
-                center = pivot
-            )
-            drawCircle(
-                color = Color(0xFF141812),
-                radius = w * 0.024f,
-                center = pivot
-            )
-
-            // Gramophone Horn Bell Path
-            val hornPath = Path().apply {
-                moveTo(pivot.x, pivot.y)
-                cubicTo(
-                    w * 0.90f, h * 0.28f,
-                    w * 0.78f, h * 0.14f,
-                    w * 0.42f, h * 0.11f
-                )
-                lineTo(w * 0.44f, h * 0.36f)
-                cubicTo(
-                    w * 0.64f, h * 0.34f,
-                    w * 0.78f, h * 0.32f,
-                    pivot.x, pivot.y
-                )
-                close()
-            }
-            drawPath(
-                path = hornPath,
-                brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFFF6E7B2), Color(0xFFD4B86A), Color(0xFFB8D99E))
-                )
-            )
-
-            // Horn Acoustic Mouth Opening
-            drawOval(
-                color = Color(0xFF1C2318),
-                topLeft = Offset(w * 0.34f, h * 0.09f),
-                size = Size(w * 0.17f, h * 0.28f)
-            )
-            drawOval(
-                color = Color(0xFFF6E7B2),
-                topLeft = Offset(w * 0.34f, h * 0.09f),
-                size = Size(w * 0.17f, h * 0.28f),
-                style = Stroke(width = w * 0.022f)
-            )
-
-            // Tonearm & Stylus Needle Riding on Vinyl Grooves
-            val elbow = Offset(w * 0.76f, h * 0.62f)
-            val stylus = Offset(w * 0.63f, h * 0.69f)
-            drawLine(
-                color = Color(0xFFE8D8A0),
-                start = pivot,
-                end = elbow,
-                strokeWidth = w * 0.032f,
-                cap = StrokeCap.Round
-            )
-            drawLine(
-                color = Color(0xFFE8D8A0),
-                start = elbow,
-                end = stylus,
-                strokeWidth = w * 0.028f,
-                cap = StrokeCap.Round
-            )
-            drawCircle(
-                color = if (isPlaying) Color(0xFFB8D99E) else Color(0xFFF6E7B2),
-                radius = w * 0.034f,
-                center = stylus
-            )
-        }
-    }
-}
-

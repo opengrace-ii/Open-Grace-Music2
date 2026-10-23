@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -32,15 +33,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,6 +77,7 @@ import com.example.ui.theme.DarkCard
 import com.example.ui.theme.DarkCardBorder
 import com.example.ui.theme.DarkCardHover
 import com.example.ui.theme.OnSageGreen
+import com.example.ui.theme.PlayfairDisplayFontFamily
 import com.example.ui.theme.SageGreen
 import com.example.ui.theme.SageGreenDeep
 import com.example.ui.theme.TextLight
@@ -118,7 +117,6 @@ fun DownloadDialog(
     val context = LocalContext.current
     var urlInput by remember(initialUrl) { mutableStateOf(initialUrl ?: "") }
     var selectedFormat by remember { mutableStateOf(AudiophileFormat.FLAC_24) }
-    var rightsChecked by remember { mutableStateOf(true) }
     var saveToMusicFolder by remember { mutableStateOf(true) }
     var clipboardSuggestion by remember { mutableStateOf<String?>(null) }
     var showPreviewPlayer by remember { mutableStateOf(true) }
@@ -244,25 +242,23 @@ fun DownloadDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(SageGreenDeep),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("♪", color = SageGreen, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        }
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF59E0B))
+                        )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Audiophile Lossless Converter",
-                                fontSize = 17.sp,
+                                text = "Master Tape Deck Recorder",
+                                fontSize = 18.sp,
+                                fontFamily = PlayfairDisplayFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 color = TextLight
                             )
                             Text(
-                                text = "FLAC 24-bit/192kHz · ALAC · DSD 64 · WAV · MP3 320k",
+                                text = "${selectedFormat.displayName} · ${selectedFormat.specBadge}",
                                 fontSize = 11.sp,
-                                color = TextMuted
+                                color = Color(0xFFE2C986)
                             )
                         }
                     }
@@ -282,30 +278,20 @@ fun DownloadDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // URL Input Field with Paste button
-                Text(
-                    text = "PASTE YOUTUBE OR AUDIO LINK",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextSubtle,
-                    letterSpacing = 0.5.sp
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
+                // URL Slot + Tactile Paste Key
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(DarkCardHover)
-                        .border(1.dp, DarkCardBorder, RoundedCornerShape(12.dp))
+                        .background(Color(0xFF0A0C09))
+                        .border(1.dp, Color(0xFF2E3729), RoundedCornerShape(12.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
                         if (urlInput.isEmpty()) {
                             Text(
-                                text = "https://www.youtube.com/watch?v=...",
+                                text = "Paste YouTube or Audio URL...",
                                 fontSize = 13.sp,
                                 color = TextSubtle,
                                 maxLines = 1
@@ -327,8 +313,10 @@ fun DownloadDialog(
 
                     Box(
                         modifier = Modifier
+                            .shadow(3.dp, RoundedCornerShape(8.dp))
                             .clip(RoundedCornerShape(8.dp))
-                            .background(DarkCardBorder)
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF4C5A43), RoundedCornerShape(8.dp))
                             .clickable(enabled = !isDownloading) {
                                 try {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -351,9 +339,9 @@ fun DownloadDialog(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Paste",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                text = "PASTE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = SageGreen
                             )
                         }
@@ -375,7 +363,7 @@ fun DownloadDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "📋 Paste link from clipboard: ${clipboardSuggestion?.take(34)}...",
+                            text = "📋 Paste: ${clipboardSuggestion?.take(36)}...",
                             fontSize = 11.sp,
                             color = SageGreen,
                             maxLines = 1,
@@ -386,31 +374,14 @@ fun DownloadDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // AUDIOPHILE FORMAT & RESOLUTION SELECTOR
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "AUDIOPHILE FORMAT & RESOLUTION SELECTOR",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSubtle,
-                        letterSpacing = 0.5.sp
-                    )
-                    Text(
-                        text = "${selectedFormat.bitDepthLabel} / ${selectedFormat.sampleRateLabel}",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = SageGreen
-                    )
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-
+                // Tactile Tape Bias / Format Selector Keys
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF0B0D0A))
+                        .border(1.dp, Color(0xFF262C22), RoundedCornerShape(12.dp))
+                        .padding(6.dp)
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -418,12 +389,13 @@ fun DownloadDialog(
                         val isSelected = selectedFormat == fmt
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .shadow(if (isSelected) 1.dp else 4.dp, RoundedCornerShape(9.dp))
+                                .clip(RoundedCornerShape(9.dp))
                                 .background(if (isSelected) SageGreen else DarkCardHover)
                                 .border(
                                     width = 1.dp,
-                                    color = if (isSelected) SageGreen else DarkCardBorder,
-                                    shape = RoundedCornerShape(10.dp)
+                                    color = if (isSelected) Color(0xFFE8F7DC) else Color(0xFF47543D),
+                                    shape = RoundedCornerShape(9.dp)
                                 )
                                 .clickable(enabled = !isDownloading) { selectedFormat = fmt }
                                 .padding(horizontal = 11.dp, vertical = 7.dp)
@@ -493,7 +465,7 @@ fun DownloadDialog(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = "${res.author ?: "YouTube"} · ID: ${res.videoId}",
+                                        text = "${res.author ?: "YouTube"} · ${selectedFormat.code}",
                                         fontSize = 10.5.sp,
                                         color = SageGreen,
                                         maxLines = 1,
@@ -507,7 +479,7 @@ fun DownloadDialog(
                                 ) {
                                     Icon(
                                         imageVector = if (showPreviewPlayer) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = "Toggle Preview",
+                                        contentDescription = "Toggle Monitor",
                                         tint = SageGreen,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -520,7 +492,7 @@ fun DownloadDialog(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(180.dp),
+                                    .height(175.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = Color.Black),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
@@ -572,30 +544,8 @@ fun DownloadDialog(
                                     update = { wv ->
                                         previewWebView = wv
                                     },
-                                    modifier = Modifier.fillMaxWidth().height(180.dp)
+                                    modifier = Modifier.fillMaxWidth().height(175.dp)
                                 )
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(if (capturedStreamUrl != null) SageGreen else Color(0xFFE5A93C))
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (capturedStreamUrl != null) "✓ Master Stream Connected (${selectedFormat.code} Ready)" else "Playing preview & connecting ${selectedFormat.code} stream...",
-                                        fontSize = 11.sp,
-                                        color = if (capturedStreamUrl != null) SageGreen else TextMuted
-                                    )
-                                }
                             }
                         }
                     }
@@ -616,7 +566,7 @@ fun DownloadDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "✓ Valid direct audio link (${selectedFormat.displayName})",
+                                text = "✓ Signal Locked (${selectedFormat.displayName})",
                                 fontSize = 11.5.sp,
                                 color = SageGreen,
                                 fontWeight = FontWeight.SemiBold
@@ -640,19 +590,13 @@ fun DownloadDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Please enter a valid YouTube or direct audio link",
+                                text = "Enter a valid YouTube or audio URL",
                                 fontSize = 11.5.sp,
                                 color = Color(0xFFFFB4AB)
                             )
                         }
                     }
-                    is LinkValidationResult.Empty -> {
-                        Text(
-                            text = "Supports youtu.be, youtube.com/watch?v=..., and shorts links.",
-                            fontSize = 11.sp,
-                            color = TextSubtle
-                        )
-                    }
+                    is LinkValidationResult.Empty -> {}
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -664,8 +608,8 @@ fun DownloadDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Save directly to phone Music folder",
-                        fontSize = 12.5.sp,
+                        text = "Export .${selectedFormat.extension} to Phone Music folder",
+                        fontSize = 12.sp,
                         color = TextMuted
                     )
                     Switch(
@@ -677,27 +621,6 @@ fun DownloadDialog(
                             checkedTrackColor = SageGreen,
                             uncheckedTrackColor = DarkCardHover
                         )
-                    )
-                }
-
-                // Rights confirmation checkbox
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = rightsChecked,
-                        onCheckedChange = { rightsChecked = it },
-                        enabled = !isDownloading,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = SageGreen,
-                            checkmarkColor = OnSageGreen
-                        )
-                    )
-                    Text(
-                        text = "I own or have authorized access to download this media.",
-                        fontSize = 11.sp,
-                        color = TextMuted
                     )
                 }
 
@@ -725,13 +648,20 @@ fun DownloadDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 val isValid = validationResult is LinkValidationResult.ValidYouTube || validationResult is LinkValidationResult.ValidDirectAudio
-                val isButtonEnabled = !isDownloading && isValid && rightsChecked
+                val isButtonEnabled = !isDownloading && isValid
 
+                // Tactile Cassette Record Key
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .shadow(if (isButtonEnabled) 6.dp else 0.dp, RoundedCornerShape(11.dp))
+                        .clip(RoundedCornerShape(11.dp))
                         .background(if (isButtonEnabled) SageGreen else SageGreen.copy(alpha = 0.35f))
+                        .border(
+                            1.dp,
+                            if (isButtonEnabled) Color(0xFFE8F7DC) else DarkCardBorder,
+                            RoundedCornerShape(11.dp)
+                        )
                         .clickable(enabled = isButtonEnabled) {
                             val targetUrl = when (val res = validationResult) {
                                 is LinkValidationResult.ValidYouTube -> res.canonicalUrl
@@ -753,28 +683,19 @@ fun DownloadDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Converting ${selectedFormat.code} & Saving...",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
+                                text = "⏺ RECORDING ${selectedFormat.code}...",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
                                 color = OnSageGreen
                             )
                         }
                     } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Download,
-                                contentDescription = null,
-                                tint = if (isButtonEnabled) OnSageGreen else TextMuted,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Convert to ${selectedFormat.code} & Save",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isButtonEnabled) OnSageGreen else TextMuted
-                            )
-                        }
+                        Text(
+                            text = "⏺ RECORD ${selectedFormat.code} TO LIBRARY",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isButtonEnabled) OnSageGreen else TextMuted
+                        )
                     }
                 }
 
@@ -786,7 +707,7 @@ fun DownloadDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Cancel",
+                        text = "Close",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = TextMuted,
@@ -812,7 +733,7 @@ fun DownloadDialog(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Search YouTube in app ➔",
+                            text = "YouTube Studio Tuner ➔",
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = SageGreen

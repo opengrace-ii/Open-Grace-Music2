@@ -1,7 +1,13 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -38,11 +46,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.player.PlayerState
-import com.example.ui.OgmBrandEmblem
 import com.example.ui.theme.DarkCard
 import com.example.ui.theme.DarkCardBorder
 import com.example.ui.theme.DarkCardHover
 import com.example.ui.theme.OnSageGreen
+import com.example.ui.theme.PlayfairDisplayFontFamily
 import com.example.ui.theme.SageGreen
 import com.example.ui.theme.SageGreenDeep
 import com.example.ui.theme.TextLight
@@ -64,6 +72,16 @@ fun NowPlayingBar(
     var isSeeking by remember { mutableStateOf(false) }
     var seekFraction by remember { mutableFloatStateOf(0f) }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "bar_disc")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 12000, easing = LinearEasing)
+        ),
+        label = "rotation"
+    )
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -78,7 +96,7 @@ fun NowPlayingBar(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Row 1: Track Info (Thumbnail, Title, Status)
+            // Row 1: Spinning Gramophone Disc + Track Title + Cassette Transport Keys
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -87,121 +105,114 @@ fun NowPlayingBar(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp),
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(SageGreenDeep)
+                        .border(1.5.dp, SageGreen, CircleShape)
+                        .rotate(if (playerState.isPlaying) rotation else 0f),
                     contentAlignment = Alignment.Center
                 ) {
-                    OgmBrandEmblem(
-                        isPlaying = playerState.isPlaying,
-                        size = 44.dp
-                    )
+                    if (!track.thumbnailUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = track.thumbnailUrl,
+                            contentDescription = "Cover",
+                            modifier = Modifier.fillMaxWidth(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = "♪",
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SageGreen
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = track.title,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = PlayfairDisplayFontFamily,
+                        fontWeight = FontWeight.Bold,
                         color = TextLight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${playerState.formattedDuration} · ${if (track.savedToDeviceMusic) "saved in music ✓" else "offline ✓"}",
-                        fontSize = 11.5.sp,
-                        color = TextMuted,
+                        text = "${track.artist} · ${track.format}",
+                        fontSize = 11.sp,
+                        color = Color(0xFFE2C986),
                         maxLines = 1
                     )
                 }
-            }
 
-            // Row 2: Controls (Shuffle, Prev, Play 52dp circle, Next)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Shuffle Button
-                Box(
+                // Compact Cassette Deck Transport Bank
+                Row(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .clickable { onToggleShuffle() },
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(Color(0xFF0B0D0A))
+                        .border(1.dp, Color(0xFF262C22), RoundedCornerShape(11.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "🔀",
-                        fontSize = 17.sp,
-                        color = if (playerState.isShuffle) SageGreen else TextMuted
-                    )
-                }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF47543D), RoundedCornerShape(7.dp))
+                            .clickable { onPrevious() }
+                            .padding(horizontal = 9.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "⏮", fontSize = 13.sp, color = TextLight)
+                    }
 
-                Spacer(modifier = Modifier.width(20.dp))
+                    Box(
+                        modifier = Modifier
+                            .shadow(4.dp, RoundedCornerShape(7.dp))
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(SageGreen)
+                            .border(1.dp, Color(0xFFE8F7DC), RoundedCornerShape(7.dp))
+                            .clickable { onTogglePlayPause() }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .testTag("now_playing_play_pause"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (playerState.isPlaying) "❚❚" else "▶",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = OnSageGreen
+                        )
+                    }
 
-                // Previous Button
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .clickable { onPrevious() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "⏮",
-                        fontSize = 18.sp,
-                        color = TextLight
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(20.dp))
-
-                // Big Circular Play Button (52dp, Sage Green, Dark OnSageGreen icon)
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .shadow(8.dp, CircleShape, ambientColor = SageGreen, spotColor = SageGreen)
-                        .clip(CircleShape)
-                        .background(SageGreen)
-                        .clickable { onTogglePlayPause() }
-                        .testTag("now_playing_play_pause"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (playerState.isPlaying) "❚❚" else "▶",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = OnSageGreen
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(20.dp))
-
-                // Next Button
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .clickable { onNext() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "⏭",
-                        fontSize = 18.sp,
-                        color = TextLight
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF47543D), RoundedCornerShape(7.dp))
+                            .clickable { onNext() }
+                            .padding(horizontal = 9.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "⏭", fontSize = 13.sp, color = TextLight)
+                    }
                 }
             }
 
-            // Row 3: Seekbar (currentTime, slider, durationTime)
+            // Row 2: Analog Tape Scrubber
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = playerState.formattedCurrentTime,
-                    fontSize = 11.sp,
-                    color = TextSubtle,
+                    fontSize = 10.5.sp,
+                    color = TextMuted,
                     modifier = Modifier.width(34.dp)
                 )
 
@@ -223,13 +234,13 @@ fun NowPlayingBar(
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(24.dp)
+                        .height(22.dp)
                         .padding(horizontal = 4.dp)
                 )
 
                 Text(
                     text = playerState.formattedDuration,
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     color = TextSubtle,
                     modifier = Modifier.width(34.dp)
                 )
