@@ -731,6 +731,12 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    app.use((req, res, next) => {
+      if (req.path === '/sw.js') {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+      next();
+    });
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));

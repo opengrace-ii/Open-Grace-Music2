@@ -5,6 +5,9 @@ export interface ToastMessage {
   id: string;
   type: 'success' | 'error' | 'info';
   text: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  persist?: boolean;
 }
 
 interface ToastProps {
@@ -32,14 +35,26 @@ export const Toast: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
             {t.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0 text-[#86EFAC]" />}
             {t.type === 'error' && <AlertCircle className="w-4 h-4 shrink-0 text-[#F87171]" />}
             {t.type === 'info' && <Info className="w-4 h-4 shrink-0 text-[#B8D99E]" />}
-            <span className="truncate">{t.text}</span>
+            <span className="leading-snug">{t.text}</span>
           </div>
-          <button
-            onClick={() => onDismiss(t.id)}
-            className="p-1 rounded-full hover:bg-white/10 shrink-0 text-current"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {t.actionLabel && t.onAction && (
+              <button
+                type="button"
+                onClick={() => t.onAction?.()}
+                className="px-2.5 py-1 rounded-lg bg-[#b8d99e]/20 text-[#b8d99e] hover:bg-[#b8d99e]/30 font-semibold"
+              >
+                {t.actionLabel}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onDismiss(t.id)}
+              className="p-1 rounded-full hover:bg-white/10 text-current"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       ))}
     </div>

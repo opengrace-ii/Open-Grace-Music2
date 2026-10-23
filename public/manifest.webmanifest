@@ -1,9 +1,9 @@
 {
-  "id": "/",
+  "id": "/?source=pwa",
   "name": "Open Grace Music",
-  "short_name": "OGM",
-  "description": "Open Grace Music — Offline personal music library, audio extractor & converter, and audio player.",
-  "start_url": "/",
+  "short_name": "Open Grace Music",
+  "description": "Open Grace Music — Offline personal music library, audio extractor & converter, and audiophile player.",
+  "start_url": "/?v=2",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

@@ -85,6 +85,33 @@ app/src/main/java/com/example/
 
 ---
 
+## Installing on Android (Samsung S25 Ultra and others)
+
+### Recommended: Install as a PWA (works with Advanced Protection)
+
+Google **Advanced Protection** blocks sideloaded APKs that are not from Google Play or pre-installed app stores. **Add to Home screen** avoids that entirely:
+
+1. Open the site in **Chrome** on your phone.
+2. Menu (⋮) → **Install app** or **Add to Home screen**.
+3. Launch from your home screen — same gramophone UI, offline library, and converter (when the backend is available).
+
+Use the in-app **INSTALL / Samsung Install** button for step-by-step help.
+
+### Optional: Native APK sideload
+
+When Advanced Protection is **off** and **Auto Blocker** allows your install source:
+
+1. Download `OpenGraceMusic.apk` from the app or `/OpenGraceMusic.apk`.
+2. **Settings → Security → Install unknown apps** — allow **My Files** or **Chrome**.
+3. **Samsung Auto Blocker**: Settings → Security and privacy → Auto Blocker — allow installation from your chosen source for this install.
+4. Open the APK and tap Install. Play Protect may warn on sideload builds not from Play; only proceed if you trust this repository.
+
+If you see **“App blocked by Advanced Protection”**, sideloading cannot be enabled by the app — use the PWA path above or publish via Google Play / Samsung Galaxy Store.
+
+Set `VITE_GITHUB_REPO_URL` when building the web app to point the install guide at your fork’s GitHub URL.
+
+---
+
 ## Building & Running the Native Android App
 
 ### Prerequisites

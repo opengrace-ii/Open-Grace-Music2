@@ -1,21 +1,27 @@
 import React, { useState } from 'react';
 import {
   X,
-  Smartphone,
   Download,
   Code2,
   Terminal,
   CheckCircle2,
   Layers,
   Disc3,
+  Shield,
 } from 'lucide-react';
+import { GramophoneDiscLogo } from './GramophoneDiscLogo';
 
 interface AndroidProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenInstallGuide?: () => void;
 }
 
-export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen, onClose }) => {
+export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenInstallGuide,
+}) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'KOTLIN_CODE' | 'BUILD_INSTRUCTIONS'>('OVERVIEW');
 
   if (!isOpen) return null;
@@ -23,27 +29,25 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-3xl bg-[#171814] border border-[#292a24] rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col max-h-[92vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-[#292a24]">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-[#21291d] text-[#b8d99e] border border-[#3a4433]">
-              <Smartphone className="w-6 h-6" />
-            </div>
+            <GramophoneDiscLogo size={44} isPlaying={false} showHornOverlay={false} badgeFrame={false} />
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-serif-display text-lg font-bold text-[#eeeae2]">
-                  Pure Native Android App (APK & Studio Project)
+                  Open Grace Music — Native Android
                 </h3>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#21291d] text-[#b8d99e] border border-[#3a4433]">
                   Kotlin · Jetpack Compose
                 </span>
               </div>
               <p className="text-xs text-[#a3a198]">
-                Compiled Android APK + Unified Single-Repo Gradle Project with Lossless FLAC, ALAC, DSD & MP3
+                Compiled APK + unified Gradle project — lossless FLAC, ALAC, DSD & MP3
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#a3a198] hover:text-[#eeeae2] hover:bg-[#252820] transition-colors"
           >
@@ -51,9 +55,26 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
           </button>
         </div>
 
-        {/* Tab Switcher */}
+        {onOpenInstallGuide && (
+          <button
+            type="button"
+            onClick={onOpenInstallGuide}
+            className="mt-4 w-full p-3.5 rounded-2xl bg-[#1a2116] border border-[#3a4433] text-left hover:border-[#b8d99e]/40 transition-colors"
+          >
+            <p className="text-xs font-semibold text-[#b8d99e] flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              Samsung S25 / Play Protect / Advanced Protection?
+            </p>
+            <p className="text-[11px] text-[#a3a198] mt-1">
+              Open the install guide — recommended PWA (Add to Home screen) and step-by-step APK
+              sideload help.
+            </p>
+          </button>
+        )}
+
         <div className="flex items-center gap-2 mt-4 pb-2 border-b border-[#292a24]">
           <button
+            type="button"
             onClick={() => setActiveTab('OVERVIEW')}
             className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
               activeTab === 'OVERVIEW'
@@ -64,6 +85,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
             1-Tap APK & Source Download
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('BUILD_INSTRUCTIONS')}
             className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
               activeTab === 'BUILD_INSTRUCTIONS'
@@ -74,6 +96,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
             Gradle APK Build
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('KOTLIN_CODE')}
             className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
               activeTab === 'KOTLIN_CODE'
@@ -91,24 +114,25 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
               <div>
                 <h4 className="text-sm font-semibold text-[#b8d99e] flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#86efac]" />
-                  Verified Pure Native Android App — Compiled & Signed APK Ready
+                  Signed Android APK — built from this repository
                 </h4>
                 <p className="text-xs text-[#eeeae2] mt-1.5 leading-relaxed">
-                  Open Grace Music is built in a single unified repository containing the full Kotlin + Jetpack Compose Android application (`app/`, `build.gradle.kts`, `settings.gradle.kts`) compiled with Android SDK 36 & Gradle 9.3.1.
+                  Unified Kotlin + Jetpack Compose app (`app/`, Gradle 9) with Media3 playback,
+                  Room library, and MediaStore export. Not listed on Google Play yet — use the
+                  install guide if Play Protect or Advanced Protection blocks sideloading.
                 </p>
               </div>
 
-              {/* Direct APK Download */}
               <div className="p-3.5 rounded-xl bg-[#171814] border border-[#3a4433] flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold text-[#eeeae2] flex items-center gap-2">
-                    <span>OpenGraceMusic.apk (Compiled Android Package)</span>
+                    <span>OpenGraceMusic.apk</span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#21291d] text-[#b8d99e]">
-                      25 MB · Signed APK
+                      Signed APK
                     </span>
                   </p>
                   <p className="text-[11px] text-[#a3a198] mt-0.5">
-                    Install directly on any Android 7.0+ phone for native offline playback, MediaStore sync, and foreground notification controls.
+                    Native offline playback, lock-screen controls, and Music/OpenGraceMusic export.
                   </p>
                 </div>
 
@@ -122,14 +146,13 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
                 </a>
               </div>
 
-              {/* Android Studio Project ZIP */}
               <div className="p-3.5 rounded-xl bg-[#171814] border border-[#292a24] flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-[#eeeae2]">
                     OpenGraceMusic-Android.zip (Android Studio Source Project)
                   </p>
                   <p className="text-[11px] text-[#a3a198] mt-0.5">
-                    Complete unified Gradle project (`app/src/main/java/com/example/...`, Room SQLite, Compose UI, MediaStore)
+                    Complete unified Gradle project (`app/src/main/java/com/example/...`)
                   </p>
                 </div>
 
@@ -149,7 +172,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
                 <Disc3 className="w-4 h-4 text-[#b8d99e] mb-2" />
                 <h5 className="text-xs font-semibold text-[#eeeae2]">Lossless Audio Engine</h5>
                 <p className="text-[11px] text-[#a3a198] mt-1">
-                  24-bit/96kHz FLAC, ALAC (.m4a), 24-bit/192kHz DSD/PCM, WAV, and 320kbps MP3
+                  24-bit/96kHz FLAC, ALAC (.m4a), DSD/PCM, WAV, and 320kbps MP3
                 </p>
               </div>
 
@@ -157,7 +180,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
                 <Layers className="w-4 h-4 text-[#86efac] mb-2" />
                 <h5 className="text-xs font-semibold text-[#eeeae2]">Jetpack Compose UI</h5>
                 <p className="text-[11px] text-[#a3a198] mt-1">
-                  Dark Sage & Charcoal Material 3 UI with rotating vinyl turntable & live equalizer
+                  Gramophone turntable theme with live equalizer and cassette-style controls
                 </p>
               </div>
 
@@ -165,7 +188,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
                 <Code2 className="w-4 h-4 text-[#fbbf24] mb-2" />
                 <h5 className="text-xs font-semibold text-[#eeeae2]">Foreground Service</h5>
                 <p className="text-[11px] text-[#a3a198] mt-1">
-                  `OgmPlaybackService` lock-screen controls, Room DB, and Android `MediaStore` sync
+                  `OgmPlaybackService` lock-screen controls, Room DB, and MediaStore sync
                 </p>
               </div>
             </div>
@@ -181,7 +204,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
               </div>
               <ol className="list-decimal list-inside space-y-2 text-[#a3a198] leading-relaxed">
                 <li>
-                  Install the pre-compiled APK directly via <span className="text-[#b8d99e]">/OpenGraceMusic.apk</span>, or clone/unzip the unified repository.
+                  Install the pre-compiled APK via <span className="text-[#b8d99e]">/OpenGraceMusic.apk</span>, or clone/unzip the unified repository.
                 </li>
                 <li>
                   Build from the root directory with Gradle:
@@ -225,6 +248,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({ isOpen
 
         <div className="pt-2 text-right">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-[#21291d] text-[#eeeae2] hover:bg-[#2b3626] text-xs font-medium transition-colors"
           >

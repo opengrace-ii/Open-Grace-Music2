@@ -37,6 +37,7 @@ import { convertBlobToMp3 } from './services/mp3Converter';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { TrackCard } from './components/TrackCard';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FullPlayerModal } from './components/FullPlayerModal';
@@ -44,11 +45,13 @@ import { DownloadDialog } from './components/DownloadDialog';
 import { YouTubeBrowserModal } from './components/YouTubeBrowserModal';
 import { LyricsModal } from './components/LyricsModal';
 import { AndroidProjectModal } from './components/AndroidProjectModal';
+import { InstallGuideModal } from './components/InstallGuideModal';
 import { Toast, ToastMessage } from './components/Toast';
 import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 
 export default function App() {
-  const { isInstallable, install } = usePWAInstall();
+  const { isInstallable, install, isAndroid, isInstalled } = usePWAInstall();
+  const { updateReady, reloadForUpdate } = useServiceWorkerUpdate();
 
   // Library state
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -95,6 +98,8 @@ export default function App() {
   const [showYouTubeBrowser, setShowYouTubeBrowser] = useState(false);
   const [showFullPlayer, setShowFullPlayer] = useState(false);
   const [showAndroidProject, setShowAndroidProject] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const swUpdateToastShown = useRef(false);
   const [selectedTrackForLyrics, setSelectedTrackForLyrics] = useState<Track | null>(null);
   const [prefilledUrl, setPrefilledUrl] = useState<string | null>(null);
 
@@ -108,7 +113,11 @@ export default function App() {
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     setToasts((prev) => [...prev, { id, text, type }]);
     setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
+      setToasts((prev) => {
+        const toast = prev.find((t) => t.id === id);
+        if (toast?.persist) return prev;
+        return prev.filter((t) => t.id !== id);
+      });
     }, 4000);
   };
 
@@ -144,6 +153,23 @@ export default function App() {
   useEffect(() => {
     loadLibrary();
   }, []);
+
+  useEffect(() => {
+    if (!updateReady || swUpdateToastShown.current) return;
+    swUpdateToastShown.current = true;
+    const id = `sw-update-${Date.now().toString(36)}`;
+    setToasts((prev) => [
+      ...prev,
+      {
+        id,
+        type: 'info',
+        text: 'Update available — reload for the latest Open Grace Music UI.',
+        actionLabel: 'Reload',
+        onAction: () => reloadForUpdate(),
+        persist: true,
+      },
+    ]);
+  }, [updateReady, reloadForUpdate]);
 
   // Animate Hero Analog VU Spectrum Ribbon
   useEffect(() => {
@@ -815,15 +841,19 @@ export default function App() {
               <span className="hidden sm:inline">TUNER</span>
             </button>
 
-            <a
-              href="/OpenGraceMusic.apk"
-              download="OpenGraceMusic.apk"
+            <button
+              type="button"
+              onClick={() => setShowInstallGuide(true)}
               className="cassette-btn cassette-btn-primary px-3.5 py-1.5 text-xs font-mono"
-              title="Download Android APK"
+              title={
+                isAndroid
+                  ? 'Install on Samsung — PWA or APK help'
+                  : 'Download Android APK & install help'
+              }
             >
               <Download className="w-3.5 h-3.5" />
-              <span>APK</span>
-            </a>
+              <span>{isAndroid && !isInstalled ? 'INSTALL' : 'APK'}</span>
+            </button>
 
             <button
               onClick={() => setShowAndroidProject(true)}
@@ -926,15 +956,25 @@ export default function App() {
                   <span>⏺ RECORD URL</span>
                 </button>
 
-                {isInstallable && (
+                {isInstallable ? (
                   <button
-                    onClick={install}
+                    type="button"
+                    onClick={() => void install()}
                     className="cassette-btn px-3.5 py-2.5 text-xs font-mono text-[#b8d99e]"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>INSTALL</span>
+                    <span>INSTALL APP</span>
                   </button>
-                )}
+                ) : isAndroid && !isInstalled ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowInstallGuide(true)}
+                    className="cassette-btn px-3.5 py-2.5 text-xs font-mono text-[#b8d99e]"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>SAMSUNG INSTALL</span>
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -1522,10 +1562,21 @@ export default function App() {
         onClose={() => setSelectedTrackForLyrics(null)}
       />
 
-      {/* Pure Native Android APK & Studio Project Modal */}
       <AndroidProjectModal
         isOpen={showAndroidProject}
         onClose={() => setShowAndroidProject(false)}
+        onOpenInstallGuide={() => {
+          setShowAndroidProject(false);
+          setShowInstallGuide(true);
+        }}
+      />
+
+      <InstallGuideModal
+        isOpen={showInstallGuide}
+        onClose={() => setShowInstallGuide(false)}
+        isAndroid={isAndroid}
+        isInstallable={isInstallable}
+        onPwaInstall={install}
       />
 
       {/* Global Toast Notification System */}
