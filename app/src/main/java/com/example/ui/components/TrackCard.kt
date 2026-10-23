@@ -58,7 +58,11 @@ fun TrackCard(
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val songContent = LyricsGenerator.generate(track.title, track.artist)
+    val songContent = LyricsGenerator.generate(
+        title = track.title,
+        artist = track.artist,
+        forceInstrumental = if (track.isInstrumental) true else null
+    )
     val isLossless = track.format.uppercase() in listOf("FLAC", "ALAC", "DSD", "DSF", "WAV")
 
     Card(

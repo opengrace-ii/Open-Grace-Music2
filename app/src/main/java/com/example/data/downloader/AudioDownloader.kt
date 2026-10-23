@@ -182,6 +182,7 @@ class AudioDownloader(private val context: Context) {
                 cleanTitle = cleanTitle,
                 targetFormat = targetFormat,
                 cookies = cookies,
+                customHeaders = streamHeaders,
                 isYouTube = true,
                 onSuccess = { file, ext, type ->
                     targetFile = file
@@ -200,6 +201,7 @@ class AudioDownloader(private val context: Context) {
                     cleanTitle = cleanTitle,
                     targetFormat = targetFormat,
                     cookies = cookies,
+                    customHeaders = streamHeaders,
                     isYouTube = true,
                     onSuccess = { file, ext, type ->
                         targetFile = file
@@ -216,6 +218,7 @@ class AudioDownloader(private val context: Context) {
                 cleanTitle = cleanTitle,
                 targetFormat = targetFormat,
                 cookies = cookies,
+                customHeaders = streamHeaders,
                 isYouTube = false,
                 onSuccess = { file, ext, type ->
                     targetFile = file
@@ -255,7 +258,7 @@ class AudioDownloader(private val context: Context) {
                 title = mediaInfo.title,
                 artist = mediaInfo.artist,
                 album = "Open Grace Music · ${targetFormat.code} Master",
-                mimeType = contentType
+                mimeType = DeviceMusicHelper.resolveMimeType(contentType)
             )
             if (publicUri != null) {
                 publicUriString = publicUri.toString()
@@ -264,6 +267,8 @@ class AudioDownloader(private val context: Context) {
         }
 
         onProgress(1.0f, "Completed & saved ${targetFormat.code} offline ✓")
+
+        val isInstrumental = com.example.data.LyricsGenerator.isInstrumentalTrack(mediaInfo.title, mediaInfo.artist)
 
         Track(
             id = UUID.randomUUID().toString(),
@@ -282,6 +287,7 @@ class AudioDownloader(private val context: Context) {
             bitrateKbps = bitrateKbps,
             sampleRateHz = targetFormat.sampleRateHz,
             bitDepth = targetFormat.bitDepth,
+            isInstrumental = isInstrumental,
             addedAt = System.currentTimeMillis()
         )
     }
@@ -292,6 +298,7 @@ class AudioDownloader(private val context: Context) {
         cleanTitle: String,
         targetFormat: AudiophileFormat,
         cookies: String?,
+        customHeaders: Map<String, String>?,
         isYouTube: Boolean,
         onSuccess: (File, String, String) -> Unit,
         onProgress: (Float, String) -> Unit
@@ -302,6 +309,12 @@ class AudioDownloader(private val context: Context) {
                 .header("User-Agent", YouTubeStreamResolver.DEFAULT_USER_AGENT)
                 .header("Accept", "*/*")
                 .header("Accept-Language", "en-US,en;q=0.9")
+
+            customHeaders?.forEach { (key, value) ->
+                if (!key.equals("Range", ignoreCase = true) && !key.equals("Host", ignoreCase = true)) {
+                    reqBuilder.header(key, value)
+                }
+            }
 
             if (isYouTube) {
                 reqBuilder.header("Referer", "https://m.youtube.com/")
@@ -316,6 +329,13 @@ class AudioDownloader(private val context: Context) {
             val response: Response = client.newCall(reqBuilder.build()).execute()
             if (!response.isSuccessful || response.body == null) {
                 Log.w(TAG, "Stream response unsuccessful: code=${response.code}")
+                return false
+            }
+
+            val responseContentType = response.header("Content-Type")?.lowercase() ?: ""
+            if (responseContentType.contains("text/html")) {
+                Log.w(TAG, "Rejected HTML response Content-Type: $responseContentType")
+                response.close()
                 return false
             }
 
@@ -349,6 +369,7 @@ class AudioDownloader(private val context: Context) {
                 return true
             } else {
                 Log.w(TAG, "File too small: ${streamFile.length()} bytes")
+                runCatching { streamFile.delete() }
             }
         } catch (e: Exception) {
             Log.w(TAG, "executeStreamDownload error: ${e.message}")
@@ -394,8 +415,10 @@ class AudioDownloader(private val context: Context) {
             Log.w(TAG, "Error probing imported audio metadata", e)
         }
 
-        val ext = safeName.substringAfterLast('.', "MP3").uppercase()
-        val isLossless = ext == "FLAC" || ext == "ALAC" || ext == "WAV" || ext == "DSD" || ext == "DSF"
+        val rawExt = safeName.substringAfterLast('.', "MP3").uppercase()
+        val formatSpec = AudiophileFormat.fromCode(rawExt)
+        val normalizedFormat = if (rawExt in listOf("FLAC", "ALAC", "WAV", "DSD", "MP3")) rawExt else formatSpec.code
+        val isInstrumental = com.example.data.LyricsGenerator.isInstrumentalTrack(title, artist)
 
         Track(
             id = UUID.randomUUID().toString(),
@@ -404,15 +427,16 @@ class AudioDownloader(private val context: Context) {
             album = "Open Grace Music Imported",
             durationMs = durationMs,
             sizeBytes = targetFile.length(),
-            format = ext,
+            format = normalizedFormat,
             filePath = targetFile.absolutePath,
             uriString = Uri.fromFile(targetFile).toString(),
             source = TrackSource.LOCAL_IMPORT,
             savedToDeviceMusic = false,
             storageStatus = StorageStatus.PERSISTENT,
-            bitrateKbps = if (isLossless) 2304 else 320,
-            sampleRateHz = if (isLossless) 96000 else 48000,
-            bitDepth = if (isLossless) 24 else 16,
+            bitrateKbps = formatSpec.bitrateKbps,
+            sampleRateHz = formatSpec.sampleRateHz,
+            bitDepth = formatSpec.bitDepth,
+            isInstrumental = isInstrumental,
             addedAt = System.currentTimeMillis()
         )
     }

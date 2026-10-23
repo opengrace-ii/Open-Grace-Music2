@@ -260,7 +260,7 @@ fun DownloadDialog(
                                 color = TextLight
                             )
                             Text(
-                                text = "FLAC 24-bit · ALAC · DSD Hi-Res · MP3 320k",
+                                text = "FLAC 24-bit/192kHz · ALAC · DSD 64 · WAV · MP3 320k",
                                 fontSize = 11.sp,
                                 color = TextMuted
                             )
@@ -386,14 +386,26 @@ fun DownloadDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // AUDIOPHILE FORMAT SELECTOR
-                Text(
-                    text = "AUDIOPHILE MASTER FORMAT",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextSubtle,
-                    letterSpacing = 0.5.sp
-                )
+                // AUDIOPHILE FORMAT & RESOLUTION SELECTOR
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "AUDIOPHILE FORMAT & RESOLUTION SELECTOR",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSubtle,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "${selectedFormat.bitDepthLabel} / ${selectedFormat.sampleRateLabel}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SageGreen
+                    )
+                }
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
@@ -427,7 +439,7 @@ fun DownloadDialog(
                                 Text(
                                     text = fmt.specBadge,
                                     fontSize = 9.5.sp,
-                                    color = if (isSelected) OnSageGreen.copy(alpha = 0.8f) else TextMuted
+                                    color = if (isSelected) OnSageGreen.copy(alpha = 0.82f) else TextMuted
                                 )
                             }
                         }

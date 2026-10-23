@@ -238,12 +238,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _userMessage.value = "Local file not found on disk."
                 return@launch
             }
-            val mimeType = when (track.format.uppercase()) {
-                "FLAC" -> "audio/flac"
-                "ALAC" -> "audio/mp4"
-                "DSD", "WAV" -> "audio/wav"
-                else -> "audio/mpeg"
-            }
+            val mimeType = DeviceMusicHelper.resolveMimeType(track.format)
             val uri = DeviceMusicHelper.saveToSystemMusicFolder(
                 context = getApplication(),
                 sourceFile = file,

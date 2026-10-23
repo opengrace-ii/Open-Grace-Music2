@@ -19,9 +19,33 @@ import java.io.FileInputStream
 object DeviceMusicHelper {
     private const val TAG = "DeviceMusicHelper"
 
+    fun resolveMimeType(formatOrExtOrMime: String): String {
+        val lower = formatOrExtOrMime.trim().lowercase()
+        return when {
+            lower == "flac" || lower.endsWith(".flac") || lower.contains("audio/flac") -> "audio/flac"
+            lower == "alac" || lower == "m4a" || lower.endsWith(".m4a") || lower.contains("audio/mp4") || lower.contains("alac") -> "audio/mp4"
+            lower == "dsd" || lower == "dsf" || lower == "dff" || lower.endsWith(".dsf") || lower.endsWith(".dff") || lower.contains("dsf") || lower.contains("dsd") -> "audio/x-dsf"
+            lower == "wav" || lower.endsWith(".wav") || lower.contains("audio/wav") || lower.contains("audio/x-wav") -> "audio/wav"
+            else -> "audio/mpeg"
+        }
+    }
+
+    fun resolveExtension(formatOrMime: String): String {
+        val lower = formatOrMime.trim().lowercase()
+        return when {
+            lower.contains("flac") -> "flac"
+            lower.contains("alac") || lower.contains("mp4") || lower.contains("m4a") -> "m4a"
+            lower.contains("dsd") || lower.contains("dsf") || lower.contains("dff") -> "dsf"
+            lower.contains("wav") -> "wav"
+            lower.contains("webm") || lower.contains("opus") -> "webm"
+            lower.contains("ogg") -> "ogg"
+            else -> "mp3"
+        }
+    }
+
     /**
-     * Saves an audio file (FLAC, ALAC, DSD/WAV, MP3) to Android's public Music folder using MediaStore,
-     * making it instantly accessible to both OGM and any system music player.
+     * Saves an audio file (FLAC, ALAC, DSD, WAV, MP3) to Android's public Music folder using MediaStore,
+     * making it instantly accessible to both OGM and any system music player under Music/OpenGraceMusic.
      */
     suspend fun saveToSystemMusicFolder(
         context: Context,
@@ -33,16 +57,8 @@ object DeviceMusicHelper {
     ): Uri? = withContext(Dispatchers.IO) {
         try {
             val resolver = context.contentResolver
-            val lowerMime = mimeType.lowercase()
-            val ext = when {
-                lowerMime.contains("flac") -> "flac"
-                lowerMime.contains("alac") || lowerMime.contains("mp4") || lowerMime.contains("m4a") -> "m4a"
-                lowerMime.contains("dsd") || lowerMime.contains("dsf") -> "dsf"
-                lowerMime.contains("wav") -> "wav"
-                lowerMime.contains("webm") || lowerMime.contains("opus") -> "webm"
-                lowerMime.contains("ogg") -> "ogg"
-                else -> "mp3"
-            }
+            val normalizedMime = resolveMimeType(mimeType.ifBlank { sourceFile.extension })
+            val ext = resolveExtension(normalizedMime)
             val cleanBase = title.replace("\\.[a-zA-Z0-9]+$".toRegex(), "").trim().ifEmpty { "track" }
             val displayName = "$cleanBase.$ext"
 
@@ -51,7 +67,7 @@ object DeviceMusicHelper {
                 put(MediaStore.Audio.Media.TITLE, cleanBase)
                 put(MediaStore.Audio.Media.ARTIST, artist)
                 put(MediaStore.Audio.Media.ALBUM, album)
-                put(MediaStore.Audio.Media.MIME_TYPE, mimeType)
+                put(MediaStore.Audio.Media.MIME_TYPE, normalizedMime)
                 put(MediaStore.Audio.Media.IS_MUSIC, 1)
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -136,11 +152,13 @@ object DeviceMusicHelper {
 
                     val detectedFormat = when {
                         mime.contains("flac", ignoreCase = true) || path.endsWith(".flac", ignoreCase = true) -> "FLAC"
-                        path.endsWith(".m4a", ignoreCase = true) || mime.contains("alac", ignoreCase = true) -> "ALAC"
-                        path.endsWith(".dsf", ignoreCase = true) || path.endsWith(".dff", ignoreCase = true) -> "DSD"
+                        path.endsWith(".m4a", ignoreCase = true) || mime.contains("alac", ignoreCase = true) || mime.contains("mp4", ignoreCase = true) -> "ALAC"
+                        path.endsWith(".dsf", ignoreCase = true) || path.endsWith(".dff", ignoreCase = true) || mime.contains("dsf", ignoreCase = true) || mime.contains("dsd", ignoreCase = true) -> "DSD"
                         mime.contains("wav", ignoreCase = true) || path.endsWith(".wav", ignoreCase = true) -> "WAV"
                         else -> "MP3"
                     }
+                    val formatSpec = com.example.data.model.AudiophileFormat.fromCode(detectedFormat)
+                    val isInstrumental = com.example.data.LyricsGenerator.isInstrumentalTrack(title, artist)
 
                     val contentUri = ContentUris.withAppendedId(
                         MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -160,7 +178,11 @@ object DeviceMusicHelper {
                             uriString = contentUri.toString(),
                             source = TrackSource.DEVICE_MUSIC,
                             savedToDeviceMusic = true,
-                            storageStatus = StorageStatus.SAVED_MUSIC_FOLDER
+                            storageStatus = StorageStatus.SAVED_MUSIC_FOLDER,
+                            bitrateKbps = formatSpec.bitrateKbps,
+                            sampleRateHz = formatSpec.sampleRateHz,
+                            bitDepth = formatSpec.bitDepth,
+                            isInstrumental = isInstrumental
                         )
                     )
                 }

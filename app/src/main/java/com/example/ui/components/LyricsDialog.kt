@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,7 +59,16 @@ fun LyricsDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val songContent = LyricsGenerator.generate(track.title, track.artist)
+    var viewChordSheet by remember(track.id) {
+        mutableStateOf(
+            track.isInstrumental || LyricsGenerator.isInstrumentalTrack(track.title, track.artist)
+        )
+    }
+    val songContent = LyricsGenerator.generate(
+        title = track.title,
+        artist = track.artist,
+        forceInstrumental = viewChordSheet
+    )
     val scrollState = rememberScrollState()
 
     Dialog(
@@ -83,7 +97,7 @@ fun LyricsDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (songContent.isInstrumental) "🎸 Instrument Cord Sheet" else "🎵 Vocal Lyrics",
+                            text = if (songContent.isInstrumental) "🎸 Instrument Chord Sheet" else "🎵 Vocal Lyrics",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = SageGreen
@@ -93,6 +107,12 @@ fun LyricsDialog(
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextLight,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "${songContent.artist} · Key: ${songContent.keySignature} · ${songContent.tempoBpm} BPM (${songContent.timeSignature})",
+                            fontSize = 11.sp,
+                            color = TextMuted,
                             maxLines = 1
                         )
                     }
@@ -106,7 +126,7 @@ fun LyricsDialog(
                                 putExtra(Intent.EXTRA_TEXT, songContent.content)
                                 type = "text/plain"
                             }
-                            val shareIntent = Intent.createChooser(sendIntent, "Share via")
+                            val shareIntent = Intent.createChooser(sendIntent, "Share Lyrics / Chord Sheet via")
                             context.startActivity(shareIntent)
                         },
                         modifier = Modifier
@@ -134,7 +154,53 @@ fun LyricsDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Mode Switcher (Vocal Lyrics vs Instrument Chord Sheet)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (!viewChordSheet) SageGreen else DarkCardHover)
+                            .border(1.dp, if (!viewChordSheet) SageGreen else DarkCardBorder, RoundedCornerShape(10.dp))
+                            .clickable { viewChordSheet = false }
+                            .padding(vertical = 8.dp)
+                            .testTag("mode_vocal_lyrics"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🎤 Vocal Lyrics",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (!viewChordSheet) com.example.ui.theme.OnSageGreen else TextLight
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (viewChordSheet) SageGreen else DarkCardHover)
+                            .border(1.dp, if (viewChordSheet) SageGreen else DarkCardBorder, RoundedCornerShape(10.dp))
+                            .clickable { viewChordSheet = true }
+                            .padding(vertical = 8.dp)
+                            .testTag("mode_chord_sheet"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🎸 Chord Sheet",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (viewChordSheet) com.example.ui.theme.OnSageGreen else TextLight
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Scrollable text content
                 Box(

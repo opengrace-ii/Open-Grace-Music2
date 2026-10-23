@@ -1,115 +1,177 @@
 package com.example.data
 
+import kotlin.math.abs
+
 object LyricsGenerator {
 
     data class SongContent(
         val title: String,
         val artist: String,
         val isInstrumental: Boolean,
+        val keySignature: String,
+        val tempoBpm: Int,
+        val timeSignature: String,
         val content: String
     )
 
-    fun generate(title: String, artist: String): SongContent {
-        val lower = title.lowercase()
-        val isInstrumental = lower.contains("instrumental") ||
+    private val KEYS = listOf("C Major", "G Major", "D Major", "A Minor", "E Minor", "F Major", "Bb Major", "D Minor")
+    private val TIME_SIGNATURES = listOf("4/4", "4/4", "3/4", "6/8", "4/4")
+
+    fun isInstrumentalTrack(title: String, artist: String = ""): Boolean {
+        val lower = "$title $artist".lowercase()
+        return lower.contains("instrumental") ||
                 lower.contains("ambient") ||
                 lower.contains("lofi") ||
+                lower.contains("lo-fi") ||
                 lower.contains("beats") ||
                 lower.contains("acoustic guitar") ||
-                lower.contains("piano")
+                lower.contains("piano") ||
+                lower.contains("sonata") ||
+                lower.contains("nocturne") ||
+                lower.contains("symphony") ||
+                lower.contains("concerto") ||
+                lower.contains("prelude") ||
+                lower.contains("orchestra") ||
+                lower.contains("chord") ||
+                lower.contains("backing track") ||
+                lower.contains("jazz trio")
+    }
 
-        val content = if (isInstrumental) {
-            generateChordSheet(title, artist)
+    fun generate(
+        title: String,
+        artist: String,
+        forceInstrumental: Boolean? = null
+    ): SongContent {
+        val isInst = forceInstrumental ?: isInstrumentalTrack(title, artist)
+        val seed = abs((title.lowercase().trim() + "|" + artist.lowercase().trim()).hashCode())
+        val keySig = KEYS[seed % KEYS.size]
+        val bpm = 72 + (seed % 64)
+        val timeSig = TIME_SIGNATURES[seed % TIME_SIGNATURES.size]
+
+        val content = if (isInst) {
+            generateChordSheet(title, artist, keySig, bpm, timeSig)
         } else {
-            generateLyrics(title, artist)
+            generateLyrics(title, artist, keySig, bpm, timeSig)
         }
 
         return SongContent(
             title = title,
             artist = artist,
-            isInstrumental = isInstrumental,
+            isInstrumental = isInst,
+            keySignature = keySig,
+            tempoBpm = bpm,
+            timeSignature = timeSig,
             content = content
         )
     }
 
-    private fun generateChordSheet(title: String, artist: String): String {
+    private fun generateChordSheet(
+        title: String,
+        artist: String,
+        keySig: String,
+        bpm: Int,
+        timeSig: String
+    ): String {
+        val progressions = when {
+            keySig.startsWith("G") -> listOf("G", "D/F#", "Em7", "Cadd9", "Am7", "D7")
+            keySig.startsWith("D ") -> listOf("D", "A/C#", "Bm7", "Gmaj7", "Em7", "A7")
+            keySig.startsWith("A Minor") -> listOf("Am7", "Fmaj7", "C", "G", "Dm7", "E7")
+            keySig.startsWith("E Minor") -> listOf("Em7", "Cadd9", "G", "D", "Am7", "B7")
+            keySig.startsWith("F") -> listOf("Fmaj7", "C/E", "Dm7", "Bb", "Gm7", "C7")
+            else -> listOf("Cmaj7", "G/B", "Am7", "Fmaj7", "Dm7", "G7")
+        }
+        val I = progressions[0]
+        val V = progressions[1]
+        val vi = progressions[2]
+        val IV = progressions[3]
+        val ii = progressions[4]
+        val V7 = progressions[5]
+
         return """
             ========================================
-            INSTRUMENT CORD SHEET (CHORD CHART)
+            INSTRUMENT CHORD SHEET (STUDIO CHART)
             ========================================
             Song: $title
             Artist: $artist
-            Type: Instrumental / Cord Sheet
-            Key: C Major  |  Tempo: 120 BPM  |  Time: 4/4
-            
-            [Intro]
-            | C  -  G/B  -  Am  -  F |
-            | C  -  G    -  C   -  C |
-            
-            [Verse Progression]
-            | C . . . | G . . . | Am . . . | F . . . |
-            | C . . . | G . . . | C  . . . | C . . . |
-            
-            [Chorus / Main Groove]
-            | F . . . | C . . . | G  . . . | Am . . . |
-            | F . . . | C . . . | G7 . . . | C  . . . |
-            
-            [Bridge / Solo Section]
-            | Am . . . | F . . . | C  . . . | G  . . . |
-            | Am . . . | Dm. . . | G  . . . | G7 . . . |
-            
-            [Outro]
-            | C  -  G/B  -  Am  -  F |
-            | C  -  G    -  C (Hold) |
+            Type: Instrumental / Lead & Rhythm Chart
+            Key: $keySig  |  Tempo: $bpm BPM  |  Time: $timeSig
+            Tuning: Standard (E A D G B E) / Concert Pitch (A=440Hz)
+
+            [Intro — Arpeggiated Motif]
+            | $I  -  $V  -  $vi  -  $IV |
+            | $I  -  $V7 -  $I   -  $I  |
+
+            [Section A — Main Theme / Verse Progression]
+            | $I  . . . | $V  . . . | $vi . . . | $IV . . . |
+            | $I  . . . | $ii . . . | $V7 . . . | $I  . . . |
+
+            [Section B — Harmonic Lift / Chorus Groove]
+            | $IV . . . | $I  . . . | $V  . . . | $vi . . . |
+            | $IV . . . | $ii . . . | $V7 . . . | $I  . . . |
+
+            [Bridge — Improvisation / Solo Changes]
+            | $vi . . . | $IV . . . | $I  . . . | $V  . . . |
+            | $vi . . . | $ii . . . | $V  . . . | $V7 . . . |
+
+            [Outro — Diminuendo & Fermata]
+            | $I  -  $V  -  $vi  -  $IV |
+            | $I  -  $V7 -  $I (Hold)   |
             ========================================
-            Generated by Open Grace Music
+            Generated by Open Grace Music · Studio Chord Engine
         """.trimIndent()
     }
 
-    private fun generateLyrics(title: String, artist: String): String {
+    private fun generateLyrics(
+        title: String,
+        artist: String,
+        keySig: String,
+        bpm: Int,
+        timeSig: String
+    ): String {
         return """
             ========================================
-            VOCAL LYRICS
+            VOCAL LYRICS & PERFORMANCE NOTES
             ========================================
             Song: $title
             Artist: $artist
-            
+            Key: $keySig  |  Tempo: $bpm BPM  |  Time: $timeSig
+
             [Verse 1]
             Walking through the quiet morning light,
             Every shadow fades into the night.
-            Notes are playing soft upon the breeze,
-            Carried far across the open seas.
-            
+            Notes of "$title" softly rise,
+            Echoing beneath the open skies.
+
             [Chorus]
             And the music plays on through the grace of sound,
-            In this peaceful space where we are found.
-            Keep the rhythm close, let the spirit rise,
-            Underneath the warm and golden skies.
-            
+            In this peaceful sanctuary we have found.
+            Keep the rhythm close, let the spirit soar,
+            Pure and timeless now and evermore.
+
             [Verse 2]
-            Memories of yesterday unfold,
-            Stories that the melodies have told.
-            No connection needed when it's near,
-            Every single word is crystal clear.
-            
+            Every melody that $artist brings,
+            Resonates upon the silver strings.
+            Saved in lossless clarity so near,
+            Every breath and harmony is clear.
+
             [Chorus]
             And the music plays on through the grace of sound,
-            In this peaceful space where we are found.
-            Keep the rhythm close, let the spirit rise,
-            Underneath the warm and golden skies.
-            
+            In this peaceful sanctuary we have found.
+            Keep the rhythm close, let the spirit soar,
+            Pure and timeless now and evermore.
+
             [Bridge]
             When the world is moving fast and loud,
-            We can stand above the fleeting crowd.
-            Just a heartbeat and a simple song,
-            Here is where we all belong.
-            
+            Find your quiet place above the crowd.
+            Just a heartbeat and a faithful song,
+            Here is where our grateful hearts belong.
+
             [Outro]
             Let it fade... let it ring...
-            Hear the grace of music sing.
-            (Fade out)
+            Hear the grace of "$title" sing.
+            (Gentle fade out)
             ========================================
-            Generated by Open Grace Music
+            Generated by Open Grace Music · Lyrics Engine
         """.trimIndent()
     }
 }

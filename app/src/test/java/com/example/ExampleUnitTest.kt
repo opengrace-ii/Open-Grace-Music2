@@ -42,4 +42,35 @@ class ExampleUnitTest {
         val trackKb = Track(id = "2", title = "T2", sizeBytes = 850_000L)
         assertEquals("850 KB", trackKb.formattedSize)
     }
+
+    @Test
+    fun audiophileFormats_and_mimeMapping_areAccurate() {
+        assertEquals("audio/flac", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("FLAC"))
+        assertEquals("audio/mp4", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("ALAC"))
+        assertEquals("audio/x-dsf", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("DSD"))
+        assertEquals("audio/wav", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("WAV"))
+        assertEquals("audio/mpeg", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("MP3"))
+
+        val dsdTrack = Track(
+            id = "dsd_1",
+            title = "Nocturne Piano Instrumental",
+            format = "DSD",
+            bitDepth = 1,
+            sampleRateHz = 2822400,
+            bitrateKbps = 5644,
+            isInstrumental = true
+        )
+        assertEquals("1-bit DSD", dsdTrack.bitDepthLabel)
+        assertEquals("2.8 MHz", dsdTrack.sampleRateLabel)
+        assertEquals("DSD · 1-bit DSD/2.8 MHz", dsdTrack.audiophileBadge)
+
+        val chordSheet = com.example.data.LyricsGenerator.generate(dsdTrack.title, dsdTrack.artist)
+        org.junit.Assert.assertTrue(chordSheet.isInstrumental)
+        org.junit.Assert.assertTrue(chordSheet.content.contains("INSTRUMENT CHORD SHEET"))
+        org.junit.Assert.assertTrue(chordSheet.content.contains("BPM"))
+
+        val vocalLyrics = com.example.data.LyricsGenerator.generate("Amazing Grace", "Open Grace Choir")
+        org.junit.Assert.assertFalse(vocalLyrics.isInstrumental)
+        org.junit.Assert.assertTrue(vocalLyrics.content.contains("VOCAL LYRICS"))
+    }
 }

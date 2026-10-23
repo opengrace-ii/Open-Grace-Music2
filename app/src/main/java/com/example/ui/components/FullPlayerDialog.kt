@@ -261,14 +261,14 @@ fun FullPlayerDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "LIVE FREQUENCY SPECTRUM",
+                            text = "LIVE VISUAL FREQUENCY EQUALIZER",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = SageGreen,
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "${track.sampleRateHz / 1000} kHz / ${track.bitDepth}-bit",
+                            text = "${track.sampleRateLabel} / ${track.bitDepthLabel} · ${track.bitrateKbps} kbps",
                             fontSize = 9.sp,
                             color = TextSubtle
                         )
@@ -279,28 +279,47 @@ fun FullPlayerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(34.dp),
+                            .height(38.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        val barCount = 24
+                        val barCount = 28
                         for (i in 0 until barCount) {
                             val normalizedHeight = if (playerState.isPlaying) {
                                 val wave1 = sin(eqPhase + i * 0.45f)
                                 val wave2 = sin(eqPhase * 1.7f - i * 0.3f)
-                                ((wave1 + wave2 + 2f) / 4f).coerceIn(0.18f, 1.0f)
+                                val wave3 = sin(eqPhase * 0.85f + i * 0.7f)
+                                ((wave1 + wave2 + wave3 + 3f) / 6f).coerceIn(0.18f, 1.0f)
                             } else {
                                 0.15f
                             }
                             Box(
                                 modifier = Modifier
-                                    .width(6.dp)
-                                    .height((34f * normalizedHeight).dp)
+                                    .width(5.5.dp)
+                                    .height((38f * normalizedHeight).dp)
                                     .clip(RoundedCornerShape(3.dp))
                                     .background(
-                                        if (normalizedHeight > 0.72f) SageGreen
-                                        else SageGreen.copy(alpha = 0.65f)
+                                        when {
+                                            normalizedHeight > 0.78f -> SageGreen
+                                            normalizedHeight > 0.48f -> SageGreen.copy(alpha = 0.75f)
+                                            else -> SageGreen.copy(alpha = 0.45f)
+                                        }
                                     )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        listOf("32Hz", "125Hz", "500Hz", "2kHz", "8kHz", "24kHz", "96kHz").forEach { band ->
+                            Text(
+                                text = band,
+                                fontSize = 8.sp,
+                                color = TextSubtle
                             )
                         }
                     }

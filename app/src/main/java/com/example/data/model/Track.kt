@@ -19,60 +19,84 @@ enum class AudiophileFormat(
     val specBadge: String,
     val bitrateKbps: Int,
     val sampleRateHz: Int,
+    val sampleRateLabel: String,
     val bitDepth: Int,
+    val bitDepthLabel: String,
     val extension: String,
     val mimeType: String
 ) {
     FLAC_24(
         code = "FLAC",
-        displayName = "FLAC (24-bit Lossless)",
-        specBadge = "24-bit / 96 kHz Studio Master",
-        bitrateKbps = 2304,
-        sampleRateHz = 96000,
+        displayName = "FLAC 24-bit/192kHz Lossless",
+        specBadge = "24-bit / 192 kHz Studio Master · 4608 kbps",
+        bitrateKbps = 4608,
+        sampleRateHz = 192000,
+        sampleRateLabel = "192 kHz",
         bitDepth = 24,
+        bitDepthLabel = "24-bit",
         extension = "flac",
         mimeType = "audio/flac"
     ),
     ALAC_24(
         code = "ALAC",
-        displayName = "ALAC (Studio M4A)",
-        specBadge = "24-bit / 96 kHz Apple Lossless",
-        bitrateKbps = 2100,
+        displayName = "ALAC Studio Lossless",
+        specBadge = "24-bit / 96 kHz Apple Lossless · 2304 kbps",
+        bitrateKbps = 2304,
         sampleRateHz = 96000,
+        sampleRateLabel = "96 kHz",
         bitDepth = 24,
+        bitDepthLabel = "24-bit",
         extension = "m4a",
         mimeType = "audio/mp4"
     ),
     DSD_HIRES(
         code = "DSD",
-        displayName = "DSD / Hi-Res PCM",
-        specBadge = "24-bit / 192 kHz Audiophile Master",
+        displayName = "DSD 64 High-Res",
+        specBadge = "1-bit DSD / 2.8 MHz SACD Master · 5644 kbps",
+        bitrateKbps = 5644,
+        sampleRateHz = 2822400,
+        sampleRateLabel = "2.8 MHz",
+        bitDepth = 1,
+        bitDepthLabel = "1-bit DSD",
+        extension = "dsf",
+        mimeType = "audio/x-dsf"
+    ),
+    WAV_24(
+        code = "WAV",
+        displayName = "WAV 24-bit Uncompressed",
+        specBadge = "24-bit / 96 kHz Linear PCM · 4608 kbps",
         bitrateKbps = 4608,
-        sampleRateHz = 192000,
+        sampleRateHz = 96000,
+        sampleRateLabel = "96 kHz",
         bitDepth = 24,
+        bitDepthLabel = "24-bit",
         extension = "wav",
         mimeType = "audio/wav"
     ),
     MP3_320(
         code = "MP3",
-        displayName = "MP3 (320 kbps)",
-        specBadge = "320 kbps CBR Master",
+        displayName = "MP3 320kbps Master",
+        specBadge = "16-bit / 44.1 kHz CBR Master · 320 kbps",
         bitrateKbps = 320,
-        sampleRateHz = 48000,
+        sampleRateHz = 44100,
+        sampleRateLabel = "44.1 kHz",
         bitDepth = 16,
+        bitDepthLabel = "16-bit",
         extension = "mp3",
         mimeType = "audio/mpeg"
-    ),
-    MP3_192(
-        code = "MP3",
-        displayName = "MP3 (192 kbps)",
-        specBadge = "192 kbps High Quality",
-        bitrateKbps = 192,
-        sampleRateHz = 48000,
-        bitDepth = 16,
-        extension = "mp3",
-        mimeType = "audio/mpeg"
-    )
+    );
+
+    companion object {
+        fun fromCode(code: String): AudiophileFormat {
+            return when (code.uppercase()) {
+                "FLAC" -> FLAC_24
+                "ALAC", "M4A" -> ALAC_24
+                "DSD", "DSF", "DFF" -> DSD_HIRES
+                "WAV", "PCM" -> WAV_24
+                else -> MP3_320
+            }
+        }
+    }
 }
 
 data class Track(
@@ -90,11 +114,27 @@ data class Track(
     val storageStatus: StorageStatus = StorageStatus.PERSISTENT,
     val addedAt: Long = System.currentTimeMillis(),
     val thumbnailUrl: String? = null,
-    val bitrateKbps: Int = 2304,
-    val sampleRateHz: Int = 96000,
+    val bitrateKbps: Int = 4608,
+    val sampleRateHz: Int = 192000,
     val bitDepth: Int = 24,
+    val isInstrumental: Boolean = false,
     val isFavorite: Boolean = false
 ) {
+    val bitDepthLabel: String
+        get() = when {
+            format.equals("DSD", ignoreCase = true) || format.equals("DSF", ignoreCase = true) || bitDepth == 1 -> "1-bit DSD"
+            bitDepth <= 16 -> "16-bit"
+            else -> "${bitDepth}-bit"
+        }
+
+    val sampleRateLabel: String
+        get() = when {
+            sampleRateHz >= 2_000_000 -> String.format("%.1f MHz", sampleRateHz / 1_000_000.0)
+            sampleRateHz == 44100 -> "44.1 kHz"
+            sampleRateHz > 0 -> "${sampleRateHz / 1000} kHz"
+            else -> "96 kHz"
+        }
+
     val formattedDuration: String
         get() {
             val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
@@ -117,10 +157,10 @@ data class Track(
         get() {
             val fmt = format.uppercase()
             return when (fmt) {
-                "FLAC" -> "FLAC · ${bitDepth}-bit/${sampleRateHz / 1000}kHz"
-                "ALAC" -> "ALAC · ${bitDepth}-bit/${sampleRateHz / 1000}kHz"
-                "DSD", "DSF" -> "DSD · 24-bit/192kHz"
-                "WAV" -> "WAV · ${bitDepth}-bit PCM"
+                "FLAC" -> "FLAC · $bitDepthLabel/$sampleRateLabel"
+                "ALAC" -> "ALAC · $bitDepthLabel/$sampleRateLabel"
+                "DSD", "DSF" -> "DSD · $bitDepthLabel/$sampleRateLabel"
+                "WAV" -> "WAV · $bitDepthLabel/$sampleRateLabel"
                 else -> "$fmt · $bitrateKbps kbps"
             }
         }

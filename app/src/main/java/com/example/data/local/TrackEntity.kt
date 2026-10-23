@@ -23,8 +23,9 @@ data class TrackEntity(
     val addedAt: Long,
     val thumbnailUrl: String?,
     val bitrateKbps: Int,
-    val sampleRateHz: Int = 96000,
+    val sampleRateHz: Int = 192000,
     val bitDepth: Int = 24,
+    val isInstrumental: Boolean = false,
     val isFavorite: Boolean
 ) {
     fun toDomain(): Track {
@@ -46,6 +47,7 @@ data class TrackEntity(
             bitrateKbps = bitrateKbps,
             sampleRateHz = sampleRateHz,
             bitDepth = bitDepth,
+            isInstrumental = isInstrumental,
             isFavorite = isFavorite
         )
     }
@@ -70,6 +72,7 @@ data class TrackEntity(
                 bitrateKbps = track.bitrateKbps,
                 sampleRateHz = track.sampleRateHz,
                 bitDepth = track.bitDepth,
+                isInstrumental = track.isInstrumental,
                 isFavorite = track.isFavorite
             )
         }
