@@ -51,7 +51,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.example.data.ConverterServerPrefs
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +99,7 @@ fun OgmApp(
     val prefilledUrl by viewModel.prefilledUrl.collectAsState()
     val showSettings by viewModel.showSettings.collectAsState()
     val converterServerUrl by viewModel.converterServerUrl.collectAsState()
+    val context = LocalContext.current
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -637,7 +640,9 @@ fun OgmApp(
 
     if (showSettings) {
         SettingsSheet(
-            initialUrl = converterServerUrl,
+            initialUrl = converterServerUrl.ifBlank {
+                ConverterServerPrefs.resolveBaseUrl(context)
+            },
             onDismiss = { viewModel.closeSettings() },
             onSave = { viewModel.saveConverterServerUrl(it) }
         )

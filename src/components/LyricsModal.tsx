@@ -86,13 +86,18 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
   };
 
   const handleToggleMode = (mode: 'LYRICS' | 'CHORDS') => {
-    if (track) {
-      const dummyTitle =
-        mode === 'CHORDS'
-          ? `${track.title} (Instrumental)`
-          : track.title.replace(/\(Instrumental\)/i, '');
-      setData(generateLocalLyricsOrChord(dummyTitle, track.artist));
+    if (!track) return;
+    if (mode === 'CHORDS') {
+      setData({
+        title: track.title,
+        artist: track.artist || 'Open Grace Music',
+        isInstrumental: true,
+        content:
+          'Chord sheet hidden until verified chart data exists.\n\nMark instrumental tracks in your library notes, or import a PDF chart from your files app.',
+      });
+      return;
     }
+    void loadContent(track.title, track.artist);
   };
 
   return (

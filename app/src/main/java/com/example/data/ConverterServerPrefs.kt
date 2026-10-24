@@ -28,8 +28,8 @@ object ConverterServerPrefs {
     }
 
     /**
-     * Saved Settings URL → optional Gradle [BuildConfig.CONVERTER_BASE_URL] → empty.
-     * Empty means YouTube convert is unavailable until the user sets a server in Settings.
+     * Saved Settings URL → [BuildConfig.CONVERTER_BASE_URL] (defaults to AppDeploy).
+     * Clear Settings to use the baked-in AppDeploy converter host.
      */
     fun resolveBaseUrl(context: Context): String {
         getSavedUrl(context).takeIf { it.isNotBlank() }?.let { return it.trimEnd('/') }

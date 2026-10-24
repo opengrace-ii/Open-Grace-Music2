@@ -1189,7 +1189,8 @@ export default function App() {
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="leading-snug">
                 Converter API is not reachable at {resolveConverterApiBaseUrl() || '(no server set)'}.
-                Run <code className="text-[#b8d99e]">npm start</code> on your PC or agent, then open Settings and paste that URL — AppDeploy is not required.
+                Check AppDeploy is up, your network connection, or set a self-hosted URL in Settings (
+                <code className="text-[#b8d99e]">npm start</code>).
               </p>
             </div>
           )}

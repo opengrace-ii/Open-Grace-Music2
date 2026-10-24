@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.data.ConverterServerPrefs
+import com.example.data.OgmPublicBase
 import com.example.ui.theme.DarkCard
 import com.example.ui.theme.DarkCardBorder
 import com.example.ui.theme.SageGreen
@@ -31,7 +31,7 @@ import com.example.ui.theme.TextLight
 import com.example.ui.theme.TextMuted
 
 private const val HELPER =
-    "Paste your Open Grace Music server URL (same place you open the app in Chrome). Example: https://your-agent-host:43123"
+    "Leave blank to use AppDeploy (default). Override only if you self-host npm start elsewhere."
 
 @Composable
 fun SettingsSheet(
@@ -67,7 +67,7 @@ fun SettingsSheet(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("https://your-host:43123", color = TextMuted) },
+                placeholder = { Text(OgmPublicBase.DEFAULT_APPDEPLOY_BASE_URL, color = TextMuted) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextLight,
@@ -81,8 +81,8 @@ fun SettingsSheet(
             Text(text = HELPER, fontSize = 11.sp, color = TextMuted, lineHeight = 15.sp)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "You do not need AppDeploy. Run npm start on your PC or agent, then paste that URL. " +
-                    "Same Wi‑Fi: http://192.168.x.x:43123. Android emulator: http://10.0.2.2:43123.",
+                text = "Primary host: AppDeploy (${OgmPublicBase.DEFAULT_APPDEPLOY_BASE_URL}). " +
+                    "Clear the field and save to use the default. Self-host: http://192.168.x.x:43123 on same Wi‑Fi.",
                 fontSize = 11.sp,
                 color = TextMuted,
                 lineHeight = 15.sp

@@ -89,28 +89,34 @@ app/src/main/java/com/example/
 
 ---
 
-## Do I need AppDeploy?
+## Primary host: AppDeploy
 
-**No.** AppDeploy was one way to host the static web app (PWA) on a public HTTPS URL. It is **not** part of Open Grace Music itself, and you do not need it to use the app.
+**Production PWA + converter:** [https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai](https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai)
 
-What you actually need:
+- **PWA in Chrome:** open that URL → Add to Home screen. Converter uses same origin automatically.
+- **Native APK:** ships with AppDeploy as default `CONVERTER_BASE_URL` — **Settings → Converter server URL** can stay **empty** for most family users.
+- **Offline library / local import:** no server required.
+
+Redeploy steps: see [`docs/APPDEPLOY.md`](docs/APPDEPLOY.md).
+
+### Self-hosting (optional)
+
+Run the full stack locally or on your own machine:
+
+```bash
+npm run build
+PORT=43123 NODE_ENV=production npm start
+```
 
 | Goal | What to do |
 | :--- | :--- |
-| **Play your library offline** | Use the **APK** or **Add to Home screen** (PWA). Import files from your phone — no server required. |
-| **YouTube → MP3 / FLAC on phone** | Run the **backend** on a machine you control: `npm start` (listens on port **43123** by default). The app calls `/api/convert-audio` on that server. |
-| **PWA in Chrome** | Open the app **from the same URL** where `npm start` is running (same origin = converter works automatically). |
-| **Native APK** | Tap **Settings (⚙)** → **Converter server URL** and paste that server address (see examples below). |
+| **YouTube → MP3 / FLAC** | Use AppDeploy (default) or paste your `npm start` URL in **Settings** on the APK |
+| **Same Wi‑Fi (PC + phone)** | `http://192.168.1.42:43123` (your LAN IP) |
+| **Android emulator** | `http://10.0.2.2:43123` |
 
-**Same Wi‑Fi (PC + phone):** find your PC’s LAN IP (e.g. `192.168.1.42`) and use `http://192.168.1.42:43123`.
+**Gradle override (developers):** `./gradlew :app:assembleDebug -POGM_CONVERTER_BASE_URL=http://10.0.2.2:43123`
 
-**Android emulator:** use `http://10.0.2.2:43123` to reach the host machine’s localhost.
-
-**Cursor Cloud Agent / remote dev:** use the agent’s **public HTTPS URL** with port **43123** forwarded when Cursor exposes it (Desktop preview / port forwarding). Paste that full URL in Settings on the APK, or open the PWA from that URL in Chrome.
-
-**Optional Gradle override (developers only):** `./gradlew :app:assembleDebug -POGM_CONVERTER_BASE_URL=http://10.0.2.2:43123`
-
-You can also use **ngrok**, **Cloudflare Tunnel**, or your own VPS — any HTTPS (or LAN HTTP) origin that serves this app and its `/api/*` routes.
+Set **`OGM_PUBLIC_BASE_URL`** / **`VITE_OGM_PUBLIC_BASE_URL`** when building if your AppDeploy hostname changes.
 
 ---
 

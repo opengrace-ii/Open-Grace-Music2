@@ -40,31 +40,10 @@ export async function fetchVerifiedLyricsFromLrclib(
   }
 }
 
+/** lrclib.net lookup only — no fabricated placeholder lyrics. */
 export async function fetchAiLyricsOrChord(title: string, artist: string): Promise<LyricOrChord> {
   const verified = await fetchVerifiedLyricsFromLrclib(title, artist);
   if (verified) return verified;
-
-  try {
-    const res = await fetch('/api/generate-lyrics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, artist }),
-    });
-    if (res.status === 503) {
-      return unavailableLyrics(title, artist);
-    }
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.content) {
-        return {
-          ...data,
-          content: `${data.content}\n\n— AI-generated (GEMINI). Verify accuracy against the recording.`,
-        };
-      }
-    }
-  } catch {
-    // fall through
-  }
   return unavailableLyrics(title, artist);
 }
 

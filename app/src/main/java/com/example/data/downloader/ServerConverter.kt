@@ -48,8 +48,7 @@ object ServerConverter {
         val base = ConverterServerPrefs.resolveBaseUrl(context)
         if (base.isBlank()) {
             throw IllegalStateException(
-                "No converter server set. Open Settings → Converter server URL and paste where you run npm start " +
-                    "(e.g. https://your-host:43123 or http://192.168.x.x:43123 on same Wi‑Fi)."
+                "No converter server configured. Clear Settings to use AppDeploy, or paste a self-hosted npm start URL."
             )
         }
         onProgress(0.12f, "Connecting to studio converter (${targetFormat.code})…")

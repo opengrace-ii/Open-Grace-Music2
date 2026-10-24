@@ -56,7 +56,7 @@ export async function fetchWithTimeout(
       );
     }
     throw new ConverterApiError(
-      'Cannot reach converter. In Settings, paste your Open Grace Music server URL (where npm start runs), or open the app from that URL in Chrome.',
+      'Cannot reach converter. Check AppDeploy / your network, or set a self-hosted server URL in Settings.',
       'NETWORK'
     );
   } finally {
@@ -93,7 +93,7 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
   if (err instanceof TypeError && /fetch|network|failed/i.test(String(err.message))) {
     return {
       message:
-        'Cannot reach converter. Set Converter server URL in Settings, or open the app from your running server in Chrome.',
+        'Cannot reach converter. AppDeploy may be down, or set a self-hosted URL in Settings.',
       code: 'NETWORK',
     };
   }

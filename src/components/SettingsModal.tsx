@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Server, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { DEFAULT_OGM_PUBLIC_BASE_URL } from '../constants/ogmPublicBase';
 import {
   CONVERTER_SERVER_URL_HELPER,
   getSavedConverterServerUrl,
@@ -72,15 +73,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder={typeof window !== 'undefined' ? window.location.origin : 'https://your-host:43123'}
+            placeholder={
+              typeof window !== 'undefined' && window.location.origin !== 'null'
+                ? window.location.origin
+                : DEFAULT_OGM_PUBLIC_BASE_URL
+            }
             className="w-full px-3 py-2.5 rounded-xl bg-[#11120f] border border-[#3a4433] text-sm text-[#eeeae2] placeholder:text-[#6b675e] focus:outline-none focus:border-[#b8d99e]"
           />
           <p className="text-[11px] text-[#a3a198] leading-relaxed">{CONVERTER_SERVER_URL_HELPER}</p>
           <p className="text-[11px] text-[#8a877f] leading-relaxed">
-            Leave blank to use this page&apos;s address ({effective || 'none'}). You do{' '}
-            <strong className="text-[#eeeae2] font-medium">not</strong> need AppDeploy — run{' '}
-            <code className="text-[#b8d99e]">npm start</code> on your PC, VPS, or Cursor agent and paste that HTTPS
-            URL here (APK) or open the app from that URL (PWA).
+            Leave blank to use <strong className="text-[#eeeae2] font-medium">AppDeploy</strong> (
+            {DEFAULT_OGM_PUBLIC_BASE_URL}) or this page&apos;s address ({effective || 'none'}). Override only if
+            you self-host with <code className="text-[#b8d99e]">npm start</code> on another machine.
           </p>
 
           {healthOk === true && (

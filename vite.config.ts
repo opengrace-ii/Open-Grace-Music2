@@ -74,8 +74,16 @@ function ogmServiceWorkerBuildIdPlugin() {
 }
 
 export default defineConfig(() => {
+  const ogmPublicBase =
+    process.env.VITE_OGM_PUBLIC_BASE_URL?.trim() ||
+    process.env.OGM_PUBLIC_BASE_URL?.trim() ||
+    'https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai';
+
   return {
     plugins: [react(), tailwindcss(), ogmServiceWorkerBuildIdPlugin()],
+    define: {
+      'import.meta.env.VITE_OGM_PUBLIC_BASE_URL': JSON.stringify(ogmPublicBase),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

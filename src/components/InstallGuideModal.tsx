@@ -77,11 +77,11 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             </span>
           </p>
           <p>
-            <strong className="text-[#eeeae2] font-medium">AppDeploy is not required.</strong> For
-            YouTube→MP3 in the APK or an installed PWA, run the project server (
-            <code className="text-[#b8d99e]">npm start</code>) on your PC, VPS, or Cursor agent and set{' '}
-            <strong className="text-[#b8d99e] font-medium">Settings → Converter server URL</strong>.
-            Offline library and local file import work without any server.
+            <strong className="text-[#eeeae2] font-medium">Primary host: AppDeploy.</strong> YouTube→MP3/FLAC
+            uses the converter on{' '}
+            <code className="text-[#b8d99e]">ogm-open-grace-music-w3bpvx.v2.appdeploy.ai</code> by default — APK
+            users usually leave Settings blank. Override only if you self-host with{' '}
+            <code className="text-[#b8d99e]">npm start</code>. Offline library and local import need no server.
           </p>
           <a
             href={REPO_URL}

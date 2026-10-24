@@ -1,6 +1,14 @@
+import {
+  DEFAULT_OGM_PUBLIC_BASE_URL,
+  isAppDeployHost,
+  normalizeBaseUrl,
+} from '../constants/ogmPublicBase';
+
 const STORAGE_KEY = 'ogm_converter_server_url';
 
-/** User override for API base (APK/PWA opened off-server). Empty = use current page origin. */
+export { DEFAULT_OGM_PUBLIC_BASE_URL, isAppDeployHost };
+
+/** User override for API base (APK/PWA). Empty = AppDeploy tab origin or same-origin. */
 export function getSavedConverterServerUrl(): string {
   if (typeof window === 'undefined') return '';
   try {
@@ -24,17 +32,19 @@ export function setSavedConverterServerUrl(url: string): void {
   }
 }
 
-/** Effective API origin: saved server URL, else same tab origin. */
+/**
+ * Effective API origin: saved override → current tab origin (AppDeploy or self-hosted PWA) → default AppDeploy.
+ */
 export function resolveConverterApiBaseUrl(): string {
   const saved = getSavedConverterServerUrl();
   if (saved) {
-    return saved.replace(/\/+$/, '');
+    return normalizeBaseUrl(saved);
   }
   if (typeof window !== 'undefined' && window.location.origin && window.location.origin !== 'null') {
-    return window.location.origin;
+    return normalizeBaseUrl(window.location.origin);
   }
-  return '';
+  return normalizeBaseUrl(DEFAULT_OGM_PUBLIC_BASE_URL);
 }
 
 export const CONVERTER_SERVER_URL_HELPER =
-  'Paste your Open Grace Music server URL (the same address you use to open the app in Chrome). Example: https://your-agent-host:43123';
+  `Leave blank to use this page (AppDeploy: ${DEFAULT_OGM_PUBLIC_BASE_URL}) or your self-hosted URL. Override only if you run npm start elsewhere.`;
