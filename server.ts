@@ -7,6 +7,7 @@ import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
+import { runConvertPipeline } from './server/convertPipeline.ts';
 
 dotenv.config();
 
@@ -21,7 +22,46 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '10mb' }));
 
 const YT_DLP_TIMEOUT_MS = 120_000;
+const YT_DLP_MP3_TIMEOUT_MS = 90_000;
 const FFMPEG_TIMEOUT_MS = 120_000;
+const FFMPEG_MP3_TIMEOUT_MS = 90_000;
+
+type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
+
+interface ConvertJobRecord {
+  id: string;
+  stage: ConvertStage;
+  percent: number;
+  message: string;
+  error?: string;
+  code?: ConvertErrorCode;
+  resultPath?: string;
+  workDir?: string;
+  responseMeta?: Record<string, string>;
+  createdAt: number;
+}
+
+const convertJobs = new Map<string, ConvertJobRecord>();
+
+function pruneOldConvertJobs() {
+  const cutoff = Date.now() - 45 * 60 * 1000;
+  for (const [id, job] of convertJobs) {
+    if (job.createdAt < cutoff) {
+      if (job.workDir) {
+        try {
+          fs.rmSync(job.workDir, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
+      }
+      convertJobs.delete(id);
+    }
+  }
+}
+
+function newConvertJobId(): string {
+  return `cj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 type ConvertErrorCode = 'YOUTUBE_BOT_CHECK' | 'TIMEOUT' | 'FFMPEG_FAILED' | 'EXTRACTION_FAILED';
 
@@ -203,7 +243,7 @@ export interface AudioFormatSpec {
 }
 
 export function resolveFormatSpec(rawFormat?: string, rawBitrate?: number): AudioFormatSpec {
-  const fmt = (rawFormat || 'FLAC').toUpperCase().trim();
+  const fmt = (rawFormat || 'MP3').toUpperCase().trim();
   const mp3Bitrate =
     rawBitrate && [128, 192, 256, 320].includes(Number(rawBitrate)) ? Number(rawBitrate) : 320;
 
@@ -344,346 +384,312 @@ app.get('/api/validate-url', handleValidateUrl);
 app.post('/api/validate-url', handleValidateUrl);
 app.get('/api/media-info', handleValidateUrl);
 
-// API: Audiophile Lossless & Hi-Res Audio Extractor & Transcoder (/api/convert-audio and /api/convert-mp3)
-async function handleConvertAudio(req: express.Request, res: express.Response) {
+function parseConvertRequest(req: express.Request) {
   const url = ((req.body && req.body.url) || (req.query.url as string) || '').trim();
   const requestedFormat =
     (req.body && req.body.format) ||
     (req.query.format as string) ||
-    (req.path.includes('convert-mp3') ? 'MP3' : 'FLAC');
+    (req.path.includes('convert-mp3') ? 'MP3' : 'MP3');
   const requestedBitrate = Number((req.body && req.body.bitrate) || req.query.bitrate || 320);
   const userCookies = ((req.body && req.body.cookies) || (req.query.cookies as string) || '').trim();
   const customTitle = ((req.body && req.body.title) || (req.query.title as string) || '').trim();
   const customArtist = ((req.body && req.body.artist) || (req.query.artist as string) || '').trim();
+  return { url, requestedFormat, requestedBitrate, userCookies, customTitle, customArtist };
+}
 
+function pipelineParamsFromRequest(req: express.Request) {
+  const parsed = parseConvertRequest(req);
+  const formatSpec = resolveFormatSpec(parsed.requestedFormat, parsed.requestedBitrate);
+  return {
+    ...parsed,
+    formatSpec,
+    pipelineParams: {
+      url: parsed.url,
+      formatSpec,
+      requestedBitrate: parsed.requestedBitrate,
+      userCookies: parsed.userCookies,
+      customTitle: parsed.customTitle,
+      customArtist: parsed.customArtist,
+      extractYouTubeId,
+      fetchYouTubeOEmbed,
+      buildSearchQueries,
+      ytDlpTimeoutMs: YT_DLP_TIMEOUT_MS,
+      ytDlpMp3TimeoutMs: YT_DLP_MP3_TIMEOUT_MS,
+      ffmpegTimeoutMs: FFMPEG_TIMEOUT_MS,
+      ffmpegMp3TimeoutMs: FFMPEG_MP3_TIMEOUT_MS,
+    },
+  };
+}
+
+function streamConvertResult(
+  res: express.Response,
+  result: Awaited<ReturnType<typeof runConvertPipeline>>,
+  formatSpec: ReturnType<typeof resolveFormatSpec>
+) {
+  if (!result.ok) {
+    try {
+      fs.rmSync(result.workDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+    const status = result.code === 'EXTRACTION_FAILED' ? 502 : 500;
+    return res.status(status).json({ error: result.error, code: result.code });
+  }
+
+  const stat = fs.statSync(result.outputFilePath);
+  const cleanup = () => {
+    try {
+      fs.rmSync(result.workDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  };
+
+  for (const [key, value] of Object.entries(result.responseMeta)) {
+    if (key !== 'Content-Type') {
+      res.setHeader(key, value);
+    }
+  }
+  res.setHeader('Content-Type', formatSpec.mimeType);
+  res.setHeader('Content-Length', stat.size.toString());
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${encodeURIComponent(result.safeFilename)}.${formatSpec.extension}"`
+  );
+
+  const readStream = fs.createReadStream(result.outputFilePath);
+  readStream.on('close', cleanup);
+  readStream.on('error', cleanup);
+  return readStream.pipe(res);
+}
+
+// API: Audiophile Lossless & Hi-Res Audio Extractor & Transcoder (/api/convert-audio and /api/convert-mp3)
+async function handleConvertAudio(req: express.Request, res: express.Response) {
+  const { url, formatSpec, pipelineParams } = pipelineParamsFromRequest(req);
   if (!url) {
     return res.status(400).json({ error: 'url is required' });
   }
 
-  const formatSpec = resolveFormatSpec(requestedFormat, requestedBitrate);
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-audio-'));
-  const rawInputTemplate = path.join(workDir, 'raw_source.%(ext)s');
-  const cookieFilePath = path.join(workDir, 'cookies.txt');
+  const result = await runConvertPipeline(pipelineParams);
+  if (!result.ok) {
+    console.error('[convert-audio] Failed:', result.error);
+  }
+  return streamConvertResult(res, result, formatSpec);
+}
 
+async function handleConvertAudioStart(req: express.Request, res: express.Response) {
+  pruneOldConvertJobs();
+  const { url, formatSpec, pipelineParams } = pipelineParamsFromRequest(req);
+  if (!url) {
+    return res.status(400).json({ error: 'url is required' });
+  }
+
+  const jobId = newConvertJobId();
+  const job: ConvertJobRecord = {
+    id: jobId,
+    stage: 'validate',
+    percent: 5,
+    message: 'Queued for studio conversion…',
+    createdAt: Date.now(),
+  };
+  convertJobs.set(jobId, job);
+
+  res.json({ jobId, format: formatSpec.format });
+
+  void (async () => {
+    const result = await runConvertPipeline(pipelineParams, (stage, percent, message) => {
+      const current = convertJobs.get(jobId);
+      if (!current || current.stage === 'done' || current.stage === 'error') return;
+      current.stage = stage;
+      current.percent = percent;
+      current.message = message;
+      convertJobs.set(jobId, current);
+    });
+
+    const current = convertJobs.get(jobId);
+    if (!current) return;
+
+    if (!result.ok) {
+      current.stage = 'error';
+      current.percent = 100;
+      current.message = result.error;
+      current.error = result.error;
+      current.code = result.code;
+      current.workDir = result.workDir;
+      convertJobs.set(jobId, current);
+      try {
+        fs.rmSync(result.workDir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    current.stage = 'done';
+    current.percent = 100;
+    current.message = 'Conversion complete — ready to download';
+    current.resultPath = result.outputFilePath;
+    current.workDir = result.workDir;
+    current.responseMeta = result.responseMeta;
+    convertJobs.set(jobId, current);
+  })();
+}
+
+function handleConvertJobStatus(req: express.Request, res: express.Response) {
+  const jobId = String(req.params.jobId || '');
+  const job = convertJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Conversion job not found or expired' });
+  }
+  return res.json({
+    jobId: job.id,
+    stage: job.stage,
+    percent: job.percent,
+    message: job.message,
+    done: job.stage === 'done',
+    error: job.error,
+    code: job.code,
+  });
+}
+
+function handleConvertJobDownload(req: express.Request, res: express.Response) {
+  const jobId = String(req.params.jobId || '');
+  const job = convertJobs.get(jobId);
+  if (!job || job.stage !== 'done' || !job.resultPath || !job.workDir) {
+    return res.status(404).json({ error: 'Converted file not ready yet' });
+  }
+
+  const stat = fs.statSync(job.resultPath);
   const cleanup = () => {
+    convertJobs.delete(jobId);
     try {
-      fs.rmSync(workDir, { recursive: true, force: true });
+      fs.rmSync(job.workDir!, { recursive: true, force: true });
     } catch {
-      // ignore cleanup errors
+      // ignore
     }
   };
 
-  try {
-    const ytId = extractYouTubeId(url);
-    let title = customTitle || 'Open Grace Track';
-    let artist = customArtist || 'Open Grace Music';
-    let thumbnailUrl = '';
-    let extractionMethod = 'direct';
-
-    if (ytId) {
-      const oembed = await fetchYouTubeOEmbed(ytId);
-      if (!customTitle && oembed.title) title = oembed.title;
-      if (!customArtist && oembed.author) artist = oembed.author;
-      thumbnailUrl = oembed.thumbnailUrl;
-
-      const canonicalWatchUrl = `https://www.youtube.com/watch?v=${ytId}`;
-      let downloadedRawPath: string | null = null;
-
-      // Write user-supplied cookies if provided
-      const cookieArgs: string[] = [];
-      if (userCookies) {
-        if (userCookies.includes('# Netscape HTTP Cookie File') || userCookies.includes('\t')) {
-          fs.writeFileSync(cookieFilePath, userCookies, 'utf8');
-          cookieArgs.push('--cookies', cookieFilePath);
-        } else {
-          // Convert key=value; pairs into Netscape cookie format for youtube.com
-          const netscapeLines = ['# Netscape HTTP Cookie File'];
-          for (const pair of userCookies.split(';')) {
-            const [k, ...vParts] = pair.trim().split('=');
-            const v = vParts.join('=');
-            if (k && v) {
-              netscapeLines.push(`.youtube.com\tTRUE\t/\tTRUE\t2147483647\t${k.trim()}\t${v.trim()}`);
-            }
-          }
-          fs.writeFileSync(cookieFilePath, netscapeLines.join('\n') + '\n', 'utf8');
-          cookieArgs.push('--cookies', cookieFilePath);
-        }
+  if (job.responseMeta) {
+    for (const [key, value] of Object.entries(job.responseMeta)) {
+      if (key !== 'Content-Type') {
+        res.setHeader(key, value);
       }
-
-      let lastExtractFailure: { code: ConvertErrorCode; error: string } | null = null;
-
-      // Step 1: Attempt direct yt-dlp extraction from YouTube first
-      try {
-        await execFileAsync(
-          'yt-dlp',
-          [
-            '--no-playlist',
-            '--no-warnings',
-            '-f',
-            'bestaudio/best',
-            ...cookieArgs,
-            '-o',
-            rawInputTemplate,
-            canonicalWatchUrl,
-          ],
-          { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }
-        );
-
-        const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
-        if (files.length > 0) {
-          const candidate = path.join(workDir, files[0]);
-          if (fs.statSync(candidate).size > 25000) {
-            downloadedRawPath = candidate;
-            extractionMethod = 'youtube-direct';
-          }
-        }
-      } catch (directErr) {
-        lastExtractFailure = classifyPipelineError(directErr, 'extract');
-        console.warn(
-          `[convert-audio] YouTube direct failed (${ytId}):`,
-          lastExtractFailure.error
-        );
-      }
-
-      // Step 2: Automatic fallback to SoundCloud exact-track search via yt-dlp scsearch1:
-      if (!downloadedRawPath) {
-        const searchQueries = buildSearchQueries(title, artist);
-        for (const query of searchQueries) {
-          try {
-            await execFileAsync(
-              'yt-dlp',
-              [
-                '--no-playlist',
-                '--no-warnings',
-                '-f',
-                'bestaudio/best',
-                '-o',
-                rawInputTemplate,
-                `scsearch1:${query}`,
-              ],
-              { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }
-            );
-
-            const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
-            if (files.length > 0) {
-              const candidate = path.join(workDir, files[0]);
-              if (fs.statSync(candidate).size > 25000) {
-                downloadedRawPath = candidate;
-                extractionMethod = `audiophile-mirror (${query})`;
-                break;
-              }
-            }
-          } catch (fallbackErr) {
-            lastExtractFailure = classifyPipelineError(fallbackErr, 'extract');
-            console.warn(`[convert-audio] Mirror search failed (${query}):`, lastExtractFailure.error);
-          }
-        }
-      }
-
-      if (!downloadedRawPath) {
-        cleanup();
-        const failure = lastExtractFailure || {
-          code: 'EXTRACTION_FAILED' as ConvertErrorCode,
-          error: `Could not extract audio stream for "${title}". Verify the link or add YouTube cookies.`,
-        };
-        console.error(`[convert-audio] Extraction exhausted for ${ytId}:`, failure.error);
-        return res.status(502).json({
-          error: failure.error,
-          code: failure.code,
-        });
-      }
-
-      // Step 3: Transcode through FFmpeg into requested Audiophile format (FLAC 24-bit, ALAC, DSD 192kHz, WAV 24-bit, or MP3 320kbps)
-      const outputFilePath = path.join(workDir, `master_output.${formatSpec.extension}`);
-      try {
-        await execFileAsync(
-          '/usr/bin/ffmpeg',
-          [
-            '-y',
-            '-i',
-            downloadedRawPath,
-            ...formatSpec.ffmpegArgs,
-            '-metadata',
-            `title=${title}`,
-            '-metadata',
-            `artist=${artist}`,
-            '-metadata',
-            'album=Open Grace Music · Audiophile Master',
-            outputFilePath,
-          ],
-          { timeout: FFMPEG_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 }
-        );
-      } catch (ffmpegErr) {
-        cleanup();
-        const failure = classifyPipelineError(ffmpegErr, 'ffmpeg');
-        console.error(`[convert-audio] FFmpeg failed for ${ytId}:`, failure.error);
-        return res.status(500).json({ error: failure.error, code: failure.code });
-      }
-
-      if (!fs.existsSync(outputFilePath) || fs.statSync(outputFilePath).size < 30000) {
-        cleanup();
-        return res.status(500).json({
-          error: 'FFmpeg transcoding produced an invalid output file.',
-          code: 'FFMPEG_FAILED',
-        });
-      }
-
-      // Step 4: Probe real duration and stream properties with ffprobe
-      let durationSec = 0;
-      try {
-        const { stdout } = await execFileAsync('/usr/bin/ffprobe', [
-          '-v',
-          'error',
-          '-show_entries',
-          'format=duration',
-          '-of',
-          'default=noprint_wrappers=1:nokey=1',
-          outputFilePath,
-        ]);
-        durationSec = Math.round(parseFloat(stdout.trim()) || 0);
-      } catch {
-        durationSec = 210;
-      }
-
-      const stat = fs.statSync(outputFilePath);
-      const safeFilename =
-        title
-          .replace(/[^a-zA-Z0-9._ -]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim() || `OpenGraceMusic_${ytId}`;
-
-      res.setHeader('Content-Type', formatSpec.mimeType);
-      res.setHeader('Content-Length', stat.size.toString());
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(safeFilename)}.${formatSpec.extension}"`
-      );
-      res.setHeader('X-Audio-Id', ytId);
-      res.setHeader('X-Audio-Title', encodeURIComponent(title));
-      res.setHeader('X-Audio-Artist', encodeURIComponent(artist));
-      res.setHeader('X-Audio-Duration', durationSec.toString());
-      res.setHeader('X-Audio-Format', formatSpec.format);
-      res.setHeader('X-Audio-Extension', formatSpec.extension);
-      res.setHeader('X-Audio-Sample-Rate', formatSpec.sampleRate.toString());
-      res.setHeader('X-Audio-Bit-Depth', formatSpec.bitDepth);
-      res.setHeader('X-Audio-Bitrate-Label', encodeURIComponent(formatSpec.bitrateLabel));
-      res.setHeader('X-Audio-Source', extractionMethod);
-      if (thumbnailUrl) {
-        res.setHeader('X-Audio-Thumbnail', encodeURIComponent(thumbnailUrl));
-      }
-
-      const readStream = fs.createReadStream(outputFilePath);
-      readStream.on('close', cleanup);
-      readStream.on('error', cleanup);
-      return readStream.pipe(res);
-    } else {
-      // Direct URL download & FFmpeg audiophile transcode
-      const normalized = !url.startsWith('http://') && !url.startsWith('https://') ? `https://${url}` : url;
-      const parsedUrl = new URL(normalized);
-      if (!customTitle) {
-        title =
-          decodeURIComponent(path.basename(parsedUrl.pathname))
-            .replace(/\.[^.]+$/, '')
-            .replace(/[-_]+/g, ' ')
-            .trim() || 'Direct Studio Audio';
-      }
-      if (!customArtist) {
-        artist = parsedUrl.hostname;
-      }
-
-      const rawDirectPath = path.join(workDir, 'raw_direct_input');
-      const upstream = await fetch(normalized, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-        },
-      });
-      if (!upstream.ok) {
-        cleanup();
-        return res.status(502).json({ error: `Failed to fetch direct audio URL: HTTP ${upstream.status}` });
-      }
-
-      const arrayBuf = await upstream.arrayBuffer();
-      fs.writeFileSync(rawDirectPath, Buffer.from(arrayBuf));
-
-      const outputFilePath = path.join(workDir, `master_output.${formatSpec.extension}`);
-      await execFileAsync(
-        '/usr/bin/ffmpeg',
-        [
-          '-y',
-          '-i',
-          rawDirectPath,
-          ...formatSpec.ffmpegArgs,
-          '-metadata',
-          `title=${title}`,
-          '-metadata',
-          `artist=${artist}`,
-          '-metadata',
-          'album=Open Grace Music · Audiophile Master',
-          outputFilePath,
-        ],
-        { timeout: 90000 }
-      );
-
-      let durationSec = 0;
-      try {
-        const { stdout } = await execFileAsync('/usr/bin/ffprobe', [
-          '-v',
-          'error',
-          '-show_entries',
-          'format=duration',
-          '-of',
-          'default=noprint_wrappers=1:nokey=1',
-          outputFilePath,
-        ]);
-        durationSec = Math.round(parseFloat(stdout.trim()) || 0);
-      } catch {
-        durationSec = 180;
-      }
-
-      const stat = fs.statSync(outputFilePath);
-      const safeFilename =
-        title
-          .replace(/[^a-zA-Z0-9._ -]/g, '')
-          .replace(/\s+/g, ' ')
-          .trim() || 'OpenGraceMusic_Track';
-
-      res.setHeader('Content-Type', formatSpec.mimeType);
-      res.setHeader('Content-Length', stat.size.toString());
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(safeFilename)}.${formatSpec.extension}"`
-      );
-      res.setHeader('X-Audio-Title', encodeURIComponent(title));
-      res.setHeader('X-Audio-Artist', encodeURIComponent(artist));
-      res.setHeader('X-Audio-Duration', durationSec.toString());
-      res.setHeader('X-Audio-Format', formatSpec.format);
-      res.setHeader('X-Audio-Extension', formatSpec.extension);
-      res.setHeader('X-Audio-Sample-Rate', formatSpec.sampleRate.toString());
-      res.setHeader('X-Audio-Bit-Depth', formatSpec.bitDepth);
-      res.setHeader('X-Audio-Bitrate-Label', encodeURIComponent(formatSpec.bitrateLabel));
-      res.setHeader('X-Audio-Source', 'direct-url');
-
-      const readStream = fs.createReadStream(outputFilePath);
-      readStream.on('close', cleanup);
-      readStream.on('error', cleanup);
-      return readStream.pipe(res);
     }
-  } catch (error: unknown) {
-    cleanup();
-    const failure = classifyPipelineError(error, 'extract');
-    console.error('[convert-audio] Unhandled error:', failure.error);
-    return res.status(500).json({
-      error: failure.error || 'Audio conversion failed',
-      code: failure.code,
-    });
   }
+  const ext = job.responseMeta?.['X-Audio-Extension'] || 'mp3';
+  const titleHeader = job.responseMeta?.['X-Audio-Title'];
+  const safeName = titleHeader ? decodeURIComponent(titleHeader) : 'OpenGraceMusic_Track';
+  res.setHeader('Content-Type', job.responseMeta?.['Content-Type'] || 'application/octet-stream');
+  res.setHeader('Content-Length', stat.size.toString());
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${encodeURIComponent(safeName.replace(/[^a-zA-Z0-9._ -]/g, '').trim() || 'track')}.${ext}"`
+  );
+
+  const readStream = fs.createReadStream(job.resultPath);
+  readStream.on('close', cleanup);
+  readStream.on('error', cleanup);
+  return readStream.pipe(res);
 }
+
+function handleConvertJobEvents(req: express.Request, res: express.Response) {
+  const jobId = String(req.params.jobId || '');
+  const job = convertJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Conversion job not found or expired' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = () => {
+    const current = convertJobs.get(jobId);
+    if (!current) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: 'job expired' })}\n\n`);
+      res.end();
+      return;
+    }
+    res.write(
+      `event: progress\ndata: ${JSON.stringify({
+        stage: current.stage,
+        percent: current.percent,
+        message: current.message,
+        done: current.stage === 'done',
+        error: current.error,
+        code: current.code,
+      })}\n\n`
+    );
+    if (current.stage === 'done' || current.stage === 'error') {
+      clearInterval(timer);
+      res.end();
+    }
+  };
+
+  send();
+  const timer = setInterval(send, 2000);
+  req.on('close', () => clearInterval(timer));
+}
+
+app.post('/api/convert-audio/start', handleConvertAudioStart);
+app.get('/api/convert-audio/job/:jobId', handleConvertJobStatus);
+app.get('/api/convert-audio/job/:jobId/download', handleConvertJobDownload);
+app.get('/api/convert-audio/job/:jobId/events', handleConvertJobEvents);
 
 app.post('/api/convert-audio', handleConvertAudio);
 app.get('/api/convert-audio', handleConvertAudio);
 app.post('/api/convert-mp3', handleConvertAudio);
 app.get('/api/convert-mp3', handleConvertAudio);
+
+app.get('/api/lyrics/search', async (req, res) => {
+  const track = String(req.query.track || req.query.track_name || '').trim();
+  const artist = String(req.query.artist || req.query.artist_name || '').trim();
+  if (!track) {
+    return res.status(400).json({ error: 'track is required' });
+  }
+  try {
+    const params = new URLSearchParams({ track_name: track });
+    if (artist) params.set('artist_name', artist);
+    const lrclibRes = await fetch(`https://lrclib.net/api/search?${params.toString()}`, {
+      headers: { 'User-Agent': 'OpenGraceMusic/1.0 (lyrics lookup)' },
+    });
+    if (!lrclibRes.ok) {
+      return res.status(502).json({ error: 'Lyrics provider unavailable', results: [] });
+    }
+    const results = (await lrclibRes.json()) as Array<{
+      trackName?: string;
+      artistName?: string;
+      plainLyrics?: string;
+      syncedLyrics?: string;
+      instrumental?: boolean;
+    }>;
+    const match =
+      results.find(
+        (r) =>
+          r.plainLyrics &&
+          r.trackName &&
+          r.trackName.toLowerCase().includes(track.toLowerCase().slice(0, 12))
+      ) || results.find((r) => r.plainLyrics);
+
+    if (!match?.plainLyrics) {
+      return res.json({ found: false, results: [] });
+    }
+
+    return res.json({
+      found: true,
+      title: match.trackName || track,
+      artist: match.artistName || artist || 'Unknown Artist',
+      content: match.plainLyrics,
+      syncedLyrics: match.syncedLyrics || null,
+      instrumental: !!match.instrumental,
+      source: 'lrclib.net',
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Lyrics search failed';
+    return res.status(500).json({ error: message, found: false });
+  }
+});
 
 const APK_FILENAME = 'OpenGraceMusic.apk';
 

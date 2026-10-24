@@ -19,6 +19,11 @@ android {
     versionCode = 1
     versionName = "1.0"
 
+    val converterBaseUrl =
+      (project.findProperty("OGM_CONVERTER_BASE_URL") as String?)
+        ?: "https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai"
+    buildConfigField("String", "CONVERTER_BASE_URL", "\"$converterBaseUrl\"")
+
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 

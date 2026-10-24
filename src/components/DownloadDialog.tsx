@@ -11,7 +11,12 @@ import {
 } from 'lucide-react';
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
-import { apiUrl, fetchWithTimeout, humanizeConverterError } from '../services/converterApi';
+import {
+  apiUrl,
+  fetchWithTimeout,
+  humanizeConverterError,
+  studioFormatWarning,
+} from '../services/converterApi';
 
 interface DownloadDialogProps {
   isOpen: boolean;
@@ -45,7 +50,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   onOpenYouTubeBrowser,
 }) => {
   const [url, setUrl] = useState('');
-  const [selectedFormat, setSelectedFormat] = useState<AudiophileFormatId>('FLAC');
+  const [selectedFormat, setSelectedFormat] = useState<AudiophileFormatId>('MP3');
   const [mp3Bitrate, setMp3Bitrate] = useState<number>(320);
   const [saveToPhoneFolder, setSaveToPhoneFolder] = useState(true);
   const [showCookieBox, setShowCookieBox] = useState(false);
@@ -236,6 +241,12 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
               );
             })}
           </div>
+
+          {studioFormatWarning(selectedFormat) && (
+            <p className="mt-2 text-[11px] font-mono text-[#e2c986] leading-snug">
+              {studioFormatWarning(selectedFormat)}
+            </p>
+          )}
 
           {selectedFormat === 'MP3' && (
             <div className="cassette-bank flex items-center justify-between px-3 py-1.5">

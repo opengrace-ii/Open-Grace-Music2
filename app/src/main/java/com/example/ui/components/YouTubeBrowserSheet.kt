@@ -22,6 +22,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -88,6 +91,7 @@ class WebAppBridge(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun YouTubeBrowserSheet(
@@ -204,33 +208,40 @@ fun YouTubeBrowserSheet(
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.Start),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
                             if (detectedVideoId != null) {
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(SageGreenDeep)
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = "VIDEO DETECTED",
-                                        fontSize = 8.5.sp,
+                                        fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = SageGreen
+                                        color = SageGreen,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
                             }
                             Text(
                                 text = if (detectedVideoId != null) {
                                     "youtube.com/watch?v=$detectedVideoId"
                                 } else {
-                                    currentUrl.take(45)
+                                    currentUrl.take(60)
                                 },
                                 fontSize = 10.sp,
                                 color = if (detectedVideoId != null) SageGreen else TextMuted,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                softWrap = false,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                         }
                     }
@@ -489,17 +500,35 @@ fun YouTubeBrowserSheet(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Row(
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                if (detectedVideoId != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(SageGreenDeep)
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "VIDEO DETECTED",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = SageGreen,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                                 OutlinedButton(
                                     onClick = { copyCurrentVideoUrl() },
                                     enabled = detectedVideoId != null,
                                     shape = RoundedCornerShape(999.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
                                     modifier = Modifier
-                                        .weight(1f)
                                         .testTag("copy_detected_url_btn")
                                 ) {
                                     Icon(
@@ -522,7 +551,6 @@ fun YouTubeBrowserSheet(
                                     colors = ButtonDefaults.buttonColors(containerColor = SageGreen),
                                     shape = RoundedCornerShape(999.dp),
                                     modifier = Modifier
-                                        .weight(1f)
                                         .testTag("convert_current_video_button")
                                 ) {
                                     Icon(

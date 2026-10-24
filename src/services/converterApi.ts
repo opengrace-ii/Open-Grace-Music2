@@ -110,3 +110,88 @@ export async function checkConverterApiAvailable(): Promise<boolean> {
     return false;
   }
 }
+
+export type ConvertJobStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
+
+export interface ConvertJobStatus {
+  jobId: string;
+  stage: ConvertJobStage;
+  percent: number;
+  message: string;
+  done: boolean;
+  error?: string;
+  code?: ConverterErrorCode;
+}
+
+export interface StartConvertJobBody {
+  url: string;
+  format: string;
+  bitrate?: number;
+  cookies?: string;
+  title?: string;
+  artist?: string;
+}
+
+export async function startConvertJob(body: StartConvertJobBody): Promise<{ jobId: string }> {
+  const res = await fetchWithTimeout(apiUrl('/api/convert-audio/start'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    timeoutMs: 30_000,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw await readConverterError(res);
+  }
+  return (await res.json()) as { jobId: string };
+}
+
+export async function fetchConvertJobStatus(jobId: string): Promise<ConvertJobStatus> {
+  const res = await fetchWithTimeout(apiUrl(`/api/convert-audio/job/${encodeURIComponent(jobId)}`), {
+    timeoutMs: 15_000,
+  });
+  if (!res.ok) {
+    throw await readConverterError(res);
+  }
+  return (await res.json()) as ConvertJobStatus;
+}
+
+export async function downloadConvertJobResult(jobId: string): Promise<Response> {
+  return fetchWithTimeout(apiUrl(`/api/convert-audio/job/${encodeURIComponent(jobId)}/download`), {
+    timeoutMs: 180_000,
+  });
+}
+
+const STUDIO_LOSSLESS = new Set(['FLAC', 'ALAC', 'DSD', 'WAV']);
+
+export function isStudioLosslessFormat(format: string): boolean {
+  return STUDIO_LOSSLESS.has(format.toUpperCase());
+}
+
+export function studioFormatWarning(format: string): string | null {
+  if (!isStudioLosslessFormat(format)) return null;
+  return 'Studio master (FLAC/ALAC/DSD/WAV) — may take 2–5 min. MP3 320 is fastest (~20–60s).';
+}
+
+/** Poll job progress until done/error or timeout (default 3 min). */
+export async function waitForConvertJob(
+  jobId: string,
+  onProgress?: (status: ConvertJobStatus) => void,
+  timeoutMs = 180_000
+): Promise<ConvertJobStatus> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const status = await fetchConvertJobStatus(jobId);
+    onProgress?.(status);
+    if (status.stage === 'error') {
+      throw new ConverterApiError(status.error || 'Conversion failed', status.code || 'EXTRACTION_FAILED');
+    }
+    if (status.done) {
+      return status;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new ConverterApiError(
+    'Conversion timed out after 3 minutes. Try MP3 320 on Wi‑Fi or retry shortly.',
+    'TIMEOUT'
+  );
+}

@@ -534,7 +534,7 @@ fun OgmApp(
                                 viewModel.startDownload(
                                     url = track.uriString,
                                     saveToMusicFolder = true,
-                                    targetFormat = AudiophileFormat.FLAC_24
+                                    targetFormat = AudiophileFormat.MP3_320
                                 )
                             },
                             onSaveToMusicClick = { viewModel.saveTrackToDeviceMusic(track) },
@@ -583,7 +583,7 @@ fun OgmApp(
                 viewModel.startDownload(
                     url = videoUrl,
                     saveToMusicFolder = true,
-                    targetFormat = AudiophileFormat.FLAC_24,
+                    targetFormat = AudiophileFormat.MP3_320,
                     capturedStreamUrl = capturedStream,
                     streamHeaders = capturedHeaders
                 )

@@ -116,7 +116,7 @@ fun DownloadDialog(
 ) {
     val context = LocalContext.current
     var urlInput by remember(initialUrl) { mutableStateOf(initialUrl ?: "") }
-    var selectedFormat by remember { mutableStateOf(AudiophileFormat.FLAC_24) }
+    var selectedFormat by remember { mutableStateOf(AudiophileFormat.MP3_320) }
     var saveToMusicFolder by remember { mutableStateOf(true) }
     var clipboardSuggestion by remember { mutableStateOf<String?>(null) }
     var showPreviewPlayer by remember { mutableStateOf(true) }
@@ -419,6 +419,15 @@ fun DownloadDialog(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
+
+                if (selectedFormat != AudiophileFormat.MP3_320) {
+                    Text(
+                        text = "Studio master (${selectedFormat.code}) — may take 2–5 min. MP3 320 is fastest (~20–60s).",
+                        fontSize = 11.sp,
+                        color = Color(0xFFE2C986),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
 
                 // URL Link Validator Card & Simultaneous Video Preview
                 when (val res = validationResult) {

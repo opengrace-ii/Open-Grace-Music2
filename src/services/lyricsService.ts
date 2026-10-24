@@ -1,125 +1,83 @@
 import { LyricOrChord } from '../types';
+import { apiUrl, fetchWithTimeout } from './converterApi';
 
-export function generateLocalLyricsOrChord(title: string, artist: string): LyricOrChord {
-  const lower = title.toLowerCase();
-  const isInstrumental =
-    lower.includes('instrumental') ||
-    lower.includes('ambient') ||
-    lower.includes('lofi') ||
-    lower.includes('beats') ||
-    lower.includes('guitar') ||
-    lower.includes('piano') ||
-    lower.includes('orchestral') ||
-    lower.includes('soundtrack');
+export const LYRICS_UNAVAILABLE_MESSAGE = `Lyrics not available offline yet.
 
-  if (isInstrumental) {
-    return {
-      title,
-      artist: artist || 'Open Grace Music',
-      isInstrumental: true,
-      key: 'C Major',
-      bpm: 118,
-      timeSignature: '4/4',
-      content: `========================================
-INSTRUMENT CHORD SHEET & HARMONIC MAP
-========================================
-Piece:   ${title}
-Artist:  ${artist || 'Open Grace Music'}
-Key:     C Major  |  Tempo: 118 BPM  |  Time: 4/4
-Style:   Acoustic / Harmonious Resonance
+Open Grace Music does not ship placeholder lyrics. Verified lyrics may appear when:
+• A match is found on lrclib.net (community lyrics database), or
+• GEMINI_API_KEY is configured on the server for AI-assisted transcription (verify accuracy).
 
-[Intro - Soft Acoustic Build]
-| C      - G/B    - Am     - F      |
-| C      - G      - C      - C      |
+Tip: Search the song title in your browser or a lyrics app you trust.`;
 
-[Section A - Main Theme Progression]
-| C  . . . | G  . . . | Am . . . | F  . . . |
-| C  . . . | G  . . . | C   . . . | C  . . . |
-
-[Section B - Dynamic Lift & Groove]
-| F  . . . | C  . . . | G   . . . | Am . . . |
-| F  . . . | C  . . . | G7  . . . | C  . . . |
-
-[Bridge - Solo / Improvisation Cadence]
-| Am . . . | F  . . . | C   . . . | G   . . . |
-| Am . . . | Dm . . . | G   . . . | G7  . . . |
-
-[Outro - Resolving Peacefully]
-| C      - G/B    - Am     - F      |
-| C      - G      - C (Hold & Ring) |
-========================================
-Open Grace Music · Offline Personal Audio Architecture`,
+export async function fetchVerifiedLyricsFromLrclib(
+  title: string,
+  artist: string
+): Promise<LyricOrChord | null> {
+  try {
+    const params = new URLSearchParams({ track: title });
+    if (artist) params.set('artist', artist);
+    const res = await fetchWithTimeout(apiUrl(`/api/lyrics/search?${params.toString()}`), {
+      timeoutMs: 20_000,
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      found?: boolean;
+      title?: string;
+      artist?: string;
+      content?: string;
+      instrumental?: boolean;
+      source?: string;
     };
+    if (!data.found || !data.content) return null;
+    return {
+      title: data.title || title,
+      artist: data.artist || artist || 'Unknown Artist',
+      isInstrumental: !!data.instrumental,
+      content: `${data.content}\n\n— Source: ${data.source || 'lrclib.net'} (community submitted; verify accuracy)`,
+    };
+  } catch {
+    return null;
   }
-
-  return {
-    title,
-    artist: artist || 'Open Grace Music',
-    isInstrumental: false,
-    key: 'G Major',
-    bpm: 96,
-    timeSignature: '4/4',
-    content: `========================================
-VOCAL LYRICS & STRUCTURE
-========================================
-Track:   ${title}
-Artist:  ${artist || 'Open Grace Music'}
-Key:     G Major  |  Tempo: 96 BPM
-
-[Verse 1]
-Walking through the quiet morning light,
-Every shadow softly fades into the night.
-Gentle melodies across the open breeze,
-Carried timelessly beyond the quiet seas.
-
-[Chorus]
-And the music plays on through the grace of sound,
-In this peaceful harbor where we are found.
-Keep the rhythm close, let the spirit rise,
-Underneath the calm and golden skies.
-
-[Verse 2]
-Memories of yesterday begin to speak,
-Answers to the questions that we used to seek.
-No connection needed when the song is near,
-Every single tone and word is crystal clear.
-
-[Chorus]
-And the music plays on through the grace of sound,
-In this peaceful harbor where we are found.
-Keep the rhythm close, let the spirit rise,
-Underneath the calm and golden skies.
-
-[Bridge]
-When the world around is turning fast and loud,
-We find sanctuary high above the crowd.
-Just a heartbeat and the resonance within,
-Here is where the purest harmonies begin.
-
-[Outro]
-Let it fade... let it ring...
-Hear the grace of music sing.
-(Fade out softly)
-========================================
-Open Grace Music · Saved On This Device`,
-  };
 }
 
 export async function fetchAiLyricsOrChord(title: string, artist: string): Promise<LyricOrChord> {
+  const verified = await fetchVerifiedLyricsFromLrclib(title, artist);
+  if (verified) return verified;
+
   try {
     const res = await fetch('/api/generate-lyrics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, artist }),
     });
+    if (res.status === 503) {
+      return unavailableLyrics(title, artist);
+    }
     if (res.ok) {
       const data = await res.json();
       if (data && data.content) {
-        return data;
+        return {
+          ...data,
+          content: `${data.content}\n\n— AI-generated (GEMINI). Verify accuracy against the recording.`,
+        };
       }
     }
   } catch {
-    // fallback to local generator
+    // fall through
   }
-  return generateLocalLyricsOrChord(title, artist);
+  return unavailableLyrics(title, artist);
+}
+
+export function unavailableLyrics(title: string, artist: string): LyricOrChord {
+  return {
+    title,
+    artist: artist || 'Open Grace Music',
+    isInstrumental: false,
+    content: `${LYRICS_UNAVAILABLE_MESSAGE}\n\nTrack: ${title}\nArtist: ${artist || 'Unknown'}`,
+  };
+}
+
+/** @deprecated Removed fake template lyrics — use fetchAiLyricsOrChord */
+export function generateLocalLyricsOrChord(title: string, artist: string): LyricOrChord {
+  return unavailableLyrics(title, artist);
 }

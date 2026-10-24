@@ -51,9 +51,13 @@ import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 import {
   apiUrl,
   checkConverterApiAvailable,
+  downloadConvertJobResult,
   fetchWithTimeout,
   humanizeConverterError,
   readConverterError,
+  startConvertJob,
+  studioFormatWarning,
+  waitForConvertJob,
 } from './services/converterApi';
 
 export default function App() {
@@ -67,7 +71,7 @@ export default function App() {
 
   // Inline Tape Deck Recorder state
   const [inlineUrl, setInlineUrl] = useState('');
-  const [inlineFormat, setInlineFormat] = useState<AudiophileFormatId>('FLAC');
+  const [inlineFormat, setInlineFormat] = useState<AudiophileFormatId>('MP3');
   const [inlineMp3Bitrate, setInlineMp3Bitrate] = useState<number>(320);
   const [inlineSaveToDevice, setInlineSaveToDevice] = useState(true);
   const [inlineCookies, setInlineCookies] = useState('');
@@ -515,8 +519,8 @@ export default function App() {
   // Real Audiophile Lossless & Hi-Res Download & Conversion Handler
   const handleStartDownload = async (
     url: string,
-    format: AudiophileFormatId = 'FLAC',
-    bitrateKbps: number = 2304,
+    format: AudiophileFormatId = 'MP3',
+    bitrateKbps: number = 320,
     saveToDeviceFolder: boolean = true,
     cookies?: string,
     customTitle?: string,
@@ -532,34 +536,44 @@ export default function App() {
 
     setIsDownloading(true);
     setDownloadError(null);
-    setDownloadProgress(0.12);
-    setDownloadStatus(`RECORDING ${format} (${formatObj.badge})...`);
-
-    const progressTicker = window.setInterval(() => {
-      setDownloadProgress((prev) => {
-        if (prev >= 0.78) return prev;
-        return Math.min(0.78, prev + 0.03);
-      });
-    }, 4_000);
+    setDownloadProgress(0.08);
+    setDownloadStatus(`Validating · preparing ${format} (${formatObj.badge})...`);
 
     try {
       const ytId = extractYouTubeId(trimmedUrl);
-      setDownloadProgress(0.28);
-      setDownloadStatus(`EXTRACTING ${format} MASTER (up to 2 min)...`);
 
-      const response = await fetchWithTimeout(apiUrl('/api/convert-audio'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        timeoutMs: 150_000,
-        body: JSON.stringify({
-          url: trimmedUrl,
-          format,
-          bitrate: bitrateKbps,
-          cookies,
-          title: customTitle,
-          artist: customArtist,
-        }),
+      const { jobId } = await startConvertJob({
+        url: trimmedUrl,
+        format,
+        bitrate: format === 'MP3' ? bitrateKbps : bitrateKbps,
+        cookies,
+        title: customTitle,
+        artist: customArtist,
       });
+
+      await waitForConvertJob(
+        jobId,
+        (status) => {
+          setDownloadProgress(Math.max(0.05, Math.min(0.98, status.percent / 100)));
+          const stageLabel =
+            status.stage === 'validate'
+              ? 'VALIDATING'
+              : status.stage === 'extract'
+                ? 'EXTRACTING'
+                : status.stage === 'ffmpeg'
+                  ? 'FFMPEG MASTERING'
+                  : status.stage === 'save'
+                    ? 'SAVING'
+                    : 'PROCESSING';
+          setDownloadStatus(`${stageLabel}: ${status.message}`);
+        },
+        180_000
+      );
+
+      setDownloadProgress(0.92);
+      setDownloadStatus('Downloading mastered file...');
+
+      const response = await downloadConvertJobResult(jobId);
 
       if (!response.ok) {
         throw await readConverterError(response);
@@ -662,7 +676,6 @@ export default function App() {
       setDownloadError(display);
       addToast(`Recorder error: ${display}`, 'error');
     } finally {
-      window.clearInterval(progressTicker);
       setIsDownloading(false);
       setDownloadProgress(0);
       setDownloadStatus('');
@@ -1222,6 +1235,12 @@ export default function App() {
               );
             })}
           </div>
+
+          {studioFormatWarning(inlineFormat) && (
+            <p className="text-[11px] font-mono text-[#e2c986] leading-snug">
+              {studioFormatWarning(inlineFormat)}
+            </p>
+          )}
 
           {/* URL Slot + Record Cassette Key */}
           <div className="flex flex-col sm:flex-row gap-2.5">

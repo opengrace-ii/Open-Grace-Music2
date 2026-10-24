@@ -38,11 +38,14 @@ Open Grace Music supports true high-resolution and lossless audio workflows with
   - Variable playback speed selector (`0.75x`, `1.0x`, `1.25x`, `1.5x`)
   - Shuffle, Repeat (`OFF`, `ALL`, `ONE`), interactive seek bar, and Playing Queue bottom sheet
 
-### 5. Vocal Lyrics & Instrument Chord Sheets with 1-Tap Android Share
-- Every track in the library includes an intelligent **Vocal Lyrics & Instrument Chord Sheet Generator** (`LyricsGenerator.kt` & `LyricsDialog.kt`):
-  - **Vocal Tracks**: Structured performance lyrics (`[Verse 1]`, `[Chorus]`, `[Verse 2]`, `[Bridge]`, `[Outro]`) with musical Key, Tempo (BPM), and Time Signature.
-  - **Instrumental Tracks**: Studio **Instrument Chord Sheet** (`[Intro — Arpeggiated Motif]`, `[Section A — Main Theme]`, `[Section B — Harmonic Lift]`, `[Bridge — Solo Changes]`, `[Outro]`) with Key Signature, BPM, Time Signature (`4/4`, `3/4`, `6/8`), and standard tuning notes.
-- Users can toggle between **Vocal Lyrics** and **Chord Sheet** views on any song and share via Android's native share sheet (`Intent.ACTION_SEND`) to WhatsApp, Messages, Email, Notes, or any installed app.
+### 5. Lyrics (honest offline UX)
+- Open Grace Music **does not fabricate** generic placeholder lyrics or C–G–Am–F chord sheets.
+- The player tries **[lrclib.net](https://lrclib.net)** for a title/artist match; if none is found, you see **“Lyrics not available offline yet.”**
+- Optional **Gemini** lyrics (`GEMINI_API_KEY` on the server) are labeled **AI-generated — verify accuracy**.
+- Instrumental tracks can show a short note instead of a fake chart until real chart data exists.
+
+### YouTube conversion speed vs TubeMate
+Apps like **TubeMate** use dedicated on-device YouTube parsers tuned for fast MP4/MP3 grabs. **Open Grace Music** routes YouTube through a **server-side yt-dlp + FFmpeg audiophile pipeline** (true MP3 320, FLAC, ALAC, and more). For a TubeMate-like wait time, choose **MP3 320** (typically ~20–60 seconds); studio **FLAC/ALAC** masters may take **2–5 minutes**. OGM does not bundle or ship TubeMate.
 
 ---
 
@@ -57,9 +60,10 @@ app/src/main/java/com/example/
 │   ├── LyricsGenerator.kt           # Vocal Lyrics & Instrument Chord Sheet engine (Key, BPM, Time Sig)
 │   ├── StorageHelper.kt             # Device & library storage telemetry
 │   ├── downloader/
-│   │   ├── AudioDownloader.kt       # Audiophile stream downloader, header validator & SAF importer
+│   │   ├── AudioDownloader.kt       # YouTube → server FFmpeg jobs + direct URL importer
+│   │   ├── ServerConverter.kt       # Polls /api/convert-audio job progress from the hosted converter
 │   │   ├── DeviceMusicHelper.kt     # Android MediaStore exporter (Music/OpenGraceMusic) & scanner
-│   │   └── YouTubeStreamResolver.kt # Background YouTube stream URL & cookie extractor
+│   │   └── YouTubeStreamResolver.kt # In-app YouTube browser stream capture helpers
 │   ├── local/
 │   │   ├── OgmDatabase.kt           # Room SQLite database (v3)
 │   │   ├── TrackDao.kt              # Reactive Flow queries & persistence operations

@@ -120,7 +120,7 @@ class AudioDownloader(private val context: Context) {
     suspend fun downloadAudio(
         mediaInfo: ExtractedMediaInfo,
         saveToPublicMusic: Boolean = true,
-        targetFormat: AudiophileFormat = AudiophileFormat.FLAC_24,
+        targetFormat: AudiophileFormat = AudiophileFormat.MP3_320,
         bitrateKbps: Int = targetFormat.bitrateKbps,
         capturedStreamUrl: String? = null,
         streamHeaders: Map<String, String>? = null,
@@ -134,26 +134,83 @@ class AudioDownloader(private val context: Context) {
 
         val cleanTitle = mediaInfo.title.replace("[^a-zA-Z0-9._ -]".toRegex(), "").trim().ifEmpty { "track" }
 
-        var resolvedStreamUrl = capturedStreamUrl
-        var effectiveCookies: String? = null
+        if (mediaInfo.source == TrackSource.YOUTUBE) {
+            onProgress(0.1f, "Studio convert · ${targetFormat.code} (MP3 320 is fastest)…")
+            val serverResult = ServerConverter.convertViaServerJob(
+                watchUrl = mediaInfo.directStreamUrl,
+                targetFormat = targetFormat,
+                bitrateKbps = bitrateKbps,
+                titleHint = mediaInfo.title,
+                artistHint = mediaInfo.artist,
+                onProgress = onProgress
+            )
 
-        if (mediaInfo.source == TrackSource.YOUTUBE && resolvedStreamUrl.isNullOrEmpty()) {
-            onProgress(0.18f, "Resolving authentic ${targetFormat.code} stream from YouTube...")
-            val resolved = runCatching {
-                YouTubeStreamResolver.resolveStreamInBackground(context, mediaInfo.id)
-            }.getOrNull()
+            val staged = File(musicDir, "${cleanTitle}_${System.currentTimeMillis()}.${targetFormat.extension}")
+            serverResult.file.copyTo(staged, overwrite = true)
+            runCatching { serverResult.file.delete() }
 
-            if (resolved != null) {
-                resolvedStreamUrl = resolved.streamUrl
-                effectiveCookies = resolved.cookies
+            onProgress(0.88f, "Verifying ${targetFormat.code} master stream & duration...")
+            var durationMs = (serverResult.durationSec * 1000L).takeIf { it > 0 } ?: 0L
+            if (durationMs <= 0L) {
+                try {
+                    val mmr = MediaMetadataRetriever()
+                    mmr.setDataSource(staged.absolutePath)
+                    durationMs = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                    mmr.release()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not extract duration", e)
+                }
             }
+
+            var publicUriString = Uri.fromFile(staged).toString()
+            var savedToPublic = false
+            if (saveToPublicMusic) {
+                onProgress(0.94f, "Saving ${targetFormat.code} to phone Music folder...")
+                val publicUri = DeviceMusicHelper.saveToSystemMusicFolder(
+                    context = context,
+                    sourceFile = staged,
+                    title = serverResult.title,
+                    artist = serverResult.artist,
+                    album = "Open Grace Music · ${targetFormat.code} Master",
+                    mimeType = DeviceMusicHelper.resolveMimeType(targetFormat.mimeType)
+                )
+                if (publicUri != null) {
+                    publicUriString = publicUri.toString()
+                    savedToPublic = true
+                }
+            }
+
+            onProgress(1.0f, "Completed & saved ${targetFormat.code} offline ✓")
+            val isInstrumental = com.example.data.LyricsGenerator.isInstrumentalTrack(serverResult.title, serverResult.artist)
+
+            return@withContext Track(
+                id = UUID.randomUUID().toString(),
+                title = serverResult.title,
+                artist = serverResult.artist,
+                album = "Open Grace Music · ${targetFormat.code}",
+                durationMs = durationMs,
+                sizeBytes = staged.length(),
+                format = targetFormat.code,
+                filePath = staged.absolutePath,
+                uriString = publicUriString,
+                source = mediaInfo.source,
+                savedToDeviceMusic = savedToPublic,
+                storageStatus = if (savedToPublic) StorageStatus.SAVED_MUSIC_FOLDER else StorageStatus.PERSISTENT,
+                thumbnailUrl = serverResult.thumbnailUrl ?: mediaInfo.thumbnailUrl,
+                bitrateKbps = bitrateKbps,
+                sampleRateHz = targetFormat.sampleRateHz,
+                bitDepth = targetFormat.bitDepth,
+                isInstrumental = isInstrumental,
+                addedAt = System.currentTimeMillis()
+            )
         }
 
-        val streamUrl = resolvedStreamUrl ?: if (mediaInfo.source == TrackSource.DIRECT_URL) mediaInfo.directStreamUrl else null
+        var resolvedStreamUrl = capturedStreamUrl
+        val streamUrl = resolvedStreamUrl ?: mediaInfo.directStreamUrl
 
         if (streamUrl.isNullOrEmpty()) {
             throw IllegalStateException(
-                "Could not extract audio stream for \"${mediaInfo.title}\". Please open the video in the YouTube browser and tap Save Audio."
+                "Could not extract audio stream for \"${mediaInfo.title}\". Please verify the link."
             )
         }
 
@@ -163,7 +220,7 @@ class AudioDownloader(private val context: Context) {
         var contentType = targetFormat.mimeType
         var targetFile = File(musicDir, "${cleanTitle}_${System.currentTimeMillis()}.$extension")
 
-        val cookies = effectiveCookies ?: try {
+        val cookies = try {
             CookieManager.getInstance().getCookie("https://m.youtube.com")
                 ?: CookieManager.getInstance().getCookie("https://www.youtube.com")
         } catch (_: Exception) { null }

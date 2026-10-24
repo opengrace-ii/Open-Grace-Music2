@@ -161,7 +161,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startDownload(
         url: String,
         saveToMusicFolder: Boolean = true,
-        targetFormat: AudiophileFormat = AudiophileFormat.FLAC_24,
+        targetFormat: AudiophileFormat = AudiophileFormat.MP3_320,
         bitrateKbps: Int = targetFormat.bitrateKbps,
         capturedStreamUrl: String? = null,
         streamHeaders: Map<String, String>? = null

@@ -1,6 +1,13 @@
 package com.example.data
 
-import kotlin.math.abs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 object LyricsGenerator {
 
@@ -8,170 +15,110 @@ object LyricsGenerator {
         val title: String,
         val artist: String,
         val isInstrumental: Boolean,
-        val keySignature: String,
-        val tempoBpm: Int,
-        val timeSignature: String,
-        val content: String
+        val keySignature: String? = null,
+        val tempoBpm: Int? = null,
+        val timeSignature: String? = null,
+        val content: String,
+        val sourceLabel: String = "unavailable"
     )
 
-    private val KEYS = listOf("C Major", "G Major", "D Major", "A Minor", "E Minor", "F Major", "Bb Major", "D Minor")
-    private val TIME_SIGNATURES = listOf("4/4", "4/4", "3/4", "6/8", "4/4")
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
 
     fun isInstrumentalTrack(title: String, artist: String = ""): Boolean {
         val lower = "$title $artist".lowercase()
         return lower.contains("instrumental") ||
-                lower.contains("ambient") ||
-                lower.contains("lofi") ||
-                lower.contains("lo-fi") ||
-                lower.contains("beats") ||
-                lower.contains("acoustic guitar") ||
-                lower.contains("piano") ||
-                lower.contains("sonata") ||
-                lower.contains("nocturne") ||
-                lower.contains("symphony") ||
-                lower.contains("concerto") ||
-                lower.contains("prelude") ||
-                lower.contains("orchestra") ||
-                lower.contains("chord") ||
-                lower.contains("backing track") ||
-                lower.contains("jazz trio")
+                lower.contains("karaoke") ||
+                lower.contains("backing track")
     }
 
+    fun unavailableContent(title: String, artist: String): SongContent {
+        val body = """
+            Lyrics not available offline yet.
+
+            Open Grace Music does not show placeholder lyrics that are unrelated to your song.
+
+            • Verified lyrics may appear when lrclib.net has a title/artist match
+            • AI lyrics require GEMINI_API_KEY on the server (verify accuracy)
+
+            Track: $title
+            Artist: ${artist.ifBlank { "Unknown" }}
+
+            Search this title in a lyrics app or browser you trust.
+        """.trimIndent()
+
+        return SongContent(
+            title = title,
+            artist = artist.ifBlank { "Open Grace Music" },
+            isInstrumental = false,
+            content = body,
+            sourceLabel = "unavailable"
+        )
+    }
+
+    suspend fun loadLyrics(title: String, artist: String): SongContent = withContext(Dispatchers.IO) {
+        fetchFromLrclib(title, artist) ?: unavailableContent(title, artist)
+    }
+
+    private fun fetchFromLrclib(title: String, artist: String): SongContent? {
+        return try {
+            val params = buildString {
+                append("track_name=").append(URLEncoder.encode(title, "UTF-8"))
+                if (artist.isNotBlank()) {
+                    append("&artist_name=").append(URLEncoder.encode(artist, "UTF-8"))
+                }
+            }
+            val req = Request.Builder()
+                .url("https://lrclib.net/api/search?$params")
+                .header("User-Agent", "OpenGraceMusic/1.0 (Android lyrics lookup)")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (!resp.isSuccessful) return null
+            val body = resp.body?.string() ?: return null
+            val arr = JSONArray(body)
+            if (arr.length() == 0) return null
+
+            var match: JSONObject? = null
+            for (i in 0 until arr.length()) {
+                val item = arr.getJSONObject(i)
+                if (!item.optString("plainLyrics").isNullOrBlank()) {
+                    match = item
+                    break
+                }
+            }
+            val chosen = match ?: return null
+            val lyrics = chosen.optString("plainLyrics")
+            if (lyrics.isBlank()) return null
+
+            SongContent(
+                title = chosen.optString("trackName", title),
+                artist = chosen.optString("artistName", artist.ifBlank { "Unknown Artist" }),
+                isInstrumental = chosen.optBoolean("instrumental", false),
+                content = "$lyrics\n\n— Source: lrclib.net (community submitted; verify accuracy)",
+                sourceLabel = "lrclib"
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** @deprecated Placeholder generator removed — use [loadLyrics] */
     fun generate(
         title: String,
         artist: String,
         forceInstrumental: Boolean? = null
     ): SongContent {
-        val isInst = forceInstrumental ?: isInstrumentalTrack(title, artist)
-        val seed = abs((title.lowercase().trim() + "|" + artist.lowercase().trim()).hashCode())
-        val keySig = KEYS[seed % KEYS.size]
-        val bpm = 72 + (seed % 64)
-        val timeSig = TIME_SIGNATURES[seed % TIME_SIGNATURES.size]
-
-        val content = if (isInst) {
-            generateChordSheet(title, artist, keySig, bpm, timeSig)
-        } else {
-            generateLyrics(title, artist, keySig, bpm, timeSig)
+        if (forceInstrumental == true) {
+            return SongContent(
+                title = title,
+                artist = artist,
+                isInstrumental = true,
+                content = "Chord sheet hidden until verified chart data exists.\n\nMark instrumental tracks in your library notes, or import a PDF chart from your files app.",
+                sourceLabel = "instrumental"
+            )
         }
-
-        return SongContent(
-            title = title,
-            artist = artist,
-            isInstrumental = isInst,
-            keySignature = keySig,
-            tempoBpm = bpm,
-            timeSignature = timeSig,
-            content = content
-        )
-    }
-
-    private fun generateChordSheet(
-        title: String,
-        artist: String,
-        keySig: String,
-        bpm: Int,
-        timeSig: String
-    ): String {
-        val progressions = when {
-            keySig.startsWith("G") -> listOf("G", "D/F#", "Em7", "Cadd9", "Am7", "D7")
-            keySig.startsWith("D ") -> listOf("D", "A/C#", "Bm7", "Gmaj7", "Em7", "A7")
-            keySig.startsWith("A Minor") -> listOf("Am7", "Fmaj7", "C", "G", "Dm7", "E7")
-            keySig.startsWith("E Minor") -> listOf("Em7", "Cadd9", "G", "D", "Am7", "B7")
-            keySig.startsWith("F") -> listOf("Fmaj7", "C/E", "Dm7", "Bb", "Gm7", "C7")
-            else -> listOf("Cmaj7", "G/B", "Am7", "Fmaj7", "Dm7", "G7")
-        }
-        val I = progressions[0]
-        val V = progressions[1]
-        val vi = progressions[2]
-        val IV = progressions[3]
-        val ii = progressions[4]
-        val V7 = progressions[5]
-
-        return """
-            ========================================
-            INSTRUMENT CHORD SHEET (STUDIO CHART)
-            ========================================
-            Song: $title
-            Artist: $artist
-            Type: Instrumental / Lead & Rhythm Chart
-            Key: $keySig  |  Tempo: $bpm BPM  |  Time: $timeSig
-            Tuning: Standard (E A D G B E) / Concert Pitch (A=440Hz)
-
-            [Intro — Arpeggiated Motif]
-            | $I  -  $V  -  $vi  -  $IV |
-            | $I  -  $V7 -  $I   -  $I  |
-
-            [Section A — Main Theme / Verse Progression]
-            | $I  . . . | $V  . . . | $vi . . . | $IV . . . |
-            | $I  . . . | $ii . . . | $V7 . . . | $I  . . . |
-
-            [Section B — Harmonic Lift / Chorus Groove]
-            | $IV . . . | $I  . . . | $V  . . . | $vi . . . |
-            | $IV . . . | $ii . . . | $V7 . . . | $I  . . . |
-
-            [Bridge — Improvisation / Solo Changes]
-            | $vi . . . | $IV . . . | $I  . . . | $V  . . . |
-            | $vi . . . | $ii . . . | $V  . . . | $V7 . . . |
-
-            [Outro — Diminuendo & Fermata]
-            | $I  -  $V  -  $vi  -  $IV |
-            | $I  -  $V7 -  $I (Hold)   |
-            ========================================
-            Generated by Open Grace Music · Studio Chord Engine
-        """.trimIndent()
-    }
-
-    private fun generateLyrics(
-        title: String,
-        artist: String,
-        keySig: String,
-        bpm: Int,
-        timeSig: String
-    ): String {
-        return """
-            ========================================
-            VOCAL LYRICS & PERFORMANCE NOTES
-            ========================================
-            Song: $title
-            Artist: $artist
-            Key: $keySig  |  Tempo: $bpm BPM  |  Time: $timeSig
-
-            [Verse 1]
-            Walking through the quiet morning light,
-            Every shadow fades into the night.
-            Notes of "$title" softly rise,
-            Echoing beneath the open skies.
-
-            [Chorus]
-            And the music plays on through the grace of sound,
-            In this peaceful sanctuary we have found.
-            Keep the rhythm close, let the spirit soar,
-            Pure and timeless now and evermore.
-
-            [Verse 2]
-            Every melody that $artist brings,
-            Resonates upon the silver strings.
-            Saved in lossless clarity so near,
-            Every breath and harmony is clear.
-
-            [Chorus]
-            And the music plays on through the grace of sound,
-            In this peaceful sanctuary we have found.
-            Keep the rhythm close, let the spirit soar,
-            Pure and timeless now and evermore.
-
-            [Bridge]
-            When the world is moving fast and loud,
-            Find your quiet place above the crowd.
-            Just a heartbeat and a faithful song,
-            Here is where our grateful hearts belong.
-
-            [Outro]
-            Let it fade... let it ring...
-            Hear the grace of "$title" sing.
-            (Gentle fade out)
-            ========================================
-            Generated by Open Grace Music · Lyrics Engine
-        """.trimIndent()
+        return unavailableContent(title, artist)
     }
 }

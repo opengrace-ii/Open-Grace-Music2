@@ -11,7 +11,7 @@ import {
   Download,
 } from 'lucide-react';
 import { LyricOrChord, Track } from '../types';
-import { fetchAiLyricsOrChord, generateLocalLyricsOrChord } from '../services/lyricsService';
+import { fetchAiLyricsOrChord, unavailableLyrics } from '../services/lyricsService';
 
 interface LyricsModalProps {
   isOpen: boolean;
@@ -37,7 +37,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
       const result = await fetchAiLyricsOrChord(title, artist);
       setData(result);
     } catch {
-      setData(generateLocalLyricsOrChord(title, artist));
+      setData(unavailableLyrics(title, artist));
     } finally {
       setIsLoading(false);
     }

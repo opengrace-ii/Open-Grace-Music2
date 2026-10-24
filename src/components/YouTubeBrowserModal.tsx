@@ -173,18 +173,27 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                 allowFullScreen
                 referrerPolicy="origin-when-cross-origin"
               />
-              <div className="absolute bottom-0 inset-x-0 px-3 py-2 bg-gradient-to-t from-black/90 to-transparent flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[10px] sm:text-xs font-mono text-[#9fa396]">
-                  On a video page, copy its link and tap Paste above.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => window.open('https://m.youtube.com', '_blank', 'noopener,noreferrer')}
-                  className="cassette-btn px-2.5 py-1 text-[10px] font-mono text-[#e2c986] shrink-0"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Open in browser
-                </button>
+              <div className="absolute bottom-0 inset-x-0 px-3 py-2.5 bg-gradient-to-t from-black/95 to-transparent">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-w-0">
+                  {selectedYtId ? (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] sm:text-xs font-mono font-bold text-[#b8d99e] whitespace-nowrap shrink-0"
+                    >
+                      VIDEO DETECTED
+                    </span>
+                  ) : null}
+                  <p className="text-[10px] sm:text-xs font-mono text-[#9fa396] flex-1 min-w-[8rem] whitespace-normal sm:whitespace-nowrap">
+                    On a video page, copy its link and tap Paste above.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => window.open('https://m.youtube.com', '_blank', 'noopener,noreferrer')}
+                    className="cassette-btn px-2.5 py-1 text-[10px] font-mono text-[#e2c986] shrink-0 whitespace-nowrap"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Open in browser
+                  </button>
+                </div>
               </div>
             </div>
           ) : selectedYtId ? (
@@ -212,11 +221,16 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                 />
               </div>
 
-              <div className="p-3 rounded-2xl cassette-window flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate">
-                    {previewInfo?.title || `YouTube Master (${selectedYtId})`}
-                  </h4>
+              <div className="p-3 rounded-2xl cassette-window flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 shrink-0">
+                <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0 mb-1">
+                    <span className="inline-flex px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] font-mono font-bold text-[#b8d99e] whitespace-nowrap shrink-0">
+                      VIDEO DETECTED
+                    </span>
+                    <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate min-w-0 flex-1">
+                      {previewInfo?.title || `YouTube Master (${selectedYtId})`}
+                    </h4>
+                  </div>
                   <p className="text-xs font-mono text-[#b8d99e] mt-0.5 truncate">
                     {previewInfo?.author || 'Studio Stream Ready'}
                   </p>
