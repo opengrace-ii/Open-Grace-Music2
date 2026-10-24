@@ -1,7 +1,8 @@
 package com.example.data.downloader
 
+import android.content.Context
 import android.util.Log
-import com.example.BuildConfig
+import com.example.data.ConverterServerPrefs
 import com.example.data.model.AudiophileFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -36,6 +37,7 @@ object ServerConverter {
     )
 
     suspend fun convertViaServerJob(
+        context: Context,
         watchUrl: String,
         targetFormat: AudiophileFormat,
         bitrateKbps: Int,
@@ -43,7 +45,13 @@ object ServerConverter {
         artistHint: String?,
         onProgress: (Float, String) -> Unit
     ): ServerConvertResult = withContext(Dispatchers.IO) {
-        val base = BuildConfig.CONVERTER_BASE_URL.trimEnd('/')
+        val base = ConverterServerPrefs.resolveBaseUrl(context)
+        if (base.isBlank()) {
+            throw IllegalStateException(
+                "No converter server set. Open Settings → Converter server URL and paste where you run npm start " +
+                    "(e.g. https://your-host:43123 or http://192.168.x.x:43123 on same Wi‑Fi)."
+            )
+        }
         onProgress(0.12f, "Connecting to studio converter (${targetFormat.code})…")
 
         val startBody = JSONObject()

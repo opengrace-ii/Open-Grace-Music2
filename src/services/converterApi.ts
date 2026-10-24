@@ -1,3 +1,5 @@
+import { resolveConverterApiBaseUrl } from './converterServerUrl';
+
 export type ConverterErrorCode =
   | 'NETWORK'
   | 'TIMEOUT'
@@ -17,10 +19,9 @@ export class ConverterApiError extends Error {
   }
 }
 
-/** Same-origin API base — required for PWA; relative paths break on file:// or cached shells. */
+/** API base: Settings override, else same tab origin (PWA on your server). */
 export function getApiBaseUrl(): string {
-  if (typeof window === 'undefined') return '';
-  return window.location.origin;
+  return resolveConverterApiBaseUrl();
 }
 
 export function apiUrl(path: string): string {
@@ -55,7 +56,7 @@ export async function fetchWithTimeout(
       );
     }
     throw new ConverterApiError(
-      'Cannot reach converter. Open the app from the same server URL (not an offline file copy) and check your connection.',
+      'Cannot reach converter. In Settings, paste your Open Grace Music server URL (where npm start runs), or open the app from that URL in Chrome.',
       'NETWORK'
     );
   } finally {
@@ -92,7 +93,7 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
   if (err instanceof TypeError && /fetch|network|failed/i.test(String(err.message))) {
     return {
       message:
-        'Cannot reach converter. Open the app from the hosted server URL (not an offline copy) and check your connection.',
+        'Cannot reach converter. Set Converter server URL in Settings, or open the app from your running server in Chrome.',
       code: 'NETWORK',
     };
   }

@@ -65,7 +65,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </button>
         </div>
 
-        <div className="my-4 p-3.5 rounded-2xl bg-[#11120f] border border-[#3a4433] text-xs text-[#c8c4bc] leading-relaxed">
+        <div className="my-4 p-3.5 rounded-2xl bg-[#11120f] border border-[#3a4433] text-xs text-[#c8c4bc] leading-relaxed space-y-2">
           <p className="flex items-start gap-2">
             <Shield className="w-4 h-4 text-[#b8d99e] shrink-0 mt-0.5" />
             <span>
@@ -75,6 +75,13 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               <strong className="text-[#b8d99e] font-medium">Add to Home screen</strong> (PWA) —
               no sideload required.
             </span>
+          </p>
+          <p>
+            <strong className="text-[#eeeae2] font-medium">AppDeploy is not required.</strong> For
+            YouTube→MP3 in the APK or an installed PWA, run the project server (
+            <code className="text-[#b8d99e]">npm start</code>) on your PC, VPS, or Cursor agent and set{' '}
+            <strong className="text-[#b8d99e] font-medium">Settings → Converter server URL</strong>.
+            Offline library and local file import work without any server.
           </p>
           <a
             href={REPO_URL}

@@ -61,7 +61,7 @@ app/src/main/java/com/example/
 │   ├── StorageHelper.kt             # Device & library storage telemetry
 │   ├── downloader/
 │   │   ├── AudioDownloader.kt       # YouTube → server FFmpeg jobs + direct URL importer
-│   │   ├── ServerConverter.kt       # Polls /api/convert-audio job progress from the hosted converter
+│   │   ├── ServerConverter.kt       # Polls /api/convert-audio (URL from Settings or Gradle)
 │   │   ├── DeviceMusicHelper.kt     # Android MediaStore exporter (Music/OpenGraceMusic) & scanner
 │   │   └── YouTubeStreamResolver.kt # In-app YouTube browser stream capture helpers
 │   ├── local/
@@ -86,6 +86,31 @@ app/src/main/java/com/example/
     │   └── YouTubeBrowserSheet.kt   # In-app YouTube browser with stream capture & 1-tap conversion
     └── theme/                       # Sage Green & Dark Obsidian Material 3 theme & custom typography
 ```
+
+---
+
+## Do I need AppDeploy?
+
+**No.** AppDeploy was one way to host the static web app (PWA) on a public HTTPS URL. It is **not** part of Open Grace Music itself, and you do not need it to use the app.
+
+What you actually need:
+
+| Goal | What to do |
+| :--- | :--- |
+| **Play your library offline** | Use the **APK** or **Add to Home screen** (PWA). Import files from your phone — no server required. |
+| **YouTube → MP3 / FLAC on phone** | Run the **backend** on a machine you control: `npm start` (listens on port **43123** by default). The app calls `/api/convert-audio` on that server. |
+| **PWA in Chrome** | Open the app **from the same URL** where `npm start` is running (same origin = converter works automatically). |
+| **Native APK** | Tap **Settings (⚙)** → **Converter server URL** and paste that server address (see examples below). |
+
+**Same Wi‑Fi (PC + phone):** find your PC’s LAN IP (e.g. `192.168.1.42`) and use `http://192.168.1.42:43123`.
+
+**Android emulator:** use `http://10.0.2.2:43123` to reach the host machine’s localhost.
+
+**Cursor Cloud Agent / remote dev:** use the agent’s **public HTTPS URL** with port **43123** forwarded when Cursor exposes it (Desktop preview / port forwarding). Paste that full URL in Settings on the APK, or open the PWA from that URL in Chrome.
+
+**Optional Gradle override (developers only):** `./gradlew :app:assembleDebug -POGM_CONVERTER_BASE_URL=http://10.0.2.2:43123`
+
+You can also use **ngrok**, **Cloudflare Tunnel**, or your own VPS — any HTTPS (or LAN HTTP) origin that serves this app and its `/api/*` routes.
 
 ---
 

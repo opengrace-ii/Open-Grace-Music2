@@ -13,6 +13,7 @@ import {
   Clipboard,
   Loader2,
   KeyRound,
+  Settings,
   AlertCircle,
   Play,
   Pause,
@@ -46,6 +47,8 @@ import { YouTubeBrowserModal } from './components/YouTubeBrowserModal';
 import { LyricsModal } from './components/LyricsModal';
 import { AndroidProjectModal } from './components/AndroidProjectModal';
 import { InstallGuideModal } from './components/InstallGuideModal';
+import { SettingsModal } from './components/SettingsModal';
+import { resolveConverterApiBaseUrl } from './services/converterServerUrl';
 import { Toast, ToastMessage } from './components/Toast';
 import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 import {
@@ -112,6 +115,7 @@ export default function App() {
   const [showFullPlayer, setShowFullPlayer] = useState(false);
   const [showAndroidProject, setShowAndroidProject] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const swUpdateToastShown = useRef(false);
   const [selectedTrackForLyrics, setSelectedTrackForLyrics] = useState<Track | null>(null);
   const [prefilledUrl, setPrefilledUrl] = useState<string | null>(null);
@@ -167,6 +171,10 @@ export default function App() {
   useEffect(() => {
     loadLibrary();
   }, []);
+
+  const refreshConverterHealth = () => {
+    checkConverterApiAvailable().then((ok) => setConverterApiOnline(ok));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -905,6 +913,15 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => setShowSettings(true)}
+              className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#a3a198]"
+              title="Converter server URL"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowInstallGuide(true)}
               className="cassette-btn cassette-btn-primary px-3.5 py-1.5 text-xs font-mono"
               title={
@@ -1171,8 +1188,8 @@ export default function App() {
             <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="leading-snug">
-                Converter API is not reachable on this origin ({typeof window !== 'undefined' ? window.location.origin : ''}).
-                Open the hosted app URL (same server as /api) — installed PWAs must use that host, not an offline copy.
+                Converter API is not reachable at {resolveConverterApiBaseUrl() || '(no server set)'}.
+                Run <code className="text-[#b8d99e]">npm start</code> on your PC or agent, then open Settings and paste that URL — AppDeploy is not required.
               </p>
             </div>
           )}
@@ -1669,6 +1686,12 @@ export default function App() {
           setShowAndroidProject(false);
           setShowInstallGuide(true);
         }}
+      />
+
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSaved={refreshConverterHealth}
       />
 
       <InstallGuideModal

@@ -2,7 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Exact Dark Sage & Charcoal Palette from https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai/
+// Dark Sage & Charcoal palette (Open Grace Music web + native)
 val DarkBg = Color(0xFF111411)            // Deep dark background
 val DarkCard = Color(0xFF181C18)          // Card container
 val DarkCardBorder = Color(0xFF282E27)    // Subtle borders

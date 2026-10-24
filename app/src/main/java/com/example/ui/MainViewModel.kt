@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.ConverterServerPrefs
 import com.example.data.StorageHelper
 import com.example.data.StorageInfo
 import com.example.data.downloader.AudioDownloader
@@ -108,6 +109,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedTrackForLyrics = MutableStateFlow<Track?>(null)
     val selectedTrackForLyrics: StateFlow<Track?> = _selectedTrackForLyrics.asStateFlow()
+
+    private val _showSettings = MutableStateFlow(false)
+    val showSettings: StateFlow<Boolean> = _showSettings.asStateFlow()
+
+    private val _converterServerUrl = MutableStateFlow(ConverterServerPrefs.getSavedUrl(application))
+    val converterServerUrl: StateFlow<String> = _converterServerUrl.asStateFlow()
+
+    fun openSettings() { _showSettings.value = true }
+    fun closeSettings() { _showSettings.value = false }
+
+    fun saveConverterServerUrl(url: String) {
+        ConverterServerPrefs.setSavedUrl(getApplication(), url)
+        _converterServerUrl.value = url.trim()
+        _userMessage.value = if (url.isBlank()) {
+            "Converter URL cleared — set one in Settings for YouTube convert, or use local import only."
+        } else {
+            "Converter server saved."
+        }
+    }
 
     fun openLyrics(track: Track) { _selectedTrackForLyrics.value = track }
     fun closeLyrics() { _selectedTrackForLyrics.value = null }

@@ -65,6 +65,7 @@ import com.example.ui.components.FullPlayerDialog
 import com.example.ui.components.LyricsDialog
 import com.example.ui.components.NowPlayingBar
 import com.example.ui.components.TrackCard
+import com.example.ui.components.SettingsSheet
 import com.example.ui.components.YouTubeBrowserSheet
 import com.example.ui.theme.DarkBg
 import com.example.ui.theme.DarkCard
@@ -94,6 +95,8 @@ fun OgmApp(
     val selectedTrackForLyrics by viewModel.selectedTrackForLyrics.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
     val prefilledUrl by viewModel.prefilledUrl.collectAsState()
+    val showSettings by viewModel.showSettings.collectAsState()
+    val converterServerUrl by viewModel.converterServerUrl.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -219,32 +222,50 @@ fun OgmApp(
                     }
                 }
 
-                // Tactile Cassette Deck YouTube Tuner Key
-                Box(
-                    modifier = Modifier
-                        .shadow(4.dp, RoundedCornerShape(10.dp))
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(DarkCardHover)
-                        .border(1.dp, Color(0xFF4A583F), RoundedCornerShape(10.dp))
-                        .clickable { viewModel.openYouTubeBrowser() }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                        .testTag("youtube_browser_btn"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(SageGreen)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .shadow(4.dp, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF4A583F), RoundedCornerShape(10.dp))
+                            .clickable { viewModel.openSettings() }
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .testTag("settings_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = "▶ TUNER",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SageGreen
+                            text = "⚙",
+                            fontSize = 14.sp,
+                            color = TextMuted
                         )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .shadow(4.dp, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DarkCardHover)
+                            .border(1.dp, Color(0xFF4A583F), RoundedCornerShape(10.dp))
+                            .clickable { viewModel.openYouTubeBrowser() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("youtube_browser_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(SageGreen)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "▶ TUNER",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SageGreen
+                            )
+                        }
                     }
                 }
             }
@@ -611,6 +632,14 @@ fun OgmApp(
         LyricsDialog(
             track = selectedTrackForLyrics!!,
             onDismiss = { viewModel.closeLyrics() }
+        )
+    }
+
+    if (showSettings) {
+        SettingsSheet(
+            initialUrl = converterServerUrl,
+            onDismiss = { viewModel.closeSettings() },
+            onSave = { viewModel.saveConverterServerUrl(it) }
         )
     }
 }

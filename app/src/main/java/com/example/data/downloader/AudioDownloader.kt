@@ -137,6 +137,7 @@ class AudioDownloader(private val context: Context) {
         if (mediaInfo.source == TrackSource.YOUTUBE) {
             onProgress(0.1f, "Studio convert · ${targetFormat.code} (MP3 320 is fastest)…")
             val serverResult = ServerConverter.convertViaServerJob(
+                context = context,
                 watchUrl = mediaInfo.directStreamUrl,
                 targetFormat = targetFormat,
                 bitrateKbps = bitrateKbps,
