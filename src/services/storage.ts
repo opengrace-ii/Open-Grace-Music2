@@ -1,8 +1,9 @@
-import { StorageInfo, StorageStatus, Track } from '../types';
+import { StorageInfo, StorageStatus, Track, UserPlaylist } from '../types';
 
 const DB_NAME = 'ogm-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'tracks';
+const PLAYLIST_STORE = 'playlists';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -11,6 +12,9 @@ function openDB(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
+        db.createObjectStore(PLAYLIST_STORE, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -154,6 +158,71 @@ export async function updateTrackInDB(track: Track): Promise<void> {
 
 export async function deleteTrackFromDB(id: string): Promise<void> {
   await runTx('readwrite', (store) => store.delete(id));
+  const lists = await getAllPlaylists();
+  for (const list of lists) {
+    if (list.trackIds.includes(id)) {
+      await savePlaylist({ ...list, trackIds: list.trackIds.filter((tid) => tid !== id) });
+    }
+  }
+}
+
+function playlistTx<T>(
+  mode: IDBTransactionMode,
+  callback: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+  return openDB().then((db) => {
+    return new Promise((resolve, reject) => {
+      if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
+        resolve([] as unknown as T);
+        return;
+      }
+      const tx = db.transaction(PLAYLIST_STORE, mode);
+      const store = tx.objectStore(PLAYLIST_STORE);
+      const req = callback(store);
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  });
+}
+
+export async function getAllPlaylists(): Promise<UserPlaylist[]> {
+  try {
+    const records = await playlistTx<UserPlaylist[]>('readonly', (store) => store.getAll());
+    return (records || []).sort((a, b) => a.createdAt - b.createdAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function savePlaylist(playlist: UserPlaylist): Promise<void> {
+  await playlistTx('readwrite', (store) => store.put(playlist));
+}
+
+export async function deletePlaylist(id: string): Promise<void> {
+  await playlistTx('readwrite', (store) => store.delete(id));
+}
+
+export async function createPlaylist(name: string): Promise<UserPlaylist> {
+  const trimmed = name.replace(/\s+/g, ' ').trim();
+  const playlist: UserPlaylist = {
+    id: `pl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    name: trimmed || 'Untitled mix',
+    trackIds: [],
+    createdAt: Date.now(),
+  };
+  await savePlaylist(playlist);
+  return playlist;
+}
+
+export async function addTrackToPlaylist(playlistId: string, trackId: string): Promise<UserPlaylist | null> {
+  const lists = await getAllPlaylists();
+  const list = lists.find((p) => p.id === playlistId);
+  if (!list) return null;
+  if (!list.trackIds.includes(trackId)) {
+    list.trackIds = [...list.trackIds, trackId];
+    await savePlaylist(list);
+  }
+  return list;
 }
 
 export async function toggleFavoriteInDB(id: string): Promise<boolean> {

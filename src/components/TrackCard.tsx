@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, RefreshCw, Music2, Download, Trash2, Heart } from 'lucide-react';
+import { Play, Pause, RefreshCw, Music2, Download, Trash2, Heart, ListPlus } from 'lucide-react';
 import { Track } from '../types';
 
 interface TrackCardProps {
@@ -14,6 +14,7 @@ interface TrackCardProps {
   onExportClick: () => void;
   onDeleteClick: () => void;
   onToggleFavorite: () => void;
+  onAddToPlaylist: () => void;
 }
 
 export const TrackCard: React.FC<TrackCardProps> = ({
@@ -27,6 +28,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
   onExportClick,
   onDeleteClick,
   onToggleFavorite,
+  onAddToPlaylist,
 }) => {
   const formatTime = (secs: number) => {
     if (!secs || isNaN(secs) || secs < 0) return '0:00';
@@ -187,6 +189,14 @@ export const TrackCard: React.FC<TrackCardProps> = ({
             className="cassette-btn px-2.5 py-2 text-xs font-mono text-[#e2c986]"
           >
             <Download className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={onAddToPlaylist}
+            title="Add to mix / playlist"
+            className="cassette-btn px-2.5 py-2 text-xs font-mono text-[#e2c986]"
+          >
+            <ListPlus className="w-3.5 h-3.5" />
           </button>
 
           <button

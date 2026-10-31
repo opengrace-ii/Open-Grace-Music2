@@ -105,6 +105,13 @@ export interface Track {
 
 export type LibraryTab = 'ALL' | 'LOSSLESS' | 'DOWNLOADS' | 'DEVICE_MUSIC' | 'MP3' | 'FAVORITES';
 
+export interface UserPlaylist {
+  id: string;
+  name: string;
+  trackIds: string[];
+  createdAt: number;
+}
+
 export type LoopMode = 'OFF' | 'ALL' | 'ONE';
 
 export interface StorageInfo {

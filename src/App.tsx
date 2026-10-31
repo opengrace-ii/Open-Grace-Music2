@@ -20,6 +20,9 @@ import {
   Radio,
   Youtube,
   Disc3,
+  ListMusic,
+  Plus,
+  X,
 } from 'lucide-react';
 import {
   AUDIOPHILE_FORMATS,
@@ -27,6 +30,7 @@ import {
   LibraryTab,
   LoopMode,
   Track,
+  UserPlaylist,
 } from './types';
 import {
   getAllTracksFromDB,
@@ -34,6 +38,10 @@ import {
   saveMetadataTrackToDB,
   deleteTrackFromDB,
   toggleFavoriteInDB,
+  getAllPlaylists,
+  createPlaylist,
+  addTrackToPlaylist,
+  deletePlaylist,
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
 import { loadSavedYoutubeCookies, saveYoutubeCookies } from './services/youtubeCookies';
@@ -42,6 +50,7 @@ import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { TrackCard } from './components/TrackCard';
+import { PlaylistPickerModal } from './components/PlaylistPickerModal';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FullPlayerModal } from './components/FullPlayerModal';
 import { DownloadDialog } from './components/DownloadDialog';
@@ -72,6 +81,10 @@ export default function App() {
   // Library state
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTab, setSelectedTab] = useState<LibraryTab>('ALL');
+  const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
+  const [playlistPickerTrackId, setPlaylistPickerTrackId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Inline Tape Deck Recorder state
@@ -175,6 +188,7 @@ export default function App() {
   useEffect(() => {
     loadLibrary();
     setInlineCookies(loadSavedYoutubeCookies());
+    void getAllPlaylists().then(setPlaylists);
   }, []);
 
   useEffect(() => {
@@ -362,6 +376,14 @@ export default function App() {
       );
     }
 
+    if (selectedPlaylistId) {
+      const list = playlists.find((p) => p.id === selectedPlaylistId);
+      if (list) {
+        const byId = new Map(result.map((t) => [t.id, t]));
+        return list.trackIds.map((id) => byId.get(id)).filter((t): t is Track => Boolean(t));
+      }
+    }
+
     switch (selectedTab) {
       case 'LOSSLESS':
         return result.filter((t) =>
@@ -381,7 +403,7 @@ export default function App() {
       default:
         return result;
     }
-  }, [tracks, searchQuery, selectedTab]);
+  }, [tracks, searchQuery, selectedTab, selectedPlaylistId, playlists]);
 
   // Playback Handlers
   const playTrack = async (track: Track) => {
@@ -408,29 +430,31 @@ export default function App() {
     playerEngine.togglePlayPause();
   };
 
+  const queueTracks = filteredTracks.length ? filteredTracks : tracks;
+
   const handleNextTrack = () => {
-    if (!tracks.length) return;
-    const currentIdx = tracks.findIndex((t) => t.id === currentTrack?.id);
+    if (!queueTracks.length) return;
+    const currentIdx = queueTracks.findIndex((t) => t.id === currentTrack?.id);
 
     if (isShuffle) {
-      const randomIdx = Math.floor(Math.random() * tracks.length);
-      playTrack(tracks[randomIdx]);
+      const randomIdx = Math.floor(Math.random() * queueTracks.length);
+      playTrack(queueTracks[randomIdx]);
       return;
     }
 
-    const nextIdx = (currentIdx + 1) % tracks.length;
-    playTrack(tracks[nextIdx]);
+    const nextIdx = (currentIdx + 1) % queueTracks.length;
+    playTrack(queueTracks[nextIdx]);
   };
 
   const handlePrevTrack = () => {
-    if (!tracks.length) return;
+    if (!queueTracks.length) return;
     if (currentTime > 3) {
       playerEngine.seekTo(0);
       return;
     }
-    const currentIdx = tracks.findIndex((t) => t.id === currentTrack?.id);
-    const prevIdx = (currentIdx - 1 + tracks.length) % tracks.length;
-    playTrack(tracks[prevIdx]);
+    const currentIdx = queueTracks.findIndex((t) => t.id === currentTrack?.id);
+    const prevIdx = (currentIdx - 1 + queueTracks.length) % queueTracks.length;
+    playTrack(queueTracks[prevIdx]);
   };
 
   const handleSeek = (time: number) => {
@@ -452,6 +476,53 @@ export default function App() {
     const next: LoopMode = loopMode === 'OFF' ? 'ALL' : loopMode === 'ALL' ? 'ONE' : 'OFF';
     setLoopMode(next);
     addToast(`Repeat: ${next}`, 'info');
+  };
+
+  const openPlaylistPicker = (trackId: string | null) => {
+    setPlaylistPickerTrackId(trackId);
+    setShowPlaylistPicker(true);
+  };
+
+  const closePlaylistPicker = () => {
+    setShowPlaylistPicker(false);
+    setPlaylistPickerTrackId(null);
+  };
+
+  const handleCreateMix = async (name: string) => {
+    const pl = await createPlaylist(name);
+    if (playlistPickerTrackId) {
+      await addTrackToPlaylist(pl.id, playlistPickerTrackId);
+      setPlaylists(await getAllPlaylists());
+      addToast(`Added to ${pl.name}`, 'success');
+      closePlaylistPicker();
+      return;
+    }
+    setPlaylists(await getAllPlaylists());
+    setSelectedPlaylistId(pl.id);
+    addToast(`${pl.name} mix is ready`, 'success');
+    closePlaylistPicker();
+  };
+
+  const handlePickMix = async (playlistId: string) => {
+    const pl = playlists.find((p) => p.id === playlistId);
+    if (playlistPickerTrackId) {
+      await addTrackToPlaylist(playlistId, playlistPickerTrackId);
+      setPlaylists(await getAllPlaylists());
+      addToast(pl ? `Added to ${pl.name}` : 'Added to mix', 'success');
+      closePlaylistPicker();
+      return;
+    }
+    setSelectedPlaylistId(playlistId);
+    closePlaylistPicker();
+  };
+
+  const handleDeleteMix = async (playlistId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const pl = playlists.find((p) => p.id === playlistId);
+    await deletePlaylist(playlistId);
+    setPlaylists(await getAllPlaylists());
+    if (selectedPlaylistId === playlistId) setSelectedPlaylistId(null);
+    addToast(pl ? `Removed ${pl.name}` : 'Mix removed', 'info');
   };
 
   const handleTrackEnded = () => {
@@ -767,6 +838,7 @@ export default function App() {
     try {
       await deleteTrackFromDB(track.id);
       setTracks((prev) => prev.filter((t) => t.id !== track.id));
+      setPlaylists(await getAllPlaylists());
       if (currentTrack?.id === track.id) {
         playerEngine.togglePlayPause();
         setCurrentTrack(null);
@@ -1535,11 +1607,14 @@ export default function App() {
                 },
               ] as const
             ).map((tab) => {
-              const active = selectedTab === tab.id;
+              const active = selectedTab === tab.id && !selectedPlaylistId;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setSelectedTab(tab.id)}
+                  onClick={() => {
+                    setSelectedPlaylistId(null);
+                    setSelectedTab(tab.id);
+                  }}
                   className={`cassette-btn px-3 py-1.5 text-xs font-mono whitespace-nowrap ${
                     active ? 'cassette-btn-engaged' : 'text-[#9fa396]'
                   }`}
@@ -1550,6 +1625,44 @@ export default function App() {
                 </button>
               );
             })}
+            {playlists.map((pl) => {
+              const active = selectedPlaylistId === pl.id;
+              return (
+                <div
+                  key={pl.id}
+                  className={`cassette-btn px-2 py-1.5 text-xs font-mono whitespace-nowrap ${
+                    active ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlaylistId(pl.id)}
+                    className="flex items-center gap-1.5 min-w-0"
+                  >
+                    <span className={`cassette-led ${active ? 'cassette-led-on' : ''}`} />
+                    <ListMusic className="w-3 h-3 text-[#e2c986] shrink-0" />
+                    <span className="max-w-[9rem] truncate">{pl.name}</span>
+                    <span className="text-[10px] text-[#e2c986]">({pl.trackIds.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    title={`Remove ${pl.name}`}
+                    onClick={(e) => handleDeleteMix(pl.id, e)}
+                    className="p-0.5 text-[#686b60] hover:text-[#f87171]"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => openPlaylistPicker(null)}
+              className="cassette-btn px-3 py-1.5 text-xs font-mono whitespace-nowrap text-[#e2c986]"
+            >
+              <Plus className="w-3 h-3" />
+              <span>NEW MIX</span>
+            </button>
           </div>
 
           <div className="cassette-window flex items-center px-3 py-1.5 rounded-xl min-w-[220px]">
@@ -1598,12 +1711,17 @@ export default function App() {
               </div>
 
               <h3 className="font-serif-display text-xl font-bold text-[#f0ece1]">
-                Insert Your First Master Tape
+                {selectedPlaylistId
+                  ? playlists.find((p) => p.id === selectedPlaylistId)?.name || 'Empty mix'
+                  : 'Insert Your First Master Tape'}
               </h3>
               <p className="text-xs font-mono text-[#9fa396] max-w-sm">
-                Recorded tracks from YouTube, URLs, and imports appear in your Cassette Library above.
+                {selectedPlaylistId
+                  ? 'This mix is empty. Open ALL MUSIC, then tap the list button on a tape to drop it here.'
+                  : 'Recorded tracks from YouTube, URLs, and imports appear in your Cassette Library above.'}
               </p>
 
+              {!selectedPlaylistId ? (
               <div className="cassette-bank flex flex-wrap items-center justify-center gap-2">
                 <button
                   onClick={handleLoadSampleTracks}
@@ -1625,6 +1743,18 @@ export default function App() {
                   />
                 </label>
               </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPlaylistId(null);
+                    setSelectedTab('ALL');
+                  }}
+                  className="cassette-btn cassette-btn-primary px-4 py-2.5 text-xs font-mono"
+                >
+                  <span>BACK TO LIBRARY</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -1642,6 +1772,7 @@ export default function App() {
                   onExportClick={() => handleExportTrack(track)}
                   onDeleteClick={() => handleDeleteTrack(track)}
                   onToggleFavorite={() => handleToggleFavorite(track)}
+                  onAddToPlaylist={() => openPlaylistPicker(track.id)}
                 />
               ))}
             </div>
@@ -1762,6 +1893,15 @@ export default function App() {
         isAndroid={isAndroid}
         isInstallable={isInstallable}
         onPwaInstall={install}
+      />
+
+      <PlaylistPickerModal
+        isOpen={showPlaylistPicker}
+        trackTitle={tracks.find((t) => t.id === playlistPickerTrackId)?.title}
+        playlists={playlists}
+        onClose={closePlaylistPicker}
+        onCreate={handleCreateMix}
+        onPick={handlePickMix}
       />
 
       {/* Global Toast Notification System */}

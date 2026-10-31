@@ -38,7 +38,10 @@ Open Grace Music supports true high-resolution and lossless audio workflows with
   - Variable playback speed selector (`0.75x`, `1.0x`, `1.25x`, `1.5x`)
   - Shuffle, Repeat (`OFF`, `ALL`, `ONE`), interactive seek bar, and Playing Queue bottom sheet
 
-### 5. Lyrics (honest offline UX)
+### 5. User mixes (playlists)
+Name your own mixes in the library — instrumental, messages, Hindi Christian, or anything else. Nothing is pre-loaded. Tap **NEW MIX**, or the list button on a tape, then type the mix name. Mixes live in your browser (IndexedDB) and stay empty until you add tapes.
+
+### 6. Lyrics (honest offline UX)
 - Open Grace Music **does not fabricate** generic placeholder lyrics or C–G–Am–F chord sheets.
 - The player tries **[lrclib.net](https://lrclib.net)** for a title/artist match; if none is found, you see **“Lyrics not available offline yet.”**
 - Optional **Gemini** lyrics (`GEMINI_API_KEY` on the server) are labeled **AI-generated — verify accuracy**.
