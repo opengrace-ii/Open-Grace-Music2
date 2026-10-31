@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { runConvertPipeline } from './server/convertPipeline.ts';
 import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.ts';
+import { fetchYoutubeTranscript } from './server/youtubeTranscript.ts';
 
 dotenv.config();
 
@@ -655,6 +656,20 @@ app.post('/api/convert-audio', handleConvertAudio);
 app.get('/api/convert-audio', handleConvertAudio);
 app.post('/api/convert-mp3', handleConvertAudio);
 app.get('/api/convert-mp3', handleConvertAudio);
+
+app.get('/api/transcript', async (req, res) => {
+  const videoId = String(req.query.videoId || req.query.v || '').trim();
+  if (!videoId) {
+    return res.status(400).json({ error: 'videoId is required', found: false });
+  }
+  try {
+    const result = await fetchYoutubeTranscript(videoId);
+    return res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Transcript lookup failed';
+    return res.status(500).json({ found: false, error: message });
+  }
+});
 
 app.get('/api/lyrics/search', async (req, res) => {
   const track = String(req.query.track || req.query.track_name || '').trim();

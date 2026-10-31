@@ -47,6 +47,31 @@ export async function fetchAiLyricsOrChord(title: string, artist: string): Promi
   return unavailableLyrics(title, artist);
 }
 
+export async function fetchYoutubeTranscript(videoId: string): Promise<string | null> {
+  if (!videoId || videoId.length !== 11) return null;
+  try {
+    const res = await fetchWithTimeout(
+      apiUrl(`/api/transcript?videoId=${encodeURIComponent(videoId)}`),
+      { timeoutMs: 20_000 }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { found?: boolean; content?: string };
+    if (!data.found || !data.content) return null;
+    return data.content;
+  } catch {
+    return null;
+  }
+}
+
+export function unavailableTranscript(title: string, artist: string): string {
+  return `Transcript not available for this tape yet.
+
+OGM reads official YouTube captions when the video has them (same video you selected — no invented speech).
+
+Track: ${title}
+Artist: ${artist || 'Unknown'}`;
+}
+
 export function unavailableLyrics(title: string, artist: string): LyricOrChord {
   return {
     title,

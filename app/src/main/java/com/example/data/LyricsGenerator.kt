@@ -104,6 +104,45 @@ object LyricsGenerator {
         }
     }
 
+    suspend fun loadTranscript(baseUrl: String, videoId: String?, title: String, artist: String): SongContent =
+        withContext(Dispatchers.IO) {
+            val id = videoId?.takeIf { it.length == 11 }
+            if (id.isNullOrBlank() || baseUrl.isBlank()) {
+                return@withContext SongContent(
+                    title = title,
+                    artist = artist,
+                    isInstrumental = false,
+                    content = "Transcript not available for this tape yet.\n\nOGM reads official YouTube captions when the video has them.\n\nTrack: $title\nArtist: ${artist.ifBlank { "Unknown" }}",
+                    sourceLabel = "transcript"
+                )
+            }
+            try {
+                val url = "${baseUrl.trimEnd('/')}/api/transcript?videoId=${URLEncoder.encode(id, "UTF-8")}"
+                val req = Request.Builder().url(url).header("Accept", "application/json").build()
+                val resp = client.newCall(req).execute()
+                val body = resp.body?.string().orEmpty()
+                val json = JSONObject(body)
+                if (json.optBoolean("found") && json.optString("content").isNotBlank()) {
+                    return@withContext SongContent(
+                        title = title,
+                        artist = artist,
+                        isInstrumental = false,
+                        content = json.optString("content"),
+                        sourceLabel = "transcript"
+                    )
+                }
+            } catch (_: Exception) {
+                // fall through
+            }
+            SongContent(
+                title = title,
+                artist = artist,
+                isInstrumental = false,
+                content = "Transcript not available for this tape yet.\n\nTrack: $title",
+                sourceLabel = "transcript"
+            )
+        }
+
     /** @deprecated Placeholder generator removed — use [loadLyrics] */
     fun generate(
         title: String,

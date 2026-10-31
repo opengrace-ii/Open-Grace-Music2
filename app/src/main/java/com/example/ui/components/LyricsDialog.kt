@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.ConverterServerPrefs
 import com.example.data.LyricsGenerator
 import com.example.data.model.Track
 import com.example.ui.theme.DarkCard
@@ -60,8 +61,8 @@ fun LyricsDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var viewChordSheet by remember(track.id) {
-        mutableStateOf(track.isInstrumental)
+    var sheetMode by remember(track.id) {
+        mutableStateOf(if (track.isInstrumental) "CHORDS" else "LYRICS")
     }
     var songContent by remember(track.id) {
         mutableStateOf(LyricsGenerator.unavailableContent(track.title, track.artist))
@@ -69,12 +70,16 @@ fun LyricsDialog(
     var isLoading by remember(track.id) { mutableStateOf(true) }
     val scrollState = rememberScrollState()
 
-    LaunchedEffect(track.id, viewChordSheet) {
+    LaunchedEffect(track.id, sheetMode) {
         isLoading = true
-        songContent = if (viewChordSheet) {
-            LyricsGenerator.generate(track.title, track.artist, forceInstrumental = true)
-        } else {
-            LyricsGenerator.loadLyrics(track.title, track.artist)
+        songContent = when (sheetMode) {
+            "CHORDS" -> LyricsGenerator.generate(track.title, track.artist, forceInstrumental = true)
+            "TRANSCRIPT" -> {
+                val base = ConverterServerPrefs.resolveBaseUrl(context)
+                val videoId = Regex("vi/([a-zA-Z0-9_-]{11})").find(track.thumbnailUrl.orEmpty())?.groupValues?.getOrNull(1)
+                LyricsGenerator.loadTranscript(base, videoId, track.title, track.artist)
+            }
+            else -> LyricsGenerator.loadLyrics(track.title, track.artist)
         }
         isLoading = false
     }
@@ -168,52 +173,32 @@ fun LyricsDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (track.isInstrumental || LyricsGenerator.isInstrumentalTrack(track.title, track.artist)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("LYRICS" to "Lyrics", "CHORDS" to "Chords", "TRANSCRIPT" to "Transcript").forEach { (id, label) ->
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (!viewChordSheet) SageGreen else DarkCardHover)
-                                .border(1.dp, if (!viewChordSheet) SageGreen else DarkCardBorder, RoundedCornerShape(10.dp))
-                                .clickable { viewChordSheet = false }
-                                .padding(vertical = 8.dp)
-                                .testTag("mode_vocal_lyrics"),
+                                .background(if (sheetMode == id) SageGreen else DarkCardHover)
+                                .border(1.dp, if (sheetMode == id) SageGreen else DarkCardBorder, RoundedCornerShape(10.dp))
+                                .clickable { sheetMode = id }
+                                .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "🎤 Lyrics lookup",
-                                fontSize = 11.5.sp,
+                                text = label,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (!viewChordSheet) com.example.ui.theme.OnSageGreen else TextLight
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (viewChordSheet) SageGreen else DarkCardHover)
-                                .border(1.dp, if (viewChordSheet) SageGreen else DarkCardBorder, RoundedCornerShape(10.dp))
-                                .clickable { viewChordSheet = true }
-                                .padding(vertical = 8.dp)
-                                .testTag("mode_chord_sheet"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "🎸 Instrumental",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (viewChordSheet) com.example.ui.theme.OnSageGreen else TextLight
+                                color = if (sheetMode == id) com.example.ui.theme.OnSageGreen else TextLight
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Scrollable text content
                 Box(
