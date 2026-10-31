@@ -173,11 +173,11 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
           <div className="cassette-bank flex items-center gap-1.5">
             <button
               onClick={() => onOpenLyrics(currentTrack)}
-              title="Lyrics & Chord Sheet"
+              title="Studio AI — lyrics, transcript, notes"
               className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#b8d99e]"
             >
               <Music2 className="w-3.5 h-3.5" />
-              <span>LYRICS / CHORDS</span>
+              <span>STUDIO AI</span>
             </button>
 
             <button

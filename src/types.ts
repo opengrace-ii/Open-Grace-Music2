@@ -115,8 +115,14 @@ export interface UserPlaylist {
 /** How a listen reminder repeats. All values are user-chosen — nothing is locked. */
 export type ScheduleRepeatKind = 'daily' | 'weekdays' | 'monthly';
 
+/** Fresh YouTube match when a reminder has no mix tapes. */
+export type FreshListenMode = 'latest' | 'shuffle_recent';
+
+/** Default listen-schedule clock. Shown as IST in the panel. */
+export const DEFAULT_SCHEDULE_TZ = 'Asia/Kolkata';
+
 /**
- * A user-named listen reminder. Names, mixes, times, and days are never hardcoded
+ * A user-named listen reminder. Names, mixes, times, queries, and days are never hardcoded
  * (morning / noon / evening are only editable time presets in the UI).
  */
 export interface ListenSchedule {
@@ -124,6 +130,15 @@ export interface ListenSchedule {
   name: string;
   playlistId?: string;
   trackId?: string;
+  /**
+   * Free-text speaker/artist/topic searched at fire time so each morning can be a new upload.
+   * Required when no mix/tape is linked. Never seeded with a default speaker.
+   */
+  freshQuery?: string;
+  /** `latest` = newest matching upload; `shuffle_recent` = random among recent hits. */
+  freshMode?: FreshListenMode;
+  /** IANA timezone for the clock. Default Asia/Kolkata (IST). */
+  timeZone?: string;
   hour: number;
   minute: number;
   repeatKind: ScheduleRepeatKind;
@@ -133,7 +148,7 @@ export interface ListenSchedule {
   monthDays: number[];
   enabled: boolean;
   createdAt: number;
-  /** Last fire stamp `YYYY-MM-DDTHH:mm` so a reminder only rings once per slot. */
+  /** Last fire stamp `YYYY-MM-DDTHH:mm` (in the schedule timezone) so a reminder only rings once per slot. */
   lastFiredKey?: string;
 }
 

@@ -10,6 +10,12 @@ import { fileURLToPath } from 'url';
 import { runConvertPipeline } from './server/convertPipeline.ts';
 import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.ts';
 import { fetchYoutubeTranscript } from './server/youtubeTranscript.ts';
+import {
+  aiKeyStatus,
+  listenNotesFromTranscript,
+  relatedNextQueries,
+  transcribeForOgm,
+} from './server/aiStudio.ts';
 
 dotenv.config();
 
@@ -108,14 +114,18 @@ function classifyPipelineError(
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'ogm-converter' });
+  const ai = aiKeyStatus();
+  res.json({ ok: true, service: 'ogm-converter', ai: { gemini: ai.gemini, nvidia: ai.nvidia } });
 });
 
 app.get('/api/youtube/search', async (req, res) => {
   const q = String(req.query.q || '').trim();
+  const sort = String(req.query.sort || '').trim() === 'date' ? 'date' : 'relevance';
   try {
-    const videos = q ? await searchYoutubeVideos(q, 24) : await browseYoutubeHome(24);
-    res.json({ ok: true, query: q, videos });
+    const videos = q
+      ? await searchYoutubeVideos(q, 24, { sort })
+      : await browseYoutubeHome(24);
+    res.json({ ok: true, query: q, sort: q ? sort : 'home', videos });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'YouTube catalog unavailable';
     res.status(502).json({ ok: false, error: message, videos: [] });
@@ -656,6 +666,58 @@ app.post('/api/convert-audio', handleConvertAudio);
 app.get('/api/convert-audio', handleConvertAudio);
 app.post('/api/convert-mp3', handleConvertAudio);
 app.get('/api/convert-mp3', handleConvertAudio);
+
+app.get('/api/ai/status', (_req, res) => {
+  res.json({ ok: true, ...aiKeyStatus() });
+});
+
+app.post('/api/ai/config', (req, res) => {
+  const gemini = String(req.body?.geminiApiKey || '').trim();
+  const nvidia = String(req.body?.nvidiaApiKey || '').trim();
+  if (gemini) process.env.GEMINI_API_KEY = gemini;
+  if (nvidia) process.env.NVIDIA_API_KEY = nvidia;
+  res.json({ ok: true, ...aiKeyStatus() });
+});
+
+app.post('/api/ai/transcribe', async (req, res) => {
+  const videoId = String(req.body?.videoId || req.body?.ytVideoId || '').trim();
+  const audioUrl = String(req.body?.audioUrl || '').trim();
+  const title = String(req.body?.title || '').trim();
+  try {
+    const result = await transcribeForOgm({ videoId, audioUrl, title });
+    const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
+    return res.status(status).json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Transcription failed';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.post('/api/ai/listen-notes', async (req, res) => {
+  const transcript = String(req.body?.transcript || '').trim();
+  const title = String(req.body?.title || '').trim();
+  try {
+    const result = await listenNotesFromTranscript(transcript, title);
+    const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
+    return res.status(status).json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Listen notes failed';
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+app.post('/api/ai/related-next', async (req, res) => {
+  const query = String(req.body?.query || '').trim();
+  const title = String(req.body?.title || '').trim();
+  const transcript = String(req.body?.transcript || '').trim();
+  try {
+    const result = await relatedNextQueries({ query, title, transcript });
+    return res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Related next failed';
+    return res.status(500).json({ ok: false, queries: [], error: message });
+  }
+});
 
 app.get('/api/transcript', async (req, res) => {
   const videoId = String(req.query.videoId || req.query.v || '').trim();

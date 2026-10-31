@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Server, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Server, Loader2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { DEFAULT_OGM_PUBLIC_BASE_URL } from '../constants/ogmPublicBase';
 import {
   CONVERTER_SERVER_URL_HELPER,
@@ -8,6 +8,7 @@ import {
   setSavedConverterServerUrl,
 } from '../services/converterServerUrl';
 import { checkConverterApiAvailable } from '../services/converterApi';
+import { fetchAiStatus, saveAiKeys } from '../services/ogmAiService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,11 +20,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   const [url, setUrl] = useState('');
   const [checking, setChecking] = useState(false);
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [geminiKey, setGeminiKey] = useState('');
+  const [nvidiaKey, setNvidiaKey] = useState('');
+  const [aiStatus, setAiStatus] = useState<{ gemini: boolean; nvidia: boolean }>({
+    gemini: false,
+    nvidia: false,
+  });
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setUrl(getSavedConverterServerUrl());
     setHealthOk(null);
+    setGeminiKey('');
+    setNvidiaKey('');
+    setAiMessage(null);
+    void fetchAiStatus().then(setAiStatus);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -99,6 +112,70 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               (or use a public HTTPS tunnel).
             </p>
           )}
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-[#292a24] space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#e2c986]" />
+            <h4 className="font-serif-display text-sm font-bold text-[#eeeae2]">Studio AI keys</h4>
+          </div>
+          <p className="text-[11px] text-[#a3a198] leading-relaxed">
+            Used for our own transcript and listen notes (not YouTube captions). Prefer <code className="text-[#b8d99e]">.env</code>
+            . Keys pasted here stay on this server process only. We never log or show the secret back.
+          </p>
+          <p className="text-[11px] font-mono text-[#9fa396]">
+            Gemini: {aiStatus.gemini ? 'configured' : 'missing'} · NVIDIA: {aiStatus.nvidia ? 'configured' : 'missing'}
+          </p>
+          <label className="block text-xs font-semibold text-[#b8d99e]">
+            GEMINI_API_KEY
+            <input
+              type="password"
+              autoComplete="off"
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder={aiStatus.gemini ? 'Configured — paste to replace' : 'Paste Gemini API key'}
+              className="mt-1 w-full px-3 py-2.5 rounded-xl bg-[#11120f] border border-[#3a4433] text-sm text-[#eeeae2] placeholder:text-[#6b675e] focus:outline-none focus:border-[#b8d99e]"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-[#b8d99e]">
+            NVIDIA_API_KEY
+            <input
+              type="password"
+              autoComplete="off"
+              value={nvidiaKey}
+              onChange={(e) => setNvidiaKey(e.target.value)}
+              placeholder={aiStatus.nvidia ? 'Configured — paste to replace' : 'Paste NVIDIA API key'}
+              className="mt-1 w-full px-3 py-2.5 rounded-xl bg-[#11120f] border border-[#3a4433] text-sm text-[#eeeae2] placeholder:text-[#6b675e] focus:outline-none focus:border-[#b8d99e]"
+            />
+          </label>
+          {aiMessage && <p className="text-[11px] text-[#b8d99e]">{aiMessage}</p>}
+          <button
+            type="button"
+            disabled={aiSaving || (!geminiKey.trim() && !nvidiaKey.trim())}
+            onClick={() => {
+              void (async () => {
+                setAiSaving(true);
+                setAiMessage(null);
+                try {
+                  const next = await saveAiKeys({
+                    geminiApiKey: geminiKey.trim() || undefined,
+                    nvidiaApiKey: nvidiaKey.trim() || undefined,
+                  });
+                  setAiStatus(next);
+                  setGeminiKey('');
+                  setNvidiaKey('');
+                  setAiMessage('Keys saved on the running server. They are not written into the repo.');
+                } catch {
+                  setAiMessage('Could not save keys. Use .env if Settings cannot reach the API.');
+                } finally {
+                  setAiSaving(false);
+                }
+              })();
+            }}
+            className="px-4 py-2 rounded-xl bg-[#21291d] text-[#eeeae2] hover:bg-[#2b3626] text-xs font-medium disabled:opacity-40"
+          >
+            {aiSaving ? 'Saving…' : 'Save AI keys'}
+          </button>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2 justify-end">

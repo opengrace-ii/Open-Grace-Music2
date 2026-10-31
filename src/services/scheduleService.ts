@@ -1,4 +1,11 @@
-import { ListenSchedule, TimePreset, Track, UserPlaylist } from '../types';
+import {
+  DEFAULT_SCHEDULE_TZ,
+  FreshListenMode,
+  ListenSchedule,
+  TimePreset,
+  Track,
+  UserPlaylist,
+} from '../types';
 import { getAllPlaylists, getAllSchedules, getAllTracksFromDB, saveSchedule } from './storage';
 
 export const PENDING_PLAY_KEY = 'ogm-pending-play';
@@ -17,6 +24,146 @@ export interface PendingPlay {
   playlistId?: string;
   trackId?: string;
   scheduleName?: string;
+  freshQuery?: string;
+  freshMode?: FreshListenMode;
+  timeZone?: string;
+  scheduleId?: string;
+}
+
+export interface ZonedClock {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  weekday: number;
+  timeZone: string;
+}
+
+const WEEKDAY_FROM_SHORT: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+export function scheduleTimeZone(schedule?: Pick<ListenSchedule, 'timeZone'> | string): string {
+  if (typeof schedule === 'string') return schedule || DEFAULT_SCHEDULE_TZ;
+  return (schedule?.timeZone || DEFAULT_SCHEDULE_TZ).trim() || DEFAULT_SCHEDULE_TZ;
+}
+
+export function zonedClock(at: Date, timeZone: string): ZonedClock {
+  const tz = timeZone || DEFAULT_SCHEDULE_TZ;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return {
+    year: parseInt(get('year'), 10) || at.getFullYear(),
+    month: parseInt(get('month'), 10) || at.getMonth() + 1,
+    day: parseInt(get('day'), 10) || at.getDate(),
+    hour: parseInt(get('hour'), 10) || 0,
+    minute: parseInt(get('minute'), 10) || 0,
+    weekday: WEEKDAY_FROM_SHORT[get('weekday')] ?? 0,
+    timeZone: tz,
+  };
+}
+
+/** Convert a wall-clock time in `timeZone` to a UTC Date. */
+export function zonedWallTimeToUtc(
+  parts: { year: number; month: number; day: number; hour: number; minute: number },
+  timeZone: string
+): Date {
+  let utc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0, 0);
+  for (let i = 0; i < 4; i++) {
+    const z = zonedClock(new Date(utc), timeZone);
+    const actual = Date.UTC(z.year, z.month - 1, z.day, z.hour, z.minute, 0, 0);
+    const desired = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0, 0);
+    utc += desired - actual;
+  }
+  return new Date(utc);
+}
+
+function addCalendarDays(year: number, month: number, day: number, add: number): {
+  year: number;
+  month: number;
+  day: number;
+} {
+  const utc = new Date(Date.UTC(year, month - 1, day + add));
+  return { year: utc.getUTCFullYear(), month: utc.getUTCMonth() + 1, day: utc.getUTCDate() };
+}
+
+export function formatPlayWhen(at: Date, timeZone: string): string {
+  const tz = timeZone || DEFAULT_SCHEDULE_TZ;
+  const formatted = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(at);
+  const isIst = tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta';
+  return `${formatted} ${isIst ? 'IST' : tz}`;
+}
+
+export function nextOccurrenceUtc(schedule: ListenSchedule, from = new Date()): Date | null {
+  const tz = scheduleTimeZone(schedule);
+  const z = zonedClock(from, tz);
+  const forMatch = { ...schedule, enabled: true };
+  for (let add = 0; add < 400; add++) {
+    const ymd = addCalendarDays(z.year, z.month, z.day, add);
+    const probeNoon = zonedWallTimeToUtc({ ...ymd, hour: 12, minute: 0 }, tz);
+    if (!scheduleMatchesDate(forMatch, probeNoon)) continue;
+    const slotted = zonedWallTimeToUtc(
+      { ...ymd, hour: clampHour(schedule.hour), minute: clampMinute(schedule.minute) },
+      tz
+    );
+    if (slotted.getTime() >= from.getTime() - 500) return slotted;
+  }
+  return null;
+}
+
+export function describeWhatPlays(
+  schedule: ListenSchedule,
+  playlists: UserPlaylist[],
+  tracks: Track[]
+): string {
+  const mix = playlists.find((p) => p.id === schedule.playlistId);
+  if (mix && mix.trackIds.length > 0) return `Mix: ${mix.name}`;
+  const q = (schedule.freshQuery || '').trim();
+  if (q) {
+    const mode = schedule.freshMode === 'shuffle_recent' ? 'A recent match' : 'Newest match';
+    return `${mode} for “${q}”`;
+  }
+  const tape = tracks.find((t) => t.id === schedule.trackId);
+  if (tape) return `Tape: ${tape.title}`;
+  if (mix) return `Mix: ${mix.name} (empty — add tapes or a fresh query)`;
+  return 'Nothing linked yet';
+}
+
+export function pendingFromSchedule(schedule: ListenSchedule): PendingPlay {
+  return {
+    playlistId: schedule.playlistId,
+    trackId: schedule.trackId,
+    scheduleName: schedule.name,
+    freshQuery: schedule.freshQuery,
+    freshMode: schedule.freshMode || 'latest',
+    timeZone: scheduleTimeZone(schedule),
+    scheduleId: schedule.id,
+  };
 }
 
 const CATCHUP_MS = 15 * 60 * 1000;
@@ -68,30 +215,41 @@ export function lastDateOfMonth(year: number, monthIndex: number): number {
 }
 
 export function fireKeyFor(schedule: ListenSchedule, at: Date): string {
-  const y = at.getFullYear();
-  const mo = String(at.getMonth() + 1).padStart(2, '0');
-  const d = String(at.getDate()).padStart(2, '0');
+  const z = zonedClock(at, scheduleTimeZone(schedule));
+  const y = z.year;
+  const mo = String(z.month).padStart(2, '0');
+  const d = String(z.day).padStart(2, '0');
   return `${y}-${mo}-${d}T${formatClock(schedule.hour, schedule.minute)}`;
 }
 
 export function scheduleMatchesDate(schedule: ListenSchedule, at: Date): boolean {
   if (!schedule.enabled) return false;
+  const z = zonedClock(at, scheduleTimeZone(schedule));
   if (schedule.repeatKind === 'daily') return true;
   if (schedule.repeatKind === 'weekdays') {
-    return (schedule.weekdays || []).includes(at.getDay());
+    return (schedule.weekdays || []).includes(z.weekday);
   }
   if (schedule.repeatKind === 'monthly') {
-    const dom = at.getDate();
-    const last = lastDateOfMonth(at.getFullYear(), at.getMonth());
-    return (schedule.monthDays || []).some((day) => (day === 0 ? dom === last : day === dom));
+    const last = lastDateOfMonth(z.year, z.month - 1);
+    return (schedule.monthDays || []).some((day) => (day === 0 ? z.day === last : day === z.day));
   }
   return false;
 }
 
 export function isScheduleDue(schedule: ListenSchedule, at: Date, windowMs = CATCHUP_MS): boolean {
   if (!scheduleMatchesDate(schedule, at)) return false;
-  const slotted = new Date(at);
-  slotted.setHours(clampHour(schedule.hour), clampMinute(schedule.minute), 0, 0);
+  const tz = scheduleTimeZone(schedule);
+  const z = zonedClock(at, tz);
+  const slotted = zonedWallTimeToUtc(
+    {
+      year: z.year,
+      month: z.month,
+      day: z.day,
+      hour: clampHour(schedule.hour),
+      minute: clampMinute(schedule.minute),
+    },
+    tz
+  );
   const delta = at.getTime() - slotted.getTime();
   if (delta < 0 || delta > windowMs) return false;
   return schedule.lastFiredKey !== fireKeyFor(schedule, at);
@@ -110,7 +268,7 @@ export function readPendingPlay(): PendingPlay | null {
     const raw = sessionStorage.getItem(PENDING_PLAY_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PendingPlay;
-    if (parsed?.playlistId || parsed?.trackId) return parsed;
+    if (parsed?.playlistId || parsed?.trackId || parsed?.freshQuery) return parsed;
     return null;
   } catch {
     return null;
@@ -131,10 +289,18 @@ export function parsePlayHash(hash: string): PendingPlay | null {
   const params = new URLSearchParams(raw.includes('=') ? raw : `play=${raw}`);
   const play = params.get('play') || '';
   const track = params.get('track') || '';
-  if (play.startsWith('pl_')) return { playlistId: play };
-  if (play.startsWith('track:')) return { trackId: play.slice('track:'.length) };
-  if (track) return { trackId: track };
-  if (play) return { playlistId: play };
+  const freshQuery = (params.get('q') || params.get('fresh') || '').trim();
+  const modeRaw = (params.get('mode') || '').trim();
+  const freshMode: FreshListenMode = modeRaw === 'shuffle_recent' ? 'shuffle_recent' : 'latest';
+  if (play === 'fresh' || (freshQuery && !play)) {
+    return { freshQuery, freshMode, scheduleName: params.get('name') || undefined };
+  }
+  if (play.startsWith('pl_')) return { playlistId: play, freshQuery: freshQuery || undefined, freshMode };
+  if (play.startsWith('track:')) {
+    return { trackId: play.slice('track:'.length), freshQuery: freshQuery || undefined, freshMode };
+  }
+  if (track) return { trackId: track, freshQuery: freshQuery || undefined, freshMode };
+  if (play) return { playlistId: play, freshQuery: freshQuery || undefined, freshMode };
   return null;
 }
 
@@ -154,8 +320,19 @@ export function consumeLaunchPlayTarget(): PendingPlay | null {
 export function playUrlFor(pending: PendingPlay): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const path = typeof window !== 'undefined' ? window.location.pathname : '/';
-  if (pending.playlistId) return `${origin}${path}#play=${encodeURIComponent(pending.playlistId)}`;
-  if (pending.trackId) return `${origin}${path}#play=track:${encodeURIComponent(pending.trackId)}`;
+  const q = (pending.freshQuery || '').trim();
+  const mode = pending.freshMode === 'shuffle_recent' ? 'shuffle_recent' : 'latest';
+  if (pending.playlistId) {
+    const extra = q ? `&q=${encodeURIComponent(q)}&mode=${mode}` : '';
+    return `${origin}${path}#play=${encodeURIComponent(pending.playlistId)}${extra}`;
+  }
+  if (pending.trackId) {
+    const extra = q ? `&q=${encodeURIComponent(q)}&mode=${mode}` : '';
+    return `${origin}${path}#play=track:${encodeURIComponent(pending.trackId)}${extra}`;
+  }
+  if (q) {
+    return `${origin}${path}#play=fresh&q=${encodeURIComponent(q)}&mode=${mode}`;
+  }
   return `${origin}${path}`;
 }
 
@@ -163,22 +340,60 @@ export async function resolvePlayTarget(
   pending: PendingPlay,
   tracks?: Track[],
   playlists?: UserPlaylist[]
-): Promise<{ track: Track | null; playlistId: string | null; emptyMix: boolean; missing: boolean }> {
+): Promise<{
+  track: Track | null;
+  playlistId: string | null;
+  emptyMix: boolean;
+  missing: boolean;
+  useFresh: boolean;
+}> {
   const listSource = playlists ?? (await getAllPlaylists());
   const trackSource = tracks ?? (await getAllTracksFromDB());
+  const hasFresh = Boolean((pending.freshQuery || '').trim());
   if (pending.playlistId) {
     const pl = listSource.find((p) => p.id === pending.playlistId);
-    if (!pl) return { track: null, playlistId: pending.playlistId, emptyMix: false, missing: true };
+    if (!pl) {
+      return {
+        track: null,
+        playlistId: pending.playlistId,
+        emptyMix: false,
+        missing: !hasFresh,
+        useFresh: hasFresh,
+      };
+    }
     const firstId = pl.trackIds[0];
-    if (!firstId) return { track: null, playlistId: pl.id, emptyMix: true, missing: false };
+    if (!firstId) {
+      return {
+        track: null,
+        playlistId: pl.id,
+        emptyMix: !hasFresh,
+        missing: false,
+        useFresh: hasFresh,
+      };
+    }
     const track = trackSource.find((t) => t.id === firstId) ?? null;
-    return { track, playlistId: pl.id, emptyMix: !track, missing: false };
+    if (track) {
+      return { track, playlistId: pl.id, emptyMix: false, missing: false, useFresh: false };
+    }
+    return {
+      track: null,
+      playlistId: pl.id,
+      emptyMix: !hasFresh,
+      missing: false,
+      useFresh: hasFresh,
+    };
   }
   if (pending.trackId) {
     const track = trackSource.find((t) => t.id === pending.trackId) ?? null;
-    return { track, playlistId: null, emptyMix: false, missing: !track };
+    if (track) {
+      return { track, playlistId: null, emptyMix: false, missing: false, useFresh: false };
+    }
+    return { track: null, playlistId: null, emptyMix: false, missing: !hasFresh, useFresh: hasFresh };
   }
-  return { track: null, playlistId: null, emptyMix: false, missing: true };
+  if (hasFresh) {
+    return { track: null, playlistId: null, emptyMix: false, missing: false, useFresh: true };
+  }
+  return { track: null, playlistId: null, emptyMix: false, missing: true, useFresh: false };
 }
 
 export function notificationPermission(): NotificationPermission | 'unsupported' {
@@ -202,16 +417,15 @@ export async function showListenNotification(
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
   if (Notification.permission !== 'granted') return false;
 
-  const pending: PendingPlay = {
-    playlistId: schedule.playlistId,
-    trackId: schedule.trackId,
-    scheduleName: schedule.name,
-  };
+  const pending = pendingFromSchedule(schedule);
 
   const title = schedule.name || 'Listen reminder';
+  const query = (schedule.freshQuery || '').trim();
   const body = mixLabel
     ? `Tap to play ${mixLabel}.`
-    : 'Tap to open Open Grace Music and play.';
+    : query
+      ? `Tap to play newest match for “${query}”.`
+      : 'Tap to open Open Grace Music and play.';
   const tag = `ogm-sched-${schedule.id}-${fireKeyFor(schedule, new Date())}`;
   const options: NotificationOptions = {
     body,
@@ -223,6 +437,8 @@ export async function showListenNotification(
       playlistId: schedule.playlistId,
       trackId: schedule.trackId,
       scheduleId: schedule.id,
+      freshQuery: pending.freshQuery,
+      freshMode: pending.freshMode,
     },
     requireInteraction: true,
   };

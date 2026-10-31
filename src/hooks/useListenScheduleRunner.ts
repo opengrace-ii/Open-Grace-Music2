@@ -50,8 +50,14 @@ export function useListenScheduleRunner({ ready, onPlay, onInAppReminder }: UseL
       const data = event.data;
       if (!data || data.type !== 'OGM_PLAY_SCHEDULE') return;
       let pending: PendingPlay | null = null;
-      if (data.playlistId || data.trackId) {
-        pending = { playlistId: data.playlistId, trackId: data.trackId, scheduleName: data.scheduleName };
+      if (data.playlistId || data.trackId || data.freshQuery) {
+        pending = {
+          playlistId: data.playlistId,
+          trackId: data.trackId,
+          scheduleName: data.scheduleName,
+          freshQuery: data.freshQuery,
+          freshMode: data.freshMode,
+        };
       } else if (data.url) {
         try {
           pending = parsePlayHash(new URL(data.url, window.location.origin).hash);
@@ -95,8 +101,15 @@ export function useListenScheduleRunner({ ready, onPlay, onInAppReminder }: UseL
             playlistId: schedule.playlistId,
             trackId: schedule.trackId,
             scheduleName: schedule.name,
+            freshQuery: schedule.freshQuery,
+            freshMode: schedule.freshMode || 'latest',
+            timeZone: schedule.timeZone,
+            scheduleId: schedule.id,
           };
-          const shown = await showListenNotification(schedule, mix?.name || '');
+          const shown = await showListenNotification(
+            schedule,
+            mix?.name || (schedule.freshQuery ? `newest match for “${schedule.freshQuery}”` : '')
+          );
           if (!shown) {
             onInAppRef.current(schedule, pending);
           }

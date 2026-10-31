@@ -10,35 +10,43 @@ import {
   RefreshCw,
   Share2,
   Download,
+  NotebookPen,
+  Radio,
 } from 'lucide-react';
 import { LyricOrChord, Track } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
-import {
-  fetchAiLyricsOrChord,
-  fetchYoutubeTranscript,
-  unavailableLyrics,
-  unavailableTranscript,
-} from '../services/lyricsService';
+import { fetchAiLyricsOrChord, unavailableLyrics, unavailableTranscript } from '../services/lyricsService';
+import { fetchListenNotes, fetchOgmTranscript, fetchRelatedNext } from '../services/ogmAiService';
 
 interface LyricsModalProps {
   isOpen: boolean;
   track: Track | null;
   onClose: () => void;
+  onListenRelated?: (query: string) => void;
 }
 
-type SheetMode = 'LYRICS' | 'CHORDS' | 'TRANSCRIPT';
+type SheetMode = 'LYRICS' | 'CHORDS' | 'TRANSCRIPT' | 'NOTES' | 'NEXT';
 
-export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose }) => {
+export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose, onListenRelated }) => {
   const [mode, setMode] = useState<SheetMode>('LYRICS');
   const [data, setData] = useState<LyricOrChord | null>(null);
   const [transcript, setTranscript] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
+  const [related, setRelated] = useState<string[]>([]);
+  const [relatedError, setRelatedError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (!track) return;
     setMode('LYRICS');
+    setNotes('');
+    setRelated([]);
+    setRelatedError(null);
     void loadLyrics(track);
     void loadTranscript(track);
   }, [track]);
@@ -56,25 +64,81 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
   };
 
   const loadTranscript = async (current: Track) => {
-    const videoId = current.ytVideoId || extractYouTubeId(current.originalUrl || '');
-    if (!videoId) {
+    setTranscriptLoading(true);
+    try {
+      const videoId = current.ytVideoId || extractYouTubeId(current.originalUrl || '');
+      if (!videoId) {
+        setTranscript(unavailableTranscript(current.title, current.artist));
+        return;
+      }
+      const result = await fetchOgmTranscript({ videoId, title: current.title });
+      setTranscript(result.content);
+    } catch {
       setTranscript(unavailableTranscript(current.title, current.artist));
+    } finally {
+      setTranscriptLoading(false);
+    }
+  };
+
+  const loadNotes = async (current: Track) => {
+    const text = transcript.trim();
+    if (!text || /Add GEMINI_API_KEY|not available|Need audio/i.test(text)) {
+      setNotes('Open the Transcript tab first. Listen notes are written from our own transcript — never from a guessed sermon.');
       return;
     }
-    const text = await fetchYoutubeTranscript(videoId);
-    setTranscript(text || unavailableTranscript(current.title, current.artist));
+    setNotesLoading(true);
+    try {
+      setNotes(await fetchListenNotes(text, current.title));
+    } catch {
+      setNotes('Listen notes failed. Check GEMINI_API_KEY or NVIDIA_API_KEY in Settings / .env.');
+    } finally {
+      setNotesLoading(false);
+    }
   };
+
+  const loadRelated = async (current: Track) => {
+    setRelatedLoading(true);
+    setRelatedError(null);
+    try {
+      const queries = await fetchRelatedNext({
+        query: current.album?.startsWith('Fresh listen') ? current.album.replace(/^Fresh listen · /, '') : current.title,
+        title: current.title,
+        transcript: transcript || '',
+      });
+      if (!queries.length) {
+        setRelatedError('No related searches yet. Play a tape or add a fresh query.');
+        setRelated([]);
+      } else {
+        setRelated(queries);
+      }
+    } catch {
+      setRelatedError('Could not suggest next listens.');
+      setRelated([]);
+    } finally {
+      setRelatedLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!track || !isOpen) return;
+    if (mode === 'NOTES' && !notes && !notesLoading) void loadNotes(track);
+    if (mode === 'NEXT' && related.length === 0 && !relatedLoading && !relatedError) void loadRelated(track);
+  }, [mode, track, isOpen]);
 
   if (!isOpen || !track) return null;
 
   const activeText =
     mode === 'TRANSCRIPT'
       ? transcript
-      : mode === 'CHORDS'
-        ? data?.isInstrumental
-          ? data.content
-          : `Chord sheet hidden until verified chart data exists.\n\n${track.title}\n${track.artist || ''}`
-        : data?.content || '';
+      : mode === 'NOTES'
+        ? notes
+        : mode === 'NEXT'
+          ? related.join('\n')
+          : mode === 'CHORDS'
+            ? data?.isInstrumental
+              ? data.content
+              : `Chord sheet hidden until verified chart data exists.\n\n${track.title}\n${track.artist || ''}`
+            : data?.content || '';
 
   const handleCopy = () => {
     if (!activeText) return;
@@ -85,7 +149,16 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
 
   const handleShare = async () => {
     if (!activeText) return;
-    const label = mode === 'CHORDS' ? 'Chords' : mode === 'TRANSCRIPT' ? 'Transcript' : 'Lyrics';
+    const label =
+      mode === 'CHORDS'
+        ? 'Chords'
+        : mode === 'TRANSCRIPT'
+          ? 'Transcript'
+          : mode === 'NOTES'
+            ? 'Listen notes'
+            : mode === 'NEXT'
+              ? 'Related next'
+              : 'Lyrics';
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
@@ -117,8 +190,16 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
 
   const handleRefresh = () => {
     if (mode === 'TRANSCRIPT') void loadTranscript(track);
+    else if (mode === 'NOTES') void loadNotes(track);
+    else if (mode === 'NEXT') void loadRelated(track);
     else void loadLyrics(track);
   };
+
+  const showSpinner =
+    (mode === 'TRANSCRIPT' && transcriptLoading) ||
+    (mode === 'NOTES' && notesLoading) ||
+    (mode === 'NEXT' && relatedLoading) ||
+    (mode !== 'TRANSCRIPT' && mode !== 'NOTES' && mode !== 'NEXT' && isLoading);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -130,17 +211,19 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
                 <Guitar className="w-5 h-5" />
               ) : mode === 'TRANSCRIPT' ? (
                 <ScrollText className="w-5 h-5" />
+              ) : mode === 'NOTES' ? (
+                <NotebookPen className="w-5 h-5" />
+              ) : mode === 'NEXT' ? (
+                <Radio className="w-5 h-5" />
               ) : (
                 <Mic2 className="w-5 h-5" />
               )}
             </div>
             <div className="min-w-0">
-              <h3 className="font-serif-display text-lg font-bold text-[#f0ece1] truncate">
-                {track.title}
-              </h3>
+              <h3 className="font-serif-display text-lg font-bold text-[#f0ece1] truncate">{track.title}</h3>
               <p className="text-xs font-mono text-[#e2c986] truncate">
                 {track.artist || 'Open Grace Music'}
-                {mode === 'TRANSCRIPT' ? ' · Spoken / captions' : ''}
+                {mode === 'TRANSCRIPT' ? ' · Studio AI transcript' : mode === 'NOTES' ? ' · Listen notes' : ''}
               </p>
             </div>
           </div>
@@ -180,6 +263,8 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
                 { id: 'LYRICS' as const, label: 'LYRICS', Icon: Mic2 },
                 { id: 'CHORDS' as const, label: 'CHORDS', Icon: Guitar },
                 { id: 'TRANSCRIPT' as const, label: 'TRANSCRIPT', Icon: ScrollText },
+                { id: 'NOTES' as const, label: 'NOTES', Icon: NotebookPen },
+                { id: 'NEXT' as const, label: 'RELATED', Icon: Radio },
               ] as const
             ).map((tab) => (
               <button
@@ -197,20 +282,48 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
 
           <button
             onClick={handleRefresh}
-            disabled={isLoading}
+            disabled={showSpinner}
             title="Refresh"
             className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#b8d99e]"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${showSpinner ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto my-1 p-5 rounded-2xl cassette-window font-mono text-xs sm:text-sm text-[#f0ece1] leading-relaxed whitespace-pre-wrap selection:bg-[#b8d99e] selection:text-[#11120f]">
-          {isLoading && mode !== 'TRANSCRIPT' ? (
+          {showSpinner ? (
             <div className="py-12 flex flex-col items-center justify-center text-[#9fa396] gap-2">
               <Sparkles className="w-6 h-6 animate-spin text-[#b8d99e]" />
-              <p>TUNING THE SHEET…</p>
+              <p>
+                {mode === 'TRANSCRIPT'
+                  ? 'LISTENING TO THE TAPE…'
+                  : mode === 'NOTES'
+                    ? 'WRITING LISTEN NOTES…'
+                    : mode === 'NEXT'
+                      ? 'FINDING RELATED SEARCHES…'
+                      : 'TUNING THE SHEET…'}
+              </p>
             </div>
+          ) : mode === 'NEXT' ? (
+            related.length ? (
+              <div className="space-y-2">
+                <p className="text-[10px] text-[#9fa396]">
+                  Next listens from this query family — tap to search in the YouTube tuner. Nothing is hardcoded.
+                </p>
+                {related.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    className="cassette-btn w-full justify-start px-3 py-2 text-left text-xs font-mono text-[#e2c986]"
+                    onClick={() => onListenRelated?.(q)}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              relatedError || 'Nothing on this sheet yet.'
+            )
           ) : (
             activeText || 'Nothing on this sheet yet.'
           )}

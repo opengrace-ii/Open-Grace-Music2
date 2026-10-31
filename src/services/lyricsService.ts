@@ -5,7 +5,7 @@ export const LYRICS_UNAVAILABLE_MESSAGE = `Lyrics not available offline yet.
 
 Open Grace Music does not ship placeholder lyrics. Verified lyrics may appear when:
 • A match is found on lrclib.net (community lyrics database), or
-• GEMINI_API_KEY is configured on the server for AI-assisted transcription (verify accuracy).
+• GEMINI_API_KEY / NVIDIA_API_KEY is configured for Studio AI (verify accuracy).
 
 Tip: Search the song title in your browser or a lyrics app you trust.`;
 
@@ -66,7 +66,7 @@ export async function fetchYoutubeTranscript(videoId: string): Promise<string | 
 export function unavailableTranscript(title: string, artist: string): string {
   return `Transcript not available for this tape yet.
 
-OGM reads official YouTube captions when the video has them (same video you selected — no invented speech).
+Open Grace Music transcribes with Gemini or NVIDIA from a short audio clip of this exact video — not YouTube captions as the primary source. Add GEMINI_API_KEY or NVIDIA_API_KEY in Settings / .env. We never invent sermon text.
 
 Track: ${title}
 Artist: ${artist || 'Unknown'}`;

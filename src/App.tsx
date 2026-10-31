@@ -55,6 +55,7 @@ import { PlaylistPickerModal } from './components/PlaylistPickerModal';
 import { ScheduleModal } from './components/ScheduleModal';
 import { useListenScheduleRunner } from './hooks/useListenScheduleRunner';
 import { PendingPlay, resolvePlayTarget } from './services/scheduleService';
+import { resolveFreshListen } from './services/freshListenService';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FullPlayerModal } from './components/FullPlayerModal';
 import { DownloadDialog } from './components/DownloadDialog';
@@ -194,19 +195,54 @@ export default function App() {
   const playScheduledTarget = async (pending: PendingPlay) => {
     const resolved = await resolvePlayTarget(pending, tracks, playlists);
     if (resolved.playlistId) setSelectedPlaylistId(resolved.playlistId);
+    if (resolved.track) {
+      setCurrentTrack(resolved.track);
+      setCurrentTime(0);
+      setDuration(resolved.track.duration || 0);
+      await playerEngine.playTrack(resolved.track);
+      addToast(`Playing ${pending.scheduleName || resolved.track.title}`, 'success');
+      return;
+    }
+    if (resolved.useFresh && (pending.freshQuery || '').trim()) {
+      const query = pending.freshQuery!.trim();
+      addToast(`Finding newest match for “${query}”…`, 'info');
+      try {
+        const fresh = await resolveFreshListen(query, pending.freshMode || 'latest');
+        if (!fresh) {
+          addToast(
+            `No fresh match for “${query}”. Nothing played — search was empty or unavailable. We will not play a stale cassette or a different song.`,
+            'error'
+          );
+          return;
+        }
+        const saved = await saveMetadataTrackToDB(fresh);
+        setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
+        setCurrentTrack(saved);
+        setCurrentTime(0);
+        setDuration(saved.duration || 0);
+        await playerEngine.playTrack(saved);
+        addToast(`Playing newest match: ${saved.title}`, 'success');
+      } catch {
+        addToast(
+          `Could not search for “${query}”. Nothing played. Try again while the app is online.`,
+          'error'
+        );
+      }
+      return;
+    }
     if (resolved.missing) {
-      addToast('That mix or tape is gone. Open Schedule and pick another.', 'error');
+      addToast(
+        'Nothing to play — add a mix, a tape, or a fresh search query on the reminder.',
+        'error'
+      );
       return;
     }
-    if (resolved.emptyMix || !resolved.track) {
-      addToast('That mix is empty — add a tape, then tap the reminder again.', 'error');
-      return;
+    if (resolved.emptyMix) {
+      addToast(
+        'That mix is empty — add a tape, or set a fresh query on the reminder so we can find today’s match.',
+        'error'
+      );
     }
-    setCurrentTrack(resolved.track);
-    setCurrentTime(0);
-    setDuration(resolved.track.duration || 0);
-    await playerEngine.playTrack(resolved.track);
-    addToast(`Playing ${pending.scheduleName || resolved.track.title}`, 'success');
   };
 
   useListenScheduleRunner({
@@ -1939,6 +1975,11 @@ export default function App() {
         isOpen={!!selectedTrackForLyrics}
         track={selectedTrackForLyrics}
         onClose={() => setSelectedTrackForLyrics(null)}
+        onListenRelated={(query) => {
+          setSelectedTrackForLyrics(null);
+          setTunerQuery(query);
+          setShowYouTubeBrowser(true);
+        }}
       />
 
       <AndroidProjectModal
@@ -1978,8 +2019,8 @@ export default function App() {
         playlists={playlists}
         tracks={tracks}
         onClose={() => setShowSchedule(false)}
-        onPlayNow={(playlistId, trackId) => {
-          void playScheduledTarget({ playlistId, trackId });
+        onPlayNow={(pending) => {
+          void playScheduledTarget(pending);
         }}
       />
 

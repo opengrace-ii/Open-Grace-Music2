@@ -1,19 +1,35 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bell, BellOff, BellRing, CalendarDays, Clock, Play, Trash2, X } from 'lucide-react';
-import { ListenSchedule, ScheduleRepeatKind, TimePreset, Track, UserPlaylist } from '../types';
+import {
+  DEFAULT_SCHEDULE_TZ,
+  FreshListenMode,
+  ListenSchedule,
+  ScheduleRepeatKind,
+  TimePreset,
+  Track,
+  UserPlaylist,
+} from '../types';
 import {
   DEFAULT_TIME_PRESETS,
   WEEKDAY_LABELS,
   describeRepeat,
+  describeWhatPlays,
   formatClock,
+  formatPlayWhen,
   lastDateOfMonth,
   loadTimePresets,
+  nextOccurrenceUtc,
   notificationPermission,
   parseClock,
+  pendingFromSchedule,
   requestNotificationPermission,
   saveTimePresets,
   scheduleMatchesDate,
+  scheduleTimeZone,
   showListenNotification,
+  zonedClock,
+  zonedWallTimeToUtc,
+  type PendingPlay,
 } from '../services/scheduleService';
 import { createSchedule, deleteSchedule, getAllSchedules, saveSchedule } from '../services/storage';
 
@@ -22,13 +38,26 @@ interface ScheduleModalProps {
   playlists: UserPlaylist[];
   tracks: Track[];
   onClose: () => void;
-  onPlayNow: (playlistId?: string, trackId?: string) => void;
+  onPlayNow: (pending: PendingPlay) => void;
 }
+
+const TZ_CHOICES = [
+  'Asia/Kolkata',
+  'UTC',
+  'Asia/Dubai',
+  'Asia/Singapore',
+  'Europe/London',
+  'America/New_York',
+  'Australia/Sydney',
+];
 
 const emptyDraft = (): Omit<ListenSchedule, 'id' | 'createdAt' | 'lastFiredKey'> => ({
   name: '',
   playlistId: '',
   trackId: '',
+  freshQuery: '',
+  freshMode: 'latest',
+  timeZone: DEFAULT_SCHEDULE_TZ,
   hour: 7,
   minute: 0,
   repeatKind: 'daily',
@@ -73,26 +102,37 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   const enabledCount = schedules.filter((s) => s.enabled).length;
 
   const weekPreview = useMemo(() => {
-    const start = new Date();
-    start.setHours(12, 0, 0, 0);
-    const startDay = start.getDay();
-    start.setDate(start.getDate() - startDay);
+    const z = zonedClock(new Date(), DEFAULT_SCHEDULE_TZ);
+    const todayNoon = zonedWallTimeToUtc(
+      { year: z.year, month: z.month, day: z.day, hour: 12, minute: 0 },
+      DEFAULT_SCHEDULE_TZ
+    );
+    const start = new Date(todayNoon.getTime() - z.weekday * 24 * 60 * 60 * 1000);
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
+      const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
       const hits = schedules.filter((s) => s.enabled && scheduleMatchesDate(s, d));
       return { date: d, hits };
     });
   }, [schedules]);
 
   const monthCells = useMemo(() => {
-    const first = new Date(viewMonth.year, viewMonth.month, 1);
+    const first = zonedWallTimeToUtc(
+      { year: viewMonth.year, month: viewMonth.month + 1, day: 1, hour: 12, minute: 0 },
+      DEFAULT_SCHEDULE_TZ
+    );
     const lastNum = lastDateOfMonth(viewMonth.year, viewMonth.month);
-    const pad = first.getDay();
+    const weekdayLabel = new Intl.DateTimeFormat('en-US', {
+      timeZone: DEFAULT_SCHEDULE_TZ,
+      weekday: 'short',
+    }).format(first);
+    const pad = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekdayLabel);
     const cells: Array<{ date: Date | null; hits: ListenSchedule[] }> = [];
-    for (let i = 0; i < pad; i++) cells.push({ date: null, hits: [] });
+    for (let i = 0; i < (pad < 0 ? 0 : pad); i++) cells.push({ date: null, hits: [] });
     for (let day = 1; day <= lastNum; day++) {
-      const date = new Date(viewMonth.year, viewMonth.month, day, 12, 0, 0, 0);
+      const date = zonedWallTimeToUtc(
+        { year: viewMonth.year, month: viewMonth.month + 1, day, hour: 12, minute: 0 },
+        DEFAULT_SCHEDULE_TZ
+      );
       cells.push({
         date,
         hits: schedules.filter((s) => s.enabled && scheduleMatchesDate(s, date)),
@@ -125,6 +165,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       name: s.name,
       playlistId: s.playlistId || '',
       trackId: s.trackId || '',
+      freshQuery: s.freshQuery || '',
+      freshMode: s.freshMode || 'latest',
+      timeZone: scheduleTimeZone(s),
       hour: s.hour,
       minute: s.minute,
       repeatKind: s.repeatKind,
@@ -147,8 +190,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       setFormError('Name this reminder yourself — for example Daily devotion.');
       return;
     }
-    if (!draft.playlistId && !draft.trackId) {
-      setFormError(playlists.length === 0 ? 'Make a mix first, then point this reminder at it.' : 'Pick a mix (or a single tape).');
+    const freshQuery = (draft.freshQuery || '').replace(/\s+/g, ' ').trim();
+    if (!draft.playlistId && !draft.trackId && !freshQuery) {
+      setFormError(
+        'Type a speaker or topic to find fresh each day, or pick a mix / tape if you already made one.'
+      );
       return;
     }
     if (draft.repeatKind === 'weekdays' && draft.weekdays.length === 0) {
@@ -166,6 +212,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         name,
         playlistId: draft.playlistId || undefined,
         trackId: draft.playlistId ? undefined : draft.trackId || undefined,
+        freshQuery: freshQuery || undefined,
+        freshMode: (draft.freshMode || 'latest') as FreshListenMode,
+        timeZone: scheduleTimeZone(draft.timeZone),
         hour: draft.hour,
         minute: draft.minute,
         repeatKind: draft.repeatKind,
@@ -201,7 +250,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   const handleTestBell = async (s: ListenSchedule) => {
     const mix = playlists.find((p) => p.id === s.playlistId);
-    const shown = await showListenNotification(s, mix?.name || '');
+    const shown = await showListenNotification(s, mix?.name || describeWhatPlays(s, playlists, tracks));
     if (!shown) {
       setFormError(
         permission === 'denied'
@@ -225,12 +274,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     });
   };
 
-  const mixName = (id?: string) => playlists.find((p) => p.id === id)?.name;
-  const trackName = (id?: string) => tracks.find((t) => t.id === id)?.title;
   const monthTitle = new Date(viewMonth.year, viewMonth.month, 1).toLocaleString(undefined, {
     month: 'long',
     year: 'numeric',
   });
+  const draftAsSchedule = {
+    ...draft,
+    id: editingId || 'draft',
+    createdAt: 0,
+    timeZone: scheduleTimeZone(draft.timeZone),
+    enabled: true,
+  } as ListenSchedule;
+  const nextPlay = nextOccurrenceUtc(draftAsSchedule);
+  const nextPlayLabel = nextPlay
+    ? formatPlayWhen(nextPlay, scheduleTimeZone(draft.timeZone))
+    : 'No upcoming slot';
+  const whatPlays = describeWhatPlays(draftAsSchedule, playlists, tracks);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm">
@@ -241,7 +300,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             <div className="min-w-0">
               <h3 className="font-serif-display font-bold text-[#f0ece1] text-lg">Listen schedule</h3>
               <p className="text-[11px] font-mono text-[#9fa396]">
-                Name a reminder, pick your mix, set a time. Morning, noon, and evening are shortcuts you can edit.
+                Name a reminder, set IST time, and type what to find fresh each day — or attach a mix if you made one.
               </p>
             </div>
           </div>
@@ -306,8 +365,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             ) : (
               <div className="space-y-1.5 max-h-[32vh] lg:max-h-[40vh] overflow-y-auto pr-1">
                 {schedules.map((s) => {
-                  const mix = mixName(s.playlistId);
-                  const tape = trackName(s.trackId);
                   return (
                     <div
                       key={s.id}
@@ -319,10 +376,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                         <button type="button" className="min-w-0 text-left flex-1" onClick={() => startEdit(s)}>
                           <p className="font-serif-display text-sm text-[#f0ece1] truncate">{s.name}</p>
                           <p className="text-[10px] font-mono text-[#e2c986]">
-                            {formatClock(s.hour, s.minute)} · {describeRepeat(s)}
+                            {formatClock(s.hour, s.minute)} · {describeRepeat(s)} ·{' '}
+                            {scheduleTimeZone(s) === DEFAULT_SCHEDULE_TZ ? 'IST' : scheduleTimeZone(s)}
                           </p>
                           <p className="text-[10px] font-mono text-[#9fa396] truncate">
-                            {mix ? `Mix: ${mix}` : tape ? `Tape: ${tape}` : 'No mix linked'}
+                            {describeWhatPlays(s, playlists, tracks)}
                           </p>
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
@@ -338,7 +396,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                             type="button"
                             title="Play mix now"
                             className="p-1 text-[#e2c986]"
-                            onClick={() => onPlayNow(s.playlistId, s.trackId)}
+                            onClick={() => onPlayNow(pendingFromSchedule(s))}
                           >
                             <Play className="w-4 h-4" />
                           </button>
@@ -462,10 +520,48 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             </label>
 
             <label className="block text-[11px] font-mono text-[#9fa396]">
-              Mix to play
+              Speaker or topic to find fresh each day
+              <input
+                value={draft.freshQuery || ''}
+                onChange={(e) => setDraft((d) => ({ ...d, freshQuery: e.target.value }))}
+                placeholder="Speaker or topic to find fresh each day"
+                className="mt-1 w-full cassette-window rounded-xl px-3 py-2 bg-transparent text-sm text-[#f0ece1] placeholder-[#686b60] font-mono focus:outline-none"
+              />
+            </label>
+            <p className="text-[10px] font-mono text-[#686b60] leading-relaxed -mt-1">
+              At fire time we search YouTube in-app for this exact text and play the newest matching video — not a
+              cassette you recorded last month. Mixes are optional.
+            </p>
+
+            <div>
+              <p className="text-[11px] font-mono text-[#9fa396] mb-1">Fresh match</p>
+              <div className="cassette-bank flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { id: 'latest' as FreshListenMode, label: 'Latest upload' },
+                    { id: 'shuffle_recent' as FreshListenMode, label: 'Shuffle recent' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={`cassette-btn px-3 py-1.5 text-[11px] font-mono ${
+                      (draft.freshMode || 'latest') === opt.id ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+                    }`}
+                    onClick={() => setDraft((d) => ({ ...d, freshMode: opt.id }))}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block text-[11px] font-mono text-[#9fa396]">
+              Mix to play (optional)
               {playlists.length === 0 ? (
-                <p className="mt-1 cassette-window rounded-xl px-3 py-2 text-[11px] text-[#e2c986]">
-                  No mixes yet. Close this panel, tap NEW MIX, add tapes, then come back.
+                <p className="mt-1 cassette-window rounded-xl px-3 py-2 text-[11px] text-[#9fa396] leading-relaxed">
+                  No mixes yet. You can still save this reminder with a fresh query above. User playlists can wait —
+                  attach a mix later if you want a fixed set of tapes.
                 </p>
               ) : (
                 <select
@@ -473,7 +569,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   onChange={(e) => setDraft((d) => ({ ...d, playlistId: e.target.value, trackId: '' }))}
                   className="mt-1 w-full cassette-window rounded-xl px-3 py-2 bg-[#121510] text-sm text-[#f0ece1] font-mono focus:outline-none"
                 >
-                  <option value="">Choose a mix…</option>
+                  <option value="">None — use fresh query</option>
                   {playlists.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} ({p.trackIds.length})
@@ -503,7 +599,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             <div>
               <div className="flex items-center gap-2 text-[11px] font-mono text-[#9fa396] mb-1">
                 <Clock className="w-3.5 h-3.5 text-[#e2c986]" />
-                Time of day
+                Time of day (IST clock unless you change timezone)
               </div>
               <input
                 type="time"
@@ -514,6 +610,26 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 }}
                 className="w-full cassette-window rounded-xl px-3 py-2 bg-transparent text-sm text-[#f0ece1] font-mono focus:outline-none"
               />
+              <label className="block text-[11px] font-mono text-[#9fa396] mt-2">
+                Timezone
+                <select
+                  value={scheduleTimeZone(draft.timeZone)}
+                  onChange={(e) => setDraft((d) => ({ ...d, timeZone: e.target.value }))}
+                  className="mt-1 w-full cassette-window rounded-xl px-3 py-2 bg-[#121510] text-sm text-[#f0ece1] font-mono focus:outline-none"
+                >
+                  {TZ_CHOICES.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz === DEFAULT_SCHEDULE_TZ ? 'Asia/Kolkata (IST)' : tz}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="mt-2 cassette-window rounded-xl px-3 py-2 space-y-1">
+                <p className="text-[11px] font-mono text-[#b8d99e]">
+                  Next play ({scheduleTimeZone(draft.timeZone) === DEFAULT_SCHEDULE_TZ ? 'IST' : scheduleTimeZone(draft.timeZone)}): {nextPlayLabel}
+                </p>
+                <p className="text-[11px] font-mono text-[#e2c986]">What will play: {whatPlays}</p>
+              </div>
               <p className="mt-2 text-[10px] font-mono text-[#686b60]">Quick times — edit these; they are not locked slots.</p>
               <div className="mt-1 space-y-1.5">
                 {presets.map((p, idx) => (

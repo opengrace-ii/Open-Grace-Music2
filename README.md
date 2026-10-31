@@ -41,19 +41,33 @@ Open Grace Music supports true high-resolution and lossless audio workflows with
 ### 5. User mixes (playlists)
 Name your own mixes in the library — instrumental, messages, Hindi Christian, or anything else. Nothing is pre-loaded. Tap **NEW MIX**, or the list button on a tape, then type the mix name. Mixes live in your browser (IndexedDB) and stay empty until you add tapes.
 
-### 6. Listen schedule (reminders)
+### 6. Listen schedule (fresh IST reminders)
 
-Name a reminder yourself (for example “Daily devotion”), point it at one of **your** mixes, and pick a clock time. Morning / noon / evening are **editable shortcuts**, not locked slots — add as many reminders as you want, including a week grid and month-day picker.
+Name a reminder yourself (for example “Daily devotion”), pick a clock time, and say **what to find fresh each morning**. Morning / noon / evening are **editable shortcuts**, not locked slots.
 
-- **Cassette Library → SCHEDULE** (also in the header).
-- Repeat: every day, selected weekdays, or days of the month (including last day). Enable or delete any reminder.
-- When a reminder fires, tap the notification (or the in-app **Play** toast) to open the mix and start the first tape (`#play=pl_…`).
-- **Honest limit:** browsers cannot wake a fully closed tab like a native alarm. Reminders run while the PWA/tab is open, and an installed Chrome PWA may also check via Periodic Background Sync when the OS allows it. On iPhone, if the app is fully killed, the reminder will not fire. Web Push is not used (no server keys). Notifications must be allowed in-app; if you deny them, you get a clear empty/error state and can still play from the toast while the app is open.
+The clock is **Asia/Kolkata (IST)** by default (IANA timezone stored on the reminder; you can change it). Example: Daily 07:00 IST on **Sun 1 Nov 2026** fires at that IST instant and searches YouTube **at fire time** for the query you typed (speaker, artist, or topic). **Latest upload** (default) plays the newest matching video in the in-app YouTube deck — exact video id, no SoundCloud / wrong-song fallback. **Shuffle recent** picks among the newest hits. Downloaded library tapes are **not** used for this path, so you do not hear last month’s cassette.
 
-### 7. Lyrics (honest offline UX)
+You can save a reminder with **zero mixes** if the fresh query is filled. An optional mix still wins when it has tapes. User playlists can stay empty.
+
+- **Cassette Library → SCHEDULE**.
+- Repeat: every day, selected weekdays, or days of the month. The panel shows **Next play (IST)** and **what will play** (“Newest match for “{query}”” or the mix name).
+- When a reminder fires, tap the notification (or in-app **Play**) to resolve today’s match and play it.
+- Empty search / errors show honest copy — no fake audio.
+- **Honest PWA alarm limit:** browsers cannot wake a fully closed tab like a native alarm. Reminders run while the PWA/tab is open; an installed Chrome PWA may also check via Periodic Background Sync when the OS allows it. On iPhone, if the app is fully killed, the reminder will not fire. Web Push is not used. Allow notifications in-app.
+
+### 7. Studio AI (own transcript, notes, related next)
+
+Open the player **STUDIO AI** sheet (lyrics / chords / transcript / notes / related):
+
+- **Transcript** is **Open Grace Music AI** — Gemini (`GEMINI_API_KEY`) first, else NVIDIA (`NVIDIA_API_KEY`) on a short audio extract of the same YouTube id. We do **not** use YouTube captions as the primary source. If AI has no key or cannot get audio (e.g. LOGIN_REQUIRED), you see a clear message; title/description is **not** a transcript. YouTube captions may appear only as a last resort, labeled as such. No invented sermon text.
+- **Listen notes** summarize the transcript (not a guessed talk).
+- **Related next** suggests 3 search queries from the same query family (not hardcoded artists). Tap one to open the in-app YouTube tuner.
+
+Keys: set `GEMINI_API_KEY` and/or `NVIDIA_API_KEY` in `.env`, or paste them in **Settings → Studio AI keys** (stored on the running server process only; never logged or echoed). Missing keys never block the rest of the app.
+
+### 8. Lyrics (honest offline UX)
 - Open Grace Music **does not fabricate** generic placeholder lyrics or C–G–Am–F chord sheets.
 - The player tries **[lrclib.net](https://lrclib.net)** for a title/artist match; if none is found, you see **“Lyrics not available offline yet.”**
-- Optional **Gemini** lyrics (`GEMINI_API_KEY` on the server) are labeled **AI-generated — verify accuracy**.
 - Instrumental tracks can show a short note instead of a fake chart until real chart data exists.
 
 ### YouTube conversion speed vs TubeMate
