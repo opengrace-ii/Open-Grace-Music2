@@ -96,6 +96,32 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
 
   const watchUrl = selectedYtId ? `https://www.youtube.com/watch?v=${selectedYtId}` : null;
 
+  const openYouTube = () => {
+    window.open('https://www.youtube.com', '_blank', 'noopener,noreferrer');
+  };
+
+  const videoPlayer = selectedYtId ? (
+    <div
+      className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg flex-1 min-h-[280px] max-h-[min(70vh,720px)]"
+      style={{ aspectRatio: '16 / 9' }}
+    >
+      {!embedReady && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#141812] z-10">
+          <div className="w-8 h-8 border-2 border-[#b8d99e] border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      )}
+      <iframe
+        key={selectedYtId}
+        src={embedUrl(selectedYtId)}
+        title="YouTube video player"
+        className="absolute inset-0 w-full h-full border-0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowFullScreen
+        onLoad={() => setEmbedReady(true)}
+      />
+    </div>
+  ) : null;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0c09]/95 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="flex flex-col flex-1 min-h-0 w-full max-w-5xl mx-auto sm:my-2 sm:rounded-3xl sm:border sm:border-[#2b3326] cassette-card shadow-2xl overflow-hidden">
@@ -164,62 +190,45 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
         {/* Main viewing surface */}
         <div className="flex-1 min-h-0 flex flex-col px-4 pb-2 gap-2">
           {mode === 'browse' ? (
-            <div className="flex-1 min-h-[60vh] sm:min-h-[70vh] flex flex-col rounded-2xl overflow-hidden border border-[#2b3326] bg-[#000] relative">
-              <iframe
-                title="Browse YouTube"
-                src="https://m.youtube.com"
-                className="w-full flex-1 min-h-[58vh] sm:min-h-[68vh] border-0 bg-black"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                allowFullScreen
-                referrerPolicy="origin-when-cross-origin"
-              />
-              <div className="absolute bottom-0 inset-x-0 px-3 py-2.5 bg-gradient-to-t from-black/95 to-transparent">
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-w-0">
-                  {selectedYtId ? (
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] sm:text-xs font-mono font-bold text-[#b8d99e] whitespace-nowrap shrink-0"
-                    >
-                      VIDEO DETECTED
-                    </span>
-                  ) : null}
-                  <p className="text-[10px] sm:text-xs font-mono text-[#9fa396] flex-1 min-w-[8rem] whitespace-normal sm:whitespace-nowrap">
-                    On a video page, copy its link and tap Paste above.
-                  </p>
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
+              {videoPlayer ?? (
+                <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center gap-4 cassette-window rounded-2xl border border-[#2b3326]">
+                  <div className="p-4 rounded-2xl bg-[#2a1818] text-[#f87171] border border-[#4a2626]">
+                    <Youtube className="w-10 h-10" />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => window.open('https://m.youtube.com', '_blank', 'noopener,noreferrer')}
-                    className="cassette-btn px-2.5 py-1 text-[10px] font-mono text-[#e2c986] shrink-0 whitespace-nowrap"
+                    onClick={openYouTube}
+                    className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#e2c986]"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Open in browser
+                    <ExternalLink className="w-4 h-4" />
+                    Open YouTube
                   </button>
                 </div>
-              </div>
+              )}
+              {selectedYtId ? (
+                <div className="p-3 rounded-2xl cassette-window flex items-center justify-between gap-3 shrink-0">
+                  <div className="min-w-0 flex-1">
+                    <span className="inline-flex px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] font-mono font-bold text-[#b8d99e]">
+                      VIDEO DETECTED
+                    </span>
+                    <p className="text-xs font-mono text-[#9fa396] mt-1 truncate">
+                      {previewInfo?.title || selectedYtId}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMode('watch')}
+                    className="cassette-btn px-3 py-2 text-xs font-mono text-[#b8d99e] shrink-0"
+                  >
+                    Watch &amp; Record
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : selectedYtId ? (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
-              <div
-                className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg flex-1 min-h-[280px] max-h-[min(70vh,720px)]"
-                style={{ aspectRatio: '16 / 9' }}
-              >
-                {!embedReady && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-[#141812] z-10">
-                    <div className="text-center space-y-2 px-4">
-                      <div className="w-8 h-8 border-2 border-[#b8d99e] border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p className="text-xs font-mono text-[#9fa396]">Loading player…</p>
-                    </div>
-                  </div>
-                )}
-                <iframe
-                  key={selectedYtId}
-                  src={embedUrl(selectedYtId)}
-                  title="YouTube video player"
-                  className="absolute inset-0 w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                  allowFullScreen
-                  onLoad={() => setEmbedReady(true)}
-                />
-              </div>
+              {videoPlayer}
 
               <div className="p-3 rounded-2xl cassette-window flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 shrink-0">
                 <div className="min-w-0 flex-1 basis-full sm:basis-auto">
@@ -254,10 +263,15 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-[40vh] flex items-center justify-center cassette-window rounded-2xl">
-              <p className="text-sm font-mono text-[#9fa396] text-center px-6">
-                Paste a YouTube link or pick a featured track below.
-              </p>
+            <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center gap-4 cassette-window rounded-2xl">
+              <button
+                type="button"
+                onClick={openYouTube}
+                className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#e2c986]"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open YouTube
+              </button>
             </div>
           )}
         </div>
