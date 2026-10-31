@@ -8,6 +8,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { runConvertPipeline } from './server/convertPipeline.ts';
+import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.ts';
 
 dotenv.config();
 
@@ -107,6 +108,17 @@ function classifyPipelineError(
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'ogm-converter' });
+});
+
+app.get('/api/youtube/search', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  try {
+    const videos = q ? await searchYoutubeVideos(q, 24) : await browseYoutubeHome(24);
+    res.json({ ok: true, query: q, videos });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'YouTube catalog unavailable';
+    res.status(502).json({ ok: false, error: message, videos: [] });
+  }
 });
 
 /** Prevent cached index.html / SW; allow long cache on Vite content-hashed assets. */

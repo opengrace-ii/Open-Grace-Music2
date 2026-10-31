@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, Search, Youtube, Radio, Play, ClipboardPaste, ExternalLink } from 'lucide-react';
+import { X, Search, Youtube, Radio, Play, ClipboardPaste } from 'lucide-react';
 import { extractYouTubeId } from '../services/mediaResolver';
+import { apiUrl, fetchWithTimeout } from '../services/converterApi';
 
 interface YouTubeBrowserModalProps {
   isOpen: boolean;
@@ -14,8 +15,15 @@ interface YouTubeBrowserModalProps {
 
 type TunerMode = 'browse' | 'watch';
 
+interface CatalogVideo {
+  id: string;
+  title: string;
+  author: string;
+  thumbnailUrl: string;
+}
+
 const embedUrl = (videoId: string) =>
-  `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(
+  `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&autoplay=1&enablejsapi=1&origin=${encodeURIComponent(
     typeof window !== 'undefined' ? window.location.origin : ''
   )}`;
 
@@ -31,6 +39,9 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   const [selectedYtId, setSelectedYtId] = useState<string | null>(initialId);
   const [previewInfo, setPreviewInfo] = useState<{ title: string; author: string } | null>(null);
   const [embedReady, setEmbedReady] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogVideo[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const fetchInfo = useCallback(async (id: string) => {
     try {
@@ -46,6 +57,27 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     }
   }, []);
 
+  const loadCatalog = useCallback(async (query: string) => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const q = query.trim();
+      const path = q
+        ? `/api/youtube/search?q=${encodeURIComponent(q)}`
+        : '/api/youtube/search';
+      const res = await fetchWithTimeout(apiUrl(path), { timeoutMs: 20_000 });
+      const json = (await res.json()) as { videos?: CatalogVideo[]; error?: string };
+      const videos = json.videos || [];
+      setCatalog(videos);
+      if (!res.ok && json.error) setCatalogError(json.error);
+    } catch {
+      setCatalogError('YouTube catalog is warming up — try a search in a moment.');
+      setCatalog([]);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     const id = extractYouTubeId(initialUrl || '');
@@ -54,7 +86,8 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     setMode(id ? 'watch' : 'browse');
     setEmbedReady(false);
     if (id) fetchInfo(id);
-  }, [isOpen, initialUrl, fetchInfo]);
+    else void loadCatalog('');
+  }, [isOpen, initialUrl, fetchInfo, loadCatalog]);
 
   useEffect(() => {
     if (selectedYtId) fetchInfo(selectedYtId);
@@ -62,17 +95,24 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
 
   if (!isOpen) return null;
 
-  const applyVideoId = (id: string) => {
+  const applyVideoId = (id: string, meta?: { title?: string; author?: string }) => {
     setSelectedYtId(id);
     setSearchInput(`https://www.youtube.com/watch?v=${id}`);
     setMode('watch');
     setEmbedReady(false);
+    if (meta?.title && meta?.author) setPreviewInfo({ title: meta.title, author: meta.author });
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const id = extractYouTubeId(searchInput.trim());
-    if (id) applyVideoId(id);
+    const raw = searchInput.trim();
+    const id = extractYouTubeId(raw);
+    if (id) {
+      applyVideoId(id);
+      return;
+    }
+    setMode('browse');
+    void loadCatalog(raw);
   };
 
   const pasteFromClipboard = async () => {
@@ -87,22 +127,11 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     }
   };
 
-  const curatedVideos = [
-    { id: 'DWcJFNfaw9c', title: 'Acoustic Guitar Peaceful Sanctuary', author: 'Acoustic Morning' },
-    { id: '0T8NnR21s0Q', title: 'Open Grace Classical Masterpieces', author: 'Symphony Hall' },
-    { id: 'jfKfPfyJRdk', title: 'Midnight Instrumental Sessions', author: 'Lofi Studio' },
-    { id: '5qap5aO4i9A', title: 'Warm Vinyl Chillhop Beats', author: 'Chillhop Music' },
-  ];
-
   const watchUrl = selectedYtId ? `https://www.youtube.com/watch?v=${selectedYtId}` : null;
-
-  const openYouTube = () => {
-    window.open('https://www.youtube.com', '_blank', 'noopener,noreferrer');
-  };
 
   const videoPlayer = selectedYtId ? (
     <div
-      className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg flex-1 min-h-[280px] max-h-[min(70vh,720px)]"
+      className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg flex-1 min-h-[220px] max-h-[min(52vh,560px)]"
       style={{ aspectRatio: '16 / 9' }}
     >
       {!embedReady && (
@@ -113,7 +142,7 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
       <iframe
         key={selectedYtId}
         src={embedUrl(selectedYtId)}
-        title="YouTube video player"
+        title="YouTube"
         className="absolute inset-0 w-full h-full border-0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowFullScreen
@@ -122,10 +151,35 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     </div>
   ) : null;
 
+  const resultGrid = (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 overflow-y-auto scrollbar-none min-h-0 flex-1">
+      {catalog.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          onClick={() => applyVideoId(v.id, { title: v.title, author: v.author })}
+          className={`cassette-btn justify-start p-2.5 text-left ${
+            selectedYtId === v.id ? 'cassette-btn-engaged' : ''
+          }`}
+        >
+          <div className="w-16 h-10 rounded bg-[#1c2418] overflow-hidden shrink-0 relative">
+            <img src={v.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+              <Play className="w-3 h-3 text-white fill-white" />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-[#f0ece1] truncate">{v.title}</p>
+            <p className="text-[10px] font-mono text-[#9fa396] truncate">{v.author}</p>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0c09]/95 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="flex flex-col flex-1 min-h-0 w-full max-w-5xl mx-auto sm:my-2 sm:rounded-3xl sm:border sm:border-[#2b3326] cassette-card shadow-2xl overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#272c23] shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-[#2a1818] text-[#f87171] border border-[#4a2626]">
@@ -140,7 +194,6 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
           </button>
         </div>
 
-        {/* Mode toggle */}
         <div className="cassette-bank flex gap-1.5 px-4 py-2 shrink-0 border-b border-[#1f241c]">
           {(
             [
@@ -162,13 +215,12 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
           ))}
         </div>
 
-        {/* URL bar */}
         <form onSubmit={handleSearchSubmit} className="px-4 py-2 flex gap-2 shrink-0">
           <div className="relative flex-1 cassette-window rounded-xl flex items-center px-3 min-w-0">
             <Search className="w-4 h-4 text-[#686b60] shrink-0" />
             <input
               type="text"
-              placeholder="Paste YouTube watch link or video ID…"
+              placeholder="Search YouTube or paste a watch link…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="w-full px-2.5 py-2.5 bg-transparent text-[#f0ece1] placeholder-[#686b60] text-xs sm:text-sm focus:outline-none font-mono truncate"
@@ -178,7 +230,7 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
             type="button"
             onClick={pasteFromClipboard}
             className="cassette-btn px-3 py-2 text-[#b8d99e] shrink-0"
-            title="Paste from clipboard"
+            title="Paste"
           >
             <ClipboardPaste className="w-4 h-4" />
           </button>
@@ -187,44 +239,24 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
           </button>
         </form>
 
-        {/* Main viewing surface */}
-        <div className="flex-1 min-h-0 flex flex-col px-4 pb-2 gap-2">
+        <div className="flex-1 min-h-0 flex flex-col px-4 pb-4 gap-2">
           {mode === 'browse' ? (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
-              {videoPlayer ?? (
-                <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center gap-4 cassette-window rounded-2xl border border-[#2b3326]">
-                  <div className="p-4 rounded-2xl bg-[#2a1818] text-[#f87171] border border-[#4a2626]">
-                    <Youtube className="w-10 h-10" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={openYouTube}
-                    className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#e2c986]"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open YouTube
-                  </button>
+              {selectedYtId ? videoPlayer : null}
+              {catalogLoading ? (
+                <div className="flex-1 min-h-[30vh] flex items-center justify-center cassette-window rounded-2xl">
+                  <div className="w-8 h-8 border-2 border-[#b8d99e] border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : catalog.length > 0 ? (
+                resultGrid
+              ) : (
+                <div className="flex-1 min-h-[30vh] flex flex-col items-center justify-center gap-2 cassette-window rounded-2xl">
+                  <Youtube className="w-10 h-10 text-[#f87171]" />
+                  <p className="text-xs font-mono text-[#9fa396]">
+                    {catalogError || 'Search YouTube in the bar above'}
+                  </p>
                 </div>
               )}
-              {selectedYtId ? (
-                <div className="p-3 rounded-2xl cassette-window flex items-center justify-between gap-3 shrink-0">
-                  <div className="min-w-0 flex-1">
-                    <span className="inline-flex px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] font-mono font-bold text-[#b8d99e]">
-                      VIDEO DETECTED
-                    </span>
-                    <p className="text-xs font-mono text-[#9fa396] mt-1 truncate">
-                      {previewInfo?.title || selectedYtId}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMode('watch')}
-                    className="cassette-btn px-3 py-2 text-xs font-mono text-[#b8d99e] shrink-0"
-                  >
-                    Watch &amp; Record
-                  </button>
-                </div>
-              ) : null}
             </div>
           ) : selectedYtId ? (
             <div className="flex-1 min-h-0 flex flex-col gap-2">
@@ -243,9 +275,6 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                   <p className="text-xs font-mono text-[#b8d99e] mt-0.5 truncate">
                     {previewInfo?.author || 'Studio Stream Ready'}
                   </p>
-                  {watchUrl && (
-                    <p className="text-[10px] font-mono text-[#686b60] mt-1 truncate">{watchUrl}</p>
-                  )}
                 </div>
                 <button
                   type="button"
@@ -263,49 +292,10 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center gap-4 cassette-window rounded-2xl">
-              <button
-                type="button"
-                onClick={openYouTube}
-                className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#e2c986]"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open YouTube
-              </button>
+            <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center cassette-window rounded-2xl">
+              <p className="text-xs font-mono text-[#9fa396]">Pick a tape from Browse YouTube</p>
             </div>
           )}
-        </div>
-
-        {/* Featured */}
-        <div className="px-4 pb-4 shrink-0">
-          <p className="text-[10px] font-mono text-[#686b60] uppercase tracking-wider mb-2">Featured</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[22vh] overflow-y-auto scrollbar-none">
-            {curatedVideos.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => applyVideoId(v.id)}
-                className={`cassette-btn justify-start p-2.5 text-left ${
-                  selectedYtId === v.id ? 'cassette-btn-engaged' : ''
-                }`}
-              >
-                <div className="w-11 h-8 rounded bg-[#1c2418] overflow-hidden shrink-0 relative">
-                  <img
-                    src={`https://img.youtube.com/vi/${v.id}/hqdefault.jpg`}
-                    alt={v.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
-                    <Play className="w-3 h-3 text-white fill-white" />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-[#f0ece1] truncate">{v.title}</p>
-                  <p className="text-[10px] font-mono text-[#9fa396] truncate">{v.author}</p>
-                </div>
-              </button>
-            ))}
-          </div>
         </div>
       </div>
     </div>
