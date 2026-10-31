@@ -4,6 +4,8 @@ Use this in a ChatGPT chat with **@AppDeploy** to redeploy or fix **Open Grace M
 
 **Keep this URL:** `https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai`
 
+**Source of truth:** Deploy from **GitHub `opengrace-ii/Open-Grace-Music2` `main`**, not an old AppDeploy saved snapshot. If `curl …/api/_healthcheck` on `api-v2.appdeploy.ai` returns `"mp3Conversion":"browser-ffmpeg"` but `curl …/api/health` on the public hostname returns HTML, you are still on legacy platform code — see [APPDEPLOY-SOURCE-MISMATCH.md](./APPDEPLOY-SOURCE-MISMATCH.md).
+
 ---
 
 ## Copy from the line below through the end of the prompt block
