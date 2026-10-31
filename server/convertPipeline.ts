@@ -71,9 +71,18 @@ export function classifyPipelineError(
       error: `Audio mastering failed: ${raw.slice(0, 200) || 'FFmpeg error'}`,
     };
   }
+  const technical = raw.slice(0, 400);
+  if (/python3|command failed|must be suitable for the extractor/i.test(technical)) {
+    console.warn('[convert-audio] extract failed:', technical);
+    return {
+      code: 'EXTRACTION_FAILED',
+      error:
+        'Could not fetch audio for this track. Try MP3 first, tap the key icon to paste YouTube cookies, or retry in a few minutes.',
+    };
+  }
   return {
     code: 'EXTRACTION_FAILED',
-    error: raw.slice(0, 220) || 'Could not extract an audio stream for this link.',
+    error: technical.slice(0, 220) || 'Could not extract an audio stream for this link.',
   };
 }
 

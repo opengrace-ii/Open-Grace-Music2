@@ -199,15 +199,11 @@ function buildSearchQueries(rawTitle: string, rawAuthor: string): string[] {
   const cleanTitle = rawTitle
     .replace(/\[[^\]]*\]/g, ' ')
     .replace(/\|.*$/g, ' ')
-    .replace(
-      /\((?:official|music|video|audio|lyric|lyrics|4k|hd|hq|visualizer|full|long\s*version)[^)]*\)/gi,
-      ' '
-    )
+    .replace(/\([^)]*\)/g, ' ')
     .replace(
       /\b(?:official\s+music\s+video|official\s+video|official\s+audio|lyric\s+video|4k|hd|hq|long\s+version)\b/gi,
       ' '
     )
-    .replace(/[()]/g, ' ')
     .replace(/[-–—|]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -217,19 +213,25 @@ function buildSearchQueries(rawTitle: string, rawAuthor: string): string[] {
     .replace(/\s+/g, ' ')
     .trim();
 
+  const songPart = rawTitle
+    .split(/[-–—|]/)[1]
+    ?.replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   const queries: string[] = [];
-  if (cleanTitle) {
-    queries.push(cleanTitle);
-    if (cleanAuthor && !cleanTitle.toLowerCase().includes(cleanAuthor.toLowerCase())) {
-      queries.push(`${cleanTitle} ${cleanAuthor}`);
-    }
-    // Also add first part before hyphen in original title if present
-    const firstSegment = rawTitle.split(/[-–—|]/)[0]?.replace(/\[[^\]]*\]/g, '').trim();
-    if (firstSegment && firstSegment.length >= 3 && !queries.includes(firstSegment)) {
-      queries.push(firstSegment);
-    }
-  }
-  return queries.length > 0 ? queries : [rawTitle];
+  const add = (q: string) => {
+    const trimmed = q.replace(/\s+/g, ' ').trim();
+    if (trimmed.length >= 8 && !queries.includes(trimmed)) queries.push(trimmed);
+  };
+
+  if (cleanAuthor && songPart) add(`${cleanAuthor} ${songPart}`);
+  if (cleanTitle) add(cleanTitle);
+  if (cleanAuthor && cleanTitle) add(`${cleanAuthor} ${cleanTitle}`);
+  if (songPart) add(songPart);
+
+  return queries.length > 0 ? queries : [rawTitle.replace(/\s+/g, ' ').trim()];
 }
 
 export interface AudioFormatSpec {
