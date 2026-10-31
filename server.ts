@@ -90,7 +90,7 @@ function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked direct download from the server. OGM will try an alternate source when possible — or tap the key icon and paste youtube.com cookies from your browser, then record again.',
+        'YouTube blocked download for this exact video. OGM never substitutes a different song — tap the key icon, paste youtube.com cookies from your browser, and record again.',
     };
   }
   if (phase === 'ffmpeg') {

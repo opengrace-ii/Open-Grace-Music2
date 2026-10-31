@@ -31,6 +31,38 @@ function pickRawSourceFile(workDir: string): string | null {
   return null;
 }
 
+/** Ensures yt-dlp grabbed this exact YouTube video, not a search/random result. */
+function verifyExtractedYoutubeId(workDir: string, expectedYtId: string): boolean {
+  const infoFiles = fs.readdirSync(workDir).filter((f) => f.endsWith('.info.json'));
+  for (const f of infoFiles) {
+    try {
+      const info = JSON.parse(fs.readFileSync(path.join(workDir, f), 'utf8')) as {
+        id?: string;
+        extractor_key?: string;
+      };
+      if (info.extractor_key && info.extractor_key !== 'youtube') return false;
+      if (info.id && info.id !== expectedYtId) return false;
+      return !!info.id;
+    } catch {
+      // ignore malformed sidecar
+    }
+  }
+  // No sidecar: only accept when we cannot verify (legacy path) — treat as fail for safety
+  return false;
+}
+
+function clearRawSourceArtifacts(workDir: string) {
+  for (const f of fs.readdirSync(workDir)) {
+    if (f.startsWith('raw_source.') || f.endsWith('.info.json')) {
+      try {
+        fs.unlinkSync(path.join(workDir, f));
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
 export type ConvertErrorCode = 'YOUTUBE_BOT_CHECK' | 'TIMEOUT' | 'FFMPEG_FAILED' | 'EXTRACTION_FAILED';
 
 export type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
@@ -62,7 +94,7 @@ export function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked direct download from the server. OGM will try an alternate source when possible — or tap the key icon and paste youtube.com cookies from your browser, then record again.',
+        'YouTube blocked download for this exact video. OGM never substitutes a different song — tap the key icon, paste youtube.com cookies from your browser, and record again.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -220,6 +252,7 @@ export async function runConvertPipeline(
                 '15',
                 '--retries',
                 '2',
+                '--write-info-json',
                 '-f',
                 isMp3 ? 'bestaudio[ext=m4a]/bestaudio/best' : 'bestaudio/best',
                 ...cookieArgs,
@@ -231,12 +264,19 @@ export async function runConvertPipeline(
               { timeout: extractTimeout, maxBuffer: 8 * 1024 * 1024 }
             );
             const picked = pickRawSourceFile(workDir);
-            if (picked) {
+            if (picked && verifyExtractedYoutubeId(workDir, ytId)) {
               downloadedRawPath = picked;
               extractionMethod = playerClient
                 ? `youtube-direct (${playerClient})`
                 : 'youtube-direct';
               break;
+            }
+            if (picked) {
+              clearRawSourceArtifacts(workDir);
+              lastExtractFailure = {
+                code: 'EXTRACTION_FAILED',
+                error: 'Downloaded stream did not match the YouTube video ID. Retry with cookies via the key icon.',
+              };
             }
           } catch (directErr) {
             lastExtractFailure = classifyPipelineError(directErr, 'extract');
@@ -251,42 +291,10 @@ export async function runConvertPipeline(
       }
 
       if (!downloadedRawPath) {
-        progress('extract', 42, 'Trying alternate audio source (mirror search)…');
-        const searchQueries = buildSearchQueries(title, artist);
-        for (const query of searchQueries) {
-          try {
-            await execFileAsync(
-              'yt-dlp',
-              [
-                '--no-playlist',
-                '--no-warnings',
-                '-f',
-                'bestaudio/best',
-                ...cookieArgs,
-                '-o',
-                rawInputTemplate,
-                `scsearch1:${query}`,
-              ],
-              { timeout: isMp3 ? ytDlpMp3TimeoutMs : ytDlpTimeoutMs, maxBuffer: 8 * 1024 * 1024 }
-            );
-
-            const picked = pickRawSourceFile(workDir);
-            if (picked) {
-              downloadedRawPath = picked;
-              extractionMethod = `audiophile-mirror (${query})`;
-              break;
-            }
-          } catch (fallbackErr) {
-            lastExtractFailure = classifyPipelineError(fallbackErr, 'extract');
-            console.warn(`[convert-audio] Mirror search failed (${query}):`, lastExtractFailure.error);
-          }
-        }
-      }
-
-      if (!downloadedRawPath) {
         const failure = lastExtractFailure || {
-          code: 'EXTRACTION_FAILED' as ConvertErrorCode,
-          error: `Could not extract audio stream for "${title}". Verify the link or add YouTube cookies.`,
+          code: 'YOUTUBE_BOT_CHECK' as ConvertErrorCode,
+          error:
+            'Could not download this exact YouTube video. Tap the key icon on the recorder and paste youtube.com cookies, then try again.',
         };
         return { ok: false, ...failure, workDir };
       }
