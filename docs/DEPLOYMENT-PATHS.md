@@ -4,7 +4,7 @@ Open Grace Music needs a **long-running Node.js Express** process (`server.ts`) 
 
 **Legacy AppDeploy URL (do not rely on for production):** `https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai` — AppDeploy does **not** meet OGM acceptance criteria (long-lived `npm start`, **ffmpeg**, **yt-dlp**). Use **Docker on a capable host** instead.
 
-Related docs: [DOCKER-ACCEPTANCE-TESTS.md](./DOCKER-ACCEPTANCE-TESTS.md), [CHATGPT-HANDOFF.md](./CHATGPT-HANDOFF.md), [APPDEPLOY.md](./APPDEPLOY.md), [APPDEPLOY-CHATGPT-PROMPT.md](./APPDEPLOY-CHATGPT-PROMPT.md), [APPDEPLOY-SOURCE-MISMATCH.md](./APPDEPLOY-SOURCE-MISMATCH.md), [APPDEPLOY-VERIFY.md](./APPDEPLOY-VERIFY.md).
+Related docs: [RENDER-FIX.md](./RENDER-FIX.md) (failed deploy in ~11s / wrong repo / missing Dockerfile on GitHub), [DOCKER-ACCEPTANCE-TESTS.md](./DOCKER-ACCEPTANCE-TESTS.md), [CHATGPT-HANDOFF.md](./CHATGPT-HANDOFF.md), [APPDEPLOY.md](./APPDEPLOY.md), [APPDEPLOY-CHATGPT-PROMPT.md](./APPDEPLOY-CHATGPT-PROMPT.md), [APPDEPLOY-SOURCE-MISMATCH.md](./APPDEPLOY-SOURCE-MISMATCH.md), [APPDEPLOY-VERIFY.md](./APPDEPLOY-VERIFY.md).
 
 ---
 

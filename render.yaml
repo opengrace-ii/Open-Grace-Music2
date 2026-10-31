@@ -1,0 +1,18 @@
+# Optional Render Blueprint — import in Dashboard → Blueprints, or use as reference when creating a Web Service manually.
+# Repo must be opengrace-ii/Open-Grace-Music2 (not opengrace-11) with Dockerfile on branch main (commit 53a9449+).
+
+services:
+  - type: web
+    name: open-grace-music
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OGM_PUBLIC_BASE_URL
+        sync: false
+      # Do not set PORT — Render injects it automatically.
