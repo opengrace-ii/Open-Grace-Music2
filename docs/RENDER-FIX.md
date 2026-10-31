@@ -56,6 +56,8 @@ curl -sS -i "$BASE/api/health"
 
 Expect **HTTP 200** and JSON like `{"ok":true,"service":"ogm-converter"}`.
 
+**Clients:** Download the APK from Render (`/download` or `/OpenGraceMusic.apk`); the PWA on the same origin needs no converter URL in Settings; after `./gradlew :app:assembleRelease`, commit `public/OpenGraceMusic.apk` so the hosted file matches the new default.
+
 From the repo (after `npm ci`):
 
 ```bash

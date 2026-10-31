@@ -77,7 +77,7 @@ export default defineConfig(() => {
   const ogmPublicBase =
     process.env.VITE_OGM_PUBLIC_BASE_URL?.trim() ||
     process.env.OGM_PUBLIC_BASE_URL?.trim() ||
-    'https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai';
+    'https://open-grace-music2.onrender.com';
 
   return {
     plugins: [react(), tailwindcss(), ogmServiceWorkerBuildIdPlugin()],

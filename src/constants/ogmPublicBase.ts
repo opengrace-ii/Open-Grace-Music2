@@ -1,7 +1,7 @@
-/** Default public PWA + converter host (AppDeploy). Override at build with VITE_OGM_PUBLIC_BASE_URL / OGM_PUBLIC_BASE_URL. */
+/** Default public PWA + converter host (Render production). Override at build with VITE_OGM_PUBLIC_BASE_URL / OGM_PUBLIC_BASE_URL. */
 export const DEFAULT_OGM_PUBLIC_BASE_URL =
   (import.meta.env.VITE_OGM_PUBLIC_BASE_URL as string | undefined)?.trim() ||
-  'https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai';
+  'https://open-grace-music2.onrender.com';
 
 export function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
