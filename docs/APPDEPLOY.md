@@ -41,8 +41,11 @@ AppDeploy must run the **start command** for the Node server (or an equivalent s
 5. **Smoke test**
    ```bash
    curl -sS "https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai/api/health"
+   npm run test:health -- "https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai"
    npm run test:convert -- "https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai"
    ```
+
+If GitHub import or Node/ffmpeg setup is blocked in AppDeploy, see [DEPLOYMENT-PATHS.md](./DEPLOYMENT-PATHS.md).
 
 ## Routes family users care about
 

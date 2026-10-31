@@ -60,6 +60,21 @@ If /api/health returns HTML from AmazonS3/CloudFront while / still loads the PWA
 
 ---
 
+## When AppDeploy cannot import GitHub
+
+ChatGPT **@AppDeploy** often updates a **saved in-platform snapshot**, not a live GitHub branch. If the assistant cannot “deploy from `opengrace-ii/Open-Grace-Music2` `main`” or `/api/health` still returns **HTML** after redeploy, read **[DEPLOYMENT-PATHS.md](./DEPLOYMENT-PATHS.md)** for full options (self-host, Docker, client URL overrides).
+
+**Workaround to try before leaving AppDeploy:**
+
+1. Download the full repo: `https://github.com/opengrace-ii/Open-Grace-Music2/archive/refs/heads/main.zip`
+2. Ask AppDeploy to **replace the entire project tree** with that zip (not a static-only `dist/` upload).
+3. Re-state: **Node.js 22+**, install `npm ci`, build `npm run build`, start `NODE_ENV=production npm start`, plus **ffmpeg** and **yt-dlp** on PATH.
+4. Verify: `npm run test:health -- "https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai"`
+
+If native tools or the Node backend still cannot be enabled, use **Option B or C** in [DEPLOYMENT-PATHS.md](./DEPLOYMENT-PATHS.md) and point PWA/Android Settings (or `OGM_CONVERTER_BASE_URL` at APK build time) at the new public URL.
+
+---
+
 ## After AppDeploy responds
 
 Compare results with [APPDEPLOY-VERIFY.md](./APPDEPLOY-VERIFY.md). Simple redeploy steps: [APPDEPLOY-REDEPLOY-SIMPLE.md](./APPDEPLOY-REDEPLOY-SIMPLE.md).
