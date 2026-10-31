@@ -113,6 +113,8 @@ export default function App() {
   // Modal Dialogs
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [showYouTubeBrowser, setShowYouTubeBrowser] = useState(false);
+  const [tunerQuery, setTunerQuery] = useState('');
+  const [heroListenQuery, setHeroListenQuery] = useState('');
   const [showFullPlayer, setShowFullPlayer] = useState(false);
   const [showAndroidProject, setShowAndroidProject] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
@@ -908,9 +910,10 @@ export default function App() {
             <button
               onClick={() => {
                 setPrefilledUrl(null);
+                setTunerQuery('');
                 setShowYouTubeBrowser(true);
               }}
-              title="YouTube Studio Tuner"
+              title="Listen on YouTube inside OGM"
               className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#b8d99e]"
             >
               <Youtube className="w-3.5 h-3.5" />
@@ -978,6 +981,30 @@ export default function App() {
                 <h2 className="font-serif-display text-3xl sm:text-4xl font-bold italic text-[#f0ece1] tracking-tight">
                   “Your music. Your quiet place.”
                 </h2>
+                <form
+                  className="mt-4 flex gap-2 max-w-md mx-auto md:mx-0"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const q = heroListenQuery.trim();
+                    setPrefilledUrl(null);
+                    setTunerQuery(q);
+                    setShowYouTubeBrowser(true);
+                  }}
+                >
+                  <div className="relative flex-1 cassette-window rounded-xl flex items-center px-3 min-w-0">
+                    <Youtube className="w-4 h-4 text-[#f87171] shrink-0" />
+                    <input
+                      type="search"
+                      value={heroListenQuery}
+                      onChange={(e) => setHeroListenQuery(e.target.value)}
+                      placeholder="Name a song, artist, or feeling…"
+                      className="w-full px-2.5 py-2.5 bg-transparent text-[#f0ece1] placeholder-[#686b60] text-sm focus:outline-none"
+                    />
+                  </div>
+                  <button type="submit" className="cassette-btn cassette-btn-primary px-4 py-2 text-xs font-mono shrink-0">
+                    LISTEN
+                  </button>
+                </form>
               </div>
 
               {/* Integrated Live Analog VU Spectrum Ribbon */}
@@ -1033,12 +1060,13 @@ export default function App() {
                 <button
                   onClick={() => {
                     setPrefilledUrl(null);
-                    setShowDownloadDialog(true);
+                    setTunerQuery('');
+                    setShowYouTubeBrowser(true);
                   }}
                   className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#e2c986]"
                 >
                   <span className="cassette-led cassette-led-rec" />
-                  <span>⏺ RECORD URL</span>
+                  <span>▶ LISTEN ON YOUTUBE</span>
                 </button>
 
                 {isInstallable ? (
@@ -1664,6 +1692,7 @@ export default function App() {
       <YouTubeBrowserModal
         isOpen={showYouTubeBrowser}
         initialUrl={prefilledUrl}
+        initialQuery={tunerQuery}
         onClose={() => setShowYouTubeBrowser(false)}
         onConvertVideo={(videoUrl, meta) => {
           setShowYouTubeBrowser(false);

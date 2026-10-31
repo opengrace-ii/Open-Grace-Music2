@@ -6,12 +6,22 @@ import { apiUrl, fetchWithTimeout } from '../services/converterApi';
 interface YouTubeBrowserModalProps {
   isOpen: boolean;
   initialUrl?: string | null;
+  initialQuery?: string | null;
   onClose: () => void;
   onConvertVideo: (
     videoUrl: string,
     meta?: { title?: string; author?: string }
   ) => void;
 }
+
+const MOOD_STATIONS = [
+  { label: 'Late night', query: 'late night deep house mix' },
+  { label: 'Piano', query: 'solo piano peaceful' },
+  { label: 'Devotional', query: 'devotional bhajan instrumental' },
+  { label: 'Classical', query: 'orchestral masterpiece' },
+  { label: 'Focus', query: 'focus study instrumental' },
+  { label: 'Vinyl soul', query: 'vinyl soul jazz mix' },
+];
 
 type TunerMode = 'browse' | 'watch';
 
@@ -30,6 +40,7 @@ const embedUrl = (videoId: string) =>
 export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   isOpen,
   initialUrl,
+  initialQuery,
   onClose,
   onConvertVideo,
 }) => {
@@ -81,13 +92,14 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const id = extractYouTubeId(initialUrl || '');
-    setSearchInput(initialUrl || '');
+    const q = (initialQuery || '').trim();
+    setSearchInput(id ? initialUrl || '' : q || initialUrl || '');
     setSelectedYtId(id);
     setMode(id ? 'watch' : 'browse');
     setEmbedReady(false);
     if (id) fetchInfo(id);
-    else void loadCatalog('');
-  }, [isOpen, initialUrl, fetchInfo, loadCatalog]);
+    void loadCatalog(id ? '' : q);
+  }, [isOpen, initialUrl, initialQuery, fetchInfo, loadCatalog]);
 
   useEffect(() => {
     if (selectedYtId) fetchInfo(selectedYtId);
@@ -100,7 +112,10 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     setSearchInput(`https://www.youtube.com/watch?v=${id}`);
     setMode('watch');
     setEmbedReady(false);
-    if (meta?.title && meta?.author) setPreviewInfo({ title: meta.title, author: meta.author });
+    if (meta?.title && meta?.author) {
+      setPreviewInfo({ title: meta.title, author: meta.author });
+      void loadCatalog(`${meta.title} ${meta.author}`);
+    }
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -215,6 +230,23 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
           ))}
         </div>
 
+        <div className="px-4 pt-1 flex flex-wrap gap-1.5 shrink-0">
+          {MOOD_STATIONS.map((station) => (
+            <button
+              key={station.query}
+              type="button"
+              className="cassette-btn px-2.5 py-1 text-[10px] font-mono text-[#e2c986]"
+              onClick={() => {
+                setSearchInput(station.query);
+                setMode('browse');
+                void loadCatalog(station.query);
+              }}
+            >
+              {station.label}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={handleSearchSubmit} className="px-4 py-2 flex gap-2 shrink-0">
           <div className="relative flex-1 cassette-window rounded-xl flex items-center px-3 min-w-0">
             <Search className="w-4 h-4 text-[#686b60] shrink-0" />
@@ -287,9 +319,15 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                   className="cassette-btn cassette-btn-primary w-full sm:w-auto px-5 py-2.5 text-xs font-mono shrink-0"
                 >
                   <Radio className="w-4 h-4" />
-                  <span>⏺ RECORD TO CASSETTE LIBRARY</span>
+                  <span>⏺ KEEP ON CASSETTE</span>
                 </button>
               </div>
+              {catalog.length > 0 ? (
+                <div className="min-h-0 flex-1 flex flex-col gap-1">
+                  <p className="text-[10px] font-mono text-[#686b60] uppercase tracking-wider">More in this mood</p>
+                  {resultGrid}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center cassette-window rounded-2xl">
