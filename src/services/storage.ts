@@ -1,25 +1,29 @@
 import { ListenSchedule, StorageInfo, StorageStatus, Track, UserPlaylist } from '../types';
 
 const DB_NAME = 'ogm-db';
-const DB_VERSION = 3;
+/** v4: force-create `schedules` if a v3 open ran before that store existed. */
+const DB_VERSION = 4;
 const STORE_NAME = 'tracks';
 const PLAYLIST_STORE = 'playlists';
 const SCHEDULE_STORE = 'schedules';
+
+function ensureStores(db: IDBDatabase) {
+  if (!db.objectStoreNames.contains(STORE_NAME)) {
+    db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+  }
+  if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
+    db.createObjectStore(PLAYLIST_STORE, { keyPath: 'id' });
+  }
+  if (!db.objectStoreNames.contains(SCHEDULE_STORE)) {
+    db.createObjectStore(SCHEDULE_STORE, { keyPath: 'id' });
+  }
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
-        db.createObjectStore(PLAYLIST_STORE, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(SCHEDULE_STORE)) {
-        db.createObjectStore(SCHEDULE_STORE, { keyPath: 'id' });
-      }
+      ensureStores(request.result);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -236,7 +240,7 @@ function scheduleTx<T>(
   return openDB().then((db) => {
     return new Promise((resolve, reject) => {
       if (!db.objectStoreNames.contains(SCHEDULE_STORE)) {
-        resolve([] as unknown as T);
+        reject(new Error('Reminders store is missing. Reload the page to upgrade the library.'));
         return;
       }
       const tx = db.transaction(SCHEDULE_STORE, mode);
@@ -244,6 +248,7 @@ function scheduleTx<T>(
       const req = callback(store);
       tx.oncomplete = () => resolve(req.result);
       tx.onerror = () => reject(tx.error);
+      req.onerror = () => reject(req.error);
     });
   });
 }

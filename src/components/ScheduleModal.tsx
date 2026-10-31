@@ -230,8 +230,16 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       } else {
         await createSchedule(payload);
       }
-      await reload();
+      const next = await getAllSchedules();
+      setSchedules(next);
+      if (next.length === 0) {
+        setFormError('Reminder did not stay in the library. Reload once, then save again.');
+        return;
+      }
       resetForm();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not save this reminder.';
+      setFormError(message);
     } finally {
       setBusy(false);
     }
