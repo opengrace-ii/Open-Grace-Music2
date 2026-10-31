@@ -15,6 +15,22 @@ export interface AudioFormatSpec {
 
 const execFileAsync = promisify(execFile);
 
+/** yt-dlp player clients to try when YouTube serves bot-check pages to datacenter IPs. */
+const YOUTUBE_PLAYER_CLIENTS: (string | null)[] = [null, 'android,web', 'ios,mweb', 'tv_embedded'];
+
+function pickRawSourceFile(workDir: string): string | null {
+  const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
+  for (const f of files) {
+    const candidate = path.join(workDir, f);
+    try {
+      if (fs.statSync(candidate).size > 25000) return candidate;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
 export type ConvertErrorCode = 'YOUTUBE_BOT_CHECK' | 'TIMEOUT' | 'FFMPEG_FAILED' | 'EXTRACTION_FAILED';
 
 export type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
@@ -46,7 +62,7 @@ export function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked automated extraction. Paste Studio Key cookies in the recorder or retry later.',
+        'YouTube blocked direct download from the server. OGM will try an alternate source when possible — or tap the key icon and paste youtube.com cookies from your browser, then record again.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -179,42 +195,54 @@ export async function runConvertPipeline(
       }, 3500);
 
       try {
-        await execFileAsync(
-          'yt-dlp',
-          [
-            '--no-playlist',
-            '--no-warnings',
-            '--socket-timeout',
-            '15',
-            '--retries',
-            '3',
-            '-f',
-            isMp3 ? 'bestaudio[ext=m4a]/bestaudio/best' : 'bestaudio/best',
-            ...cookieArgs,
-            '-o',
-            rawInputTemplate,
-            canonicalWatchUrl,
-          ],
-          { timeout: extractTimeout, maxBuffer: 8 * 1024 * 1024 }
-        );
-
-        const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
-        if (files.length > 0) {
-          const candidate = path.join(workDir, files[0]);
-          if (fs.statSync(candidate).size > 25000) {
-            downloadedRawPath = candidate;
-            extractionMethod = 'youtube-direct';
+        for (const playerClient of YOUTUBE_PLAYER_CLIENTS) {
+          if (downloadedRawPath) break;
+          const clientArgs: string[] = [];
+          if (playerClient) {
+            clientArgs.push('--extractor-args', `youtube:player_client=${playerClient}`);
+          }
+          try {
+            await execFileAsync(
+              'yt-dlp',
+              [
+                '--no-playlist',
+                '--no-warnings',
+                '--socket-timeout',
+                '15',
+                '--retries',
+                '2',
+                '-f',
+                isMp3 ? 'bestaudio[ext=m4a]/bestaudio/best' : 'bestaudio/best',
+                ...cookieArgs,
+                ...clientArgs,
+                '-o',
+                rawInputTemplate,
+                canonicalWatchUrl,
+              ],
+              { timeout: extractTimeout, maxBuffer: 8 * 1024 * 1024 }
+            );
+            const picked = pickRawSourceFile(workDir);
+            if (picked) {
+              downloadedRawPath = picked;
+              extractionMethod = playerClient
+                ? `youtube-direct (${playerClient})`
+                : 'youtube-direct';
+              break;
+            }
+          } catch (directErr) {
+            lastExtractFailure = classifyPipelineError(directErr, 'extract');
+            console.warn(
+              `[convert-audio] YouTube direct failed (${ytId}${playerClient ? ` client=${playerClient}` : ''}):`,
+              lastExtractFailure.error
+            );
           }
         }
-      } catch (directErr) {
-        lastExtractFailure = classifyPipelineError(directErr, 'extract');
-        console.warn(`[convert-audio] YouTube direct failed (${ytId}):`, lastExtractFailure.error);
       } finally {
         clearInterval(extractHeartbeat);
       }
 
-      if (!downloadedRawPath && !isMp3) {
-        progress('extract', 42, 'Trying audiophile mirror search…');
+      if (!downloadedRawPath) {
+        progress('extract', 42, 'Trying alternate audio source (mirror search)…');
         const searchQueries = buildSearchQueries(title, artist);
         for (const query of searchQueries) {
           try {
@@ -225,21 +253,19 @@ export async function runConvertPipeline(
                 '--no-warnings',
                 '-f',
                 'bestaudio/best',
+                ...cookieArgs,
                 '-o',
                 rawInputTemplate,
                 `scsearch1:${query}`,
               ],
-              { timeout: ytDlpTimeoutMs, maxBuffer: 8 * 1024 * 1024 }
+              { timeout: isMp3 ? ytDlpMp3TimeoutMs : ytDlpTimeoutMs, maxBuffer: 8 * 1024 * 1024 }
             );
 
-            const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
-            if (files.length > 0) {
-              const candidate = path.join(workDir, files[0]);
-              if (fs.statSync(candidate).size > 25000) {
-                downloadedRawPath = candidate;
-                extractionMethod = `audiophile-mirror (${query})`;
-                break;
-              }
+            const picked = pickRawSourceFile(workDir);
+            if (picked) {
+              downloadedRawPath = picked;
+              extractionMethod = `audiophile-mirror (${query})`;
+              break;
             }
           } catch (fallbackErr) {
             lastExtractFailure = classifyPipelineError(fallbackErr, 'extract');

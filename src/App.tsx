@@ -679,7 +679,7 @@ export default function App() {
       const { message, code } = humanizeConverterError(err);
       const display =
         code === 'YOUTUBE_BOT_CHECK'
-          ? `${message} Open Studio Key in the recorder to paste cookies.`
+          ? `${message} Tap the key icon on the recorder deck to paste cookies.`
           : message;
       setDownloadError(display);
       addToast(`Recorder error: ${display}`, 'error');
@@ -1339,7 +1339,7 @@ export default function App() {
                 rows={2}
                 value={inlineCookies}
                 onChange={(e) => setInlineCookies(e.target.value)}
-                placeholder="Optional: Paste YouTube cookies for private streams..."
+                placeholder="Paste youtube.com cookies (Netscape export or Cookie header) if YouTube blocks the server…"
                 className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
             </div>

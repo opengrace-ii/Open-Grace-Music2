@@ -90,7 +90,7 @@ function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked automated extraction. Paste Studio Key cookies in the recorder or retry later.',
+        'YouTube blocked direct download from the server. OGM will try an alternate source when possible — or tap the key icon and paste youtube.com cookies from your browser, then record again.',
     };
   }
   if (phase === 'ffmpeg') {
