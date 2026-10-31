@@ -43,6 +43,7 @@ object ServerConverter {
         bitrateKbps: Int,
         titleHint: String?,
         artistHint: String?,
+        cookies: String? = null,
         onProgress: (Float, String) -> Unit
     ): ServerConvertResult = withContext(Dispatchers.IO) {
         val base = ConverterServerPrefs.resolveBaseUrl(context)
@@ -59,6 +60,7 @@ object ServerConverter {
             .put("bitrate", bitrateKbps)
         if (!titleHint.isNullOrBlank()) startBody.put("title", titleHint)
         if (!artistHint.isNullOrBlank()) startBody.put("artist", artistHint)
+        if (!cookies.isNullOrBlank()) startBody.put("cookies", cookies)
 
         val startReq = Request.Builder()
             .url("$base/api/convert-audio/start")

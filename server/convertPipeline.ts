@@ -15,8 +15,24 @@ export interface AudioFormatSpec {
 
 const execFileAsync = promisify(execFile);
 
-/** yt-dlp player clients to try when YouTube serves bot-check pages to datacenter IPs. */
-const YOUTUBE_PLAYER_CLIENTS: (string | null)[] = [null, 'android,web', 'ios,mweb', 'tv_embedded'];
+/** yt-dlp player clients — same video ID only (phone-style clients first). */
+const YOUTUBE_PLAYER_CLIENTS: (string | null)[] = [
+  'android,ios,web',
+  'android_vr,web_safari',
+  'web_embedded,tv_embedded',
+  'mweb,tv',
+];
+
+function ytDlpJsRuntimeArgs(): string[] {
+  const nodeBin = process.execPath || 'node';
+  return ['--js-runtimes', `node:${nodeBin}`, '--remote-components', 'ejs:github'];
+}
+
+function mergedYoutubeCookies(userCookies: string): string {
+  const fromUser = userCookies.trim();
+  if (fromUser) return fromUser;
+  return (process.env.OGM_YT_COOKIES || '').trim();
+}
 
 function pickRawSourceFile(workDir: string): string | null {
   const files = fs.readdirSync(workDir).filter((f) => f.startsWith('raw_source.'));
@@ -162,7 +178,7 @@ export async function runConvertPipeline(
   const {
     url,
     formatSpec,
-    userCookies = '',
+    userCookies: userCookiesRaw = '',
     customTitle = '',
     customArtist = '',
     extractYouTubeId,
@@ -174,6 +190,7 @@ export async function runConvertPipeline(
     ffmpegMp3TimeoutMs,
   } = params;
 
+  const userCookies = mergedYoutubeCookies(userCookiesRaw);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-audio-'));
   const rawInputTemplate = path.join(workDir, 'raw_source.%(ext)s');
   const cookieFilePath = path.join(workDir, 'cookies.txt');
@@ -253,6 +270,7 @@ export async function runConvertPipeline(
                 '--retries',
                 '2',
                 '--write-info-json',
+                ...ytDlpJsRuntimeArgs(),
                 '-f',
                 isMp3 ? 'bestaudio[ext=m4a]/bestaudio/best' : 'bestaudio/best',
                 ...cookieArgs,

@@ -35,6 +35,7 @@ import {
   toggleFavoriteInDB,
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
+import { loadSavedYoutubeCookies, saveYoutubeCookies } from './services/youtubeCookies';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -170,7 +171,12 @@ export default function App() {
 
   useEffect(() => {
     loadLibrary();
+    setInlineCookies(loadSavedYoutubeCookies());
   }, []);
+
+  useEffect(() => {
+    saveYoutubeCookies(inlineCookies);
+  }, [inlineCookies]);
 
   const refreshConverterHealth = () => {
     checkConverterApiAvailable().then((ok) => setConverterApiOnline(ok));
@@ -554,7 +560,7 @@ export default function App() {
         url: trimmedUrl,
         format,
         bitrate: format === 'MP3' ? bitrateKbps : bitrateKbps,
-        cookies,
+        cookies: (cookies || inlineCookies || loadSavedYoutubeCookies()).trim() || undefined,
         title: customTitle,
         artist: customArtist,
       });

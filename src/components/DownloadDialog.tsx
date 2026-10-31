@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
+import { loadSavedYoutubeCookies, saveYoutubeCookies } from '../services/youtubeCookies';
 import {
   apiUrl,
   fetchWithTimeout,
@@ -65,6 +66,14 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
+  useEffect(() => {
+    setCookies(loadSavedYoutubeCookies());
+  }, []);
+
+  useEffect(() => {
+    saveYoutubeCookies(cookies);
+  }, [cookies]);
 
   useEffect(() => {
     if (initialUrl) {
