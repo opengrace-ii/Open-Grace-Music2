@@ -41,7 +41,16 @@ Open Grace Music supports true high-resolution and lossless audio workflows with
 ### 5. User mixes (playlists)
 Name your own mixes in the library — instrumental, messages, Hindi Christian, or anything else. Nothing is pre-loaded. Tap **NEW MIX**, or the list button on a tape, then type the mix name. Mixes live in your browser (IndexedDB) and stay empty until you add tapes.
 
-### 6. Lyrics (honest offline UX)
+### 6. Listen schedule (reminders)
+
+Name a reminder yourself (for example “Daily devotion”), point it at one of **your** mixes, and pick a clock time. Morning / noon / evening are **editable shortcuts**, not locked slots — add as many reminders as you want, including a week grid and month-day picker.
+
+- **Cassette Library → SCHEDULE** (also in the header).
+- Repeat: every day, selected weekdays, or days of the month (including last day). Enable or delete any reminder.
+- When a reminder fires, tap the notification (or the in-app **Play** toast) to open the mix and start the first tape (`#play=pl_…`).
+- **Honest limit:** browsers cannot wake a fully closed tab like a native alarm. Reminders run while the PWA/tab is open, and an installed Chrome PWA may also check via Periodic Background Sync when the OS allows it. On iPhone, if the app is fully killed, the reminder will not fire. Web Push is not used (no server keys). Notifications must be allowed in-app; if you deny them, you get a clear empty/error state and can still play from the toast while the app is open.
+
+### 7. Lyrics (honest offline UX)
 - Open Grace Music **does not fabricate** generic placeholder lyrics or C–G–Am–F chord sheets.
 - The player tries **[lrclib.net](https://lrclib.net)** for a title/artist match; if none is found, you see **“Lyrics not available offline yet.”**
 - Optional **Gemini** lyrics (`GEMINI_API_KEY` on the server) are labeled **AI-generated — verify accuracy**.

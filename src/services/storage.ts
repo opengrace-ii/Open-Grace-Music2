@@ -1,9 +1,10 @@
-import { StorageInfo, StorageStatus, Track, UserPlaylist } from '../types';
+import { ListenSchedule, StorageInfo, StorageStatus, Track, UserPlaylist } from '../types';
 
 const DB_NAME = 'ogm-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'tracks';
 const PLAYLIST_STORE = 'playlists';
+const SCHEDULE_STORE = 'schedules';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -15,6 +16,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
         db.createObjectStore(PLAYLIST_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(SCHEDULE_STORE)) {
+        db.createObjectStore(SCHEDULE_STORE, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -223,6 +227,56 @@ export async function addTrackToPlaylist(playlistId: string, trackId: string): P
     await savePlaylist(list);
   }
   return list;
+}
+
+function scheduleTx<T>(
+  mode: IDBTransactionMode,
+  callback: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+  return openDB().then((db) => {
+    return new Promise((resolve, reject) => {
+      if (!db.objectStoreNames.contains(SCHEDULE_STORE)) {
+        resolve([] as unknown as T);
+        return;
+      }
+      const tx = db.transaction(SCHEDULE_STORE, mode);
+      const store = tx.objectStore(SCHEDULE_STORE);
+      const req = callback(store);
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  });
+}
+
+export async function getAllSchedules(): Promise<ListenSchedule[]> {
+  try {
+    const records = await scheduleTx<ListenSchedule[]>('readonly', (store) => store.getAll());
+    return (records || []).sort((a, b) => a.createdAt - b.createdAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSchedule(schedule: ListenSchedule): Promise<void> {
+  await scheduleTx('readwrite', (store) => store.put(schedule));
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  await scheduleTx('readwrite', (store) => store.delete(id));
+}
+
+export async function createSchedule(
+  partial: Omit<ListenSchedule, 'id' | 'createdAt' | 'lastFiredKey'>
+): Promise<ListenSchedule> {
+  const trimmed = partial.name.replace(/\s+/g, ' ').trim();
+  const schedule: ListenSchedule = {
+    ...partial,
+    name: trimmed || 'Untitled reminder',
+    id: `sch_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: Date.now(),
+  };
+  await saveSchedule(schedule);
+  return schedule;
 }
 
 export async function toggleFavoriteInDB(id: string): Promise<boolean> {

@@ -127,3 +127,148 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 });
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const targetUrl = data.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      const payload = {
+        type: 'OGM_PLAY_SCHEDULE',
+        url: targetUrl,
+        playlistId: data.playlistId,
+        trackId: data.trackId,
+        scheduleName: data.scheduleName,
+      };
+      for (const client of clientList) {
+        client.postMessage(payload);
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+      return undefined;
+    })
+  );
+});
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function lastDateOfMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function scheduleMatchesDate(schedule, at) {
+  if (!schedule || !schedule.enabled) return false;
+  if (schedule.repeatKind === 'daily') return true;
+  if (schedule.repeatKind === 'weekdays') {
+    return (schedule.weekdays || []).includes(at.getDay());
+  }
+  if (schedule.repeatKind === 'monthly') {
+    const dom = at.getDate();
+    const last = lastDateOfMonth(at.getFullYear(), at.getMonth());
+    return (schedule.monthDays || []).some((day) => (day === 0 ? dom === last : day === dom));
+  }
+  return false;
+}
+
+function fireKeyFor(schedule, at) {
+  return `${at.getFullYear()}-${pad2(at.getMonth() + 1)}-${pad2(at.getDate())}T${pad2(schedule.hour)}:${pad2(schedule.minute)}`;
+}
+
+function isScheduleDue(schedule, at) {
+  if (!scheduleMatchesDate(schedule, at)) return false;
+  const slotted = new Date(at);
+  slotted.setHours(schedule.hour || 0, schedule.minute || 0, 0, 0);
+  const delta = at.getTime() - slotted.getTime();
+  if (delta < 0 || delta > 15 * 60 * 1000) return false;
+  return schedule.lastFiredKey !== fireKeyFor(schedule, at);
+}
+
+function openOgmDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('ogm-db');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbGetAll(db, storeName) {
+  return new Promise((resolve) => {
+    if (!db.objectStoreNames.contains(storeName)) {
+      resolve([]);
+      return;
+    }
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => resolve([]);
+  });
+}
+
+function idbPut(db, storeName, value) {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) {
+      resolve(undefined);
+      return;
+    }
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).put(value);
+    tx.oncomplete = () => resolve(undefined);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function checkListenSchedulesFromIdb() {
+  let db;
+  try {
+    db = await openOgmDb();
+  } catch {
+    return;
+  }
+  const now = new Date();
+  const schedules = await idbGetAll(db, 'schedules');
+  const playlists = await idbGetAll(db, 'playlists');
+  const due = (schedules || []).filter((s) => isScheduleDue(s, now));
+  for (const schedule of due) {
+    schedule.lastFiredKey = fireKeyFor(schedule, now);
+    try {
+      await idbPut(db, 'schedules', schedule);
+    } catch {
+      // ignore
+    }
+    const mix = (playlists || []).find((p) => p.id === schedule.playlistId);
+    const playHash = schedule.playlistId
+      ? `#play=${encodeURIComponent(schedule.playlistId)}`
+      : schedule.trackId
+        ? `#play=track:${encodeURIComponent(schedule.trackId)}`
+        : '';
+    const url = `${self.registration.scope}${playHash}`;
+    try {
+      await self.registration.showNotification(schedule.name || 'Listen reminder', {
+        body: mix && mix.name ? `Tap to play ${mix.name}.` : 'Tap to open Open Grace Music and play.',
+        icon: '/pwa-192.png',
+        badge: '/logo.png',
+        tag: `ogm-sched-${schedule.id}-${schedule.lastFiredKey}`,
+        data: {
+          url,
+          playlistId: schedule.playlistId,
+          trackId: schedule.trackId,
+          scheduleName: schedule.name,
+        },
+        requireInteraction: true,
+      });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'ogm-listen-schedule') {
+    event.waitUntil(checkListenSchedulesFromIdb());
+  }
+});

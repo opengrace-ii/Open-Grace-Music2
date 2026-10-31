@@ -112,6 +112,38 @@ export interface UserPlaylist {
   createdAt: number;
 }
 
+/** How a listen reminder repeats. All values are user-chosen — nothing is locked. */
+export type ScheduleRepeatKind = 'daily' | 'weekdays' | 'monthly';
+
+/**
+ * A user-named listen reminder. Names, mixes, times, and days are never hardcoded
+ * (morning / noon / evening are only editable time presets in the UI).
+ */
+export interface ListenSchedule {
+  id: string;
+  name: string;
+  playlistId?: string;
+  trackId?: string;
+  hour: number;
+  minute: number;
+  repeatKind: ScheduleRepeatKind;
+  /** 0 = Sunday … 6 = Saturday. Used when repeatKind is `weekdays`. */
+  weekdays: number[];
+  /** 1–31, or 0 for last day of the month. Used when repeatKind is `monthly`. */
+  monthDays: number[];
+  enabled: boolean;
+  createdAt: number;
+  /** Last fire stamp `YYYY-MM-DDTHH:mm` so a reminder only rings once per slot. */
+  lastFiredKey?: string;
+}
+
+export interface TimePreset {
+  id: string;
+  label: string;
+  hour: number;
+  minute: number;
+}
+
 export type LoopMode = 'OFF' | 'ALL' | 'ONE';
 
 export interface StorageInfo {

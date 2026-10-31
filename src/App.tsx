@@ -23,6 +23,7 @@ import {
   ListMusic,
   Plus,
   X,
+  Bell,
 } from 'lucide-react';
 import {
   AUDIOPHILE_FORMATS,
@@ -51,6 +52,9 @@ import { usePWAInstall } from './hooks/usePWAInstall';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { TrackCard } from './components/TrackCard';
 import { PlaylistPickerModal } from './components/PlaylistPickerModal';
+import { ScheduleModal } from './components/ScheduleModal';
+import { useListenScheduleRunner } from './hooks/useListenScheduleRunner';
+import { PendingPlay, resolvePlayTarget } from './services/scheduleService';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FullPlayerModal } from './components/FullPlayerModal';
 import { DownloadDialog } from './components/DownloadDialog';
@@ -85,6 +89,8 @@ export default function App() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [playlistPickerTrackId, setPlaylistPickerTrackId] = useState<string | null>(null);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [libraryReady, setLibraryReady] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Inline Tape Deck Recorder state
@@ -185,10 +191,55 @@ export default function App() {
     return () => unsubscribe();
   }, [tracks, currentTrack, loopMode, isShuffle]);
 
+  const playScheduledTarget = async (pending: PendingPlay) => {
+    const resolved = await resolvePlayTarget(pending, tracks, playlists);
+    if (resolved.playlistId) setSelectedPlaylistId(resolved.playlistId);
+    if (resolved.missing) {
+      addToast('That mix or tape is gone. Open Schedule and pick another.', 'error');
+      return;
+    }
+    if (resolved.emptyMix || !resolved.track) {
+      addToast('That mix is empty — add a tape, then tap the reminder again.', 'error');
+      return;
+    }
+    setCurrentTrack(resolved.track);
+    setCurrentTime(0);
+    setDuration(resolved.track.duration || 0);
+    await playerEngine.playTrack(resolved.track);
+    addToast(`Playing ${pending.scheduleName || resolved.track.title}`, 'success');
+  };
+
+  useListenScheduleRunner({
+    ready: libraryReady,
+    onPlay: (pending) => {
+      void playScheduledTarget(pending);
+    },
+    onInAppReminder: (schedule, pending) => {
+      const id = `sched-${schedule.id}-${Date.now().toString(36)}`;
+      setToasts((prev) => [
+        ...prev,
+        {
+          id,
+          type: 'info',
+          text: `${schedule.name} — tap to play`,
+          actionLabel: 'Play',
+          persist: true,
+          onAction: () => {
+            void playScheduledTarget(pending);
+            setToasts((p) => p.filter((t) => t.id !== id));
+          },
+        },
+      ]);
+    },
+  });
+
   useEffect(() => {
-    loadLibrary();
     setInlineCookies(loadSavedYoutubeCookies());
-    void getAllPlaylists().then(setPlaylists);
+    void (async () => {
+      await loadLibrary();
+      setPlaylists(await getAllPlaylists());
+      setLibraryReady(true);
+    })();
   }, []);
 
   useEffect(() => {
@@ -1020,6 +1071,16 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => setShowSchedule(true)}
+              className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#e2c986]"
+              title="Listen schedule — reminders that play a mix"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">SCHEDULE</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowSettings(true)}
               className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#a3a198]"
               title="Converter server URL"
@@ -1663,6 +1724,14 @@ export default function App() {
               <Plus className="w-3 h-3" />
               <span>NEW MIX</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setShowSchedule(true)}
+              className="cassette-btn px-3 py-1.5 text-xs font-mono whitespace-nowrap text-[#b8d99e]"
+            >
+              <Bell className="w-3 h-3" />
+              <span>SCHEDULE</span>
+            </button>
           </div>
 
           <div className="cassette-window flex items-center px-3 py-1.5 rounded-xl min-w-[220px]">
@@ -1902,6 +1971,16 @@ export default function App() {
         onClose={closePlaylistPicker}
         onCreate={handleCreateMix}
         onPick={handlePickMix}
+      />
+
+      <ScheduleModal
+        isOpen={showSchedule}
+        playlists={playlists}
+        tracks={tracks}
+        onClose={() => setShowSchedule(false)}
+        onPlayNow={(playlistId, trackId) => {
+          void playScheduledTarget({ playlistId, trackId });
+        }}
       />
 
       {/* Global Toast Notification System */}
