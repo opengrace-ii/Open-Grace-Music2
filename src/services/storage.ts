@@ -94,6 +94,18 @@ export async function getAllTracksFromDB(): Promise<Track[]> {
   }
 }
 
+export async function saveMetadataTrackToDB(track: Track): Promise<Track> {
+  const record: Track = {
+    ...track,
+    blob: undefined,
+    audioUrl: undefined,
+    storageStatus: 'DEVICE_LOCAL',
+    sizeBytes: 0,
+  };
+  await runTx('readwrite', (store) => store.put(record));
+  return record;
+}
+
 export async function saveTrackToDB(track: Track, blob: Blob): Promise<Track> {
   const isPersisted = await requestPersistentStorage();
   const initialStatus: StorageStatus = isPersisted ? 'PERSISTENT' : 'DEVICE_LOCAL';

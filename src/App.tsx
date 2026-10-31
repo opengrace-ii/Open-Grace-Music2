@@ -31,6 +31,7 @@ import {
 import {
   getAllTracksFromDB,
   saveTrackToDB,
+  saveMetadataTrackToDB,
   deleteTrackFromDB,
   toggleFavoriteInDB,
 } from './services/storage';
@@ -555,9 +556,9 @@ export default function App() {
     setDownloadProgress(0.08);
     setDownloadStatus(`Validating · preparing ${format} (${formatObj.badge})...`);
 
-    try {
-      const ytId = extractYouTubeId(trimmedUrl);
+    const ytId = extractYouTubeId(trimmedUrl);
 
+    try {
       const { jobId } = await startConvertJob({
         url: trimmedUrl,
         format,
@@ -685,10 +686,35 @@ export default function App() {
       playTrack(saved);
     } catch (err: unknown) {
       const { message, code } = humanizeConverterError(err);
-      const display =
-        code === 'YOUTUBE_BOT_CHECK'
-          ? `${message} Tap the key icon on the recorder deck to paste cookies.`
-          : message;
+      if (ytId && (code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT')) {
+        const streamTrack: Track = {
+          id: `yt_live_${ytId}`,
+          title: customTitle || inlinePreview?.title || 'YouTube tape',
+          artist: customArtist || inlinePreview?.author || 'YouTube',
+          album: 'Open Grace · Live YouTube',
+          duration: 0,
+          sizeBytes: 0,
+          format: 'YouTube',
+          mimeType: 'video/youtube',
+          source: 'YOUTUBE',
+          storageStatus: 'DEVICE_LOCAL',
+          addedAt: Date.now(),
+          thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+          bitrateKbps: 0,
+          isFavorite: false,
+          originalUrl: `https://www.youtube.com/watch?v=${ytId}`,
+          ytVideoId: ytId,
+        };
+        const saved = await saveMetadataTrackToDB(streamTrack);
+        setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
+        setDownloadError(null);
+        setShowDownloadDialog(false);
+        setShowYouTubeBrowser(false);
+        addToast(`♪ Playing "${saved.title}" in OGM — same YouTube video, live in the deck`, 'success');
+        await playTrack(saved);
+        return;
+      }
+      const display = message;
       setDownloadError(display);
       addToast(`Recorder error: ${display}`, 'error');
     } finally {
