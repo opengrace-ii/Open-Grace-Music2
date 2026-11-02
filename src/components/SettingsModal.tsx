@@ -95,7 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           />
           <p className="text-[11px] text-[#a3a198] leading-relaxed">{CONVERTER_SERVER_URL_HELPER}</p>
           <p className="text-[11px] text-[#8a877f] leading-relaxed">
-            Leave blank to use <strong className="text-[#eeeae2] font-medium">AppDeploy</strong> (
+            Leave blank to use <strong className="text-[#eeeae2] font-medium">Render</strong> (
             {DEFAULT_OGM_PUBLIC_BASE_URL}) or this page&apos;s address ({effective || 'none'}). Override only if
             you self-host with <code className="text-[#b8d99e]">npm start</code> on another machine.
           </p>

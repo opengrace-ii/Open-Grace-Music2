@@ -110,7 +110,7 @@ fun LyricsDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (viewChordSheet) "🎸 Instrument notes" else "🎵 Lyrics",
+                            text = if (sheetMode == "CHORDS") "Instrument notes" else "Lyrics",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = SageGreen

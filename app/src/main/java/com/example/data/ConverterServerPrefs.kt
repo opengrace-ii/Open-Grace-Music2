@@ -28,8 +28,8 @@ object ConverterServerPrefs {
     }
 
     /**
-     * Saved Settings URL → [BuildConfig.CONVERTER_BASE_URL] (defaults to AppDeploy).
-     * Clear Settings to use the baked-in AppDeploy converter host.
+     * Saved Settings URL → [BuildConfig.CONVERTER_BASE_URL] (defaults to Render).
+     * Clear Settings to use the baked-in public PWA / converter host.
      */
     fun resolveBaseUrl(context: Context): String {
         getSavedUrl(context).takeIf { it.isNotBlank() }?.let { return it.trimEnd('/') }

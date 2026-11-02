@@ -360,7 +360,7 @@ class AudioDownloader(private val context: Context) {
         )
     }
 
-    private fun finalizeSavedTrack(
+    private suspend fun finalizeSavedTrack(
         sourceFile: File,
         title: String,
         artist: String,

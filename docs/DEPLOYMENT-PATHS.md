@@ -171,21 +171,23 @@ There is **no** checked-in `render.yaml` / `fly.toml` yet; add them on the host 
 
 ## Client converter base URL (PWA + Android)
 
-Clients talk to the converter API at **`/api/*`** on some **HTTPS origin**. Defaults assume AppDeploy; override when you self-host or use Docker elsewhere.
+Clients talk to the converter API at **`/api/*`** on some **HTTPS origin**. Defaults assume **Render**; override when you self-host or use Docker elsewhere.
 
 ### PWA (browser)
 
-- **Default:** Same origin as the page (`window.location.origin`) when Settings is blank — works for AppDeploy and self-hosted PWA on one hostname.
-- **Fallback constant:** `src/constants/ogmPublicBase.ts` → `DEFAULT_OGM_PUBLIC_BASE_URL` (AppDeploy URL). Override at **build** with **`VITE_OGM_PUBLIC_BASE_URL`**.
+- **Default:** Same origin as the page (`window.location.origin`) when Settings is blank — works for Render and self-hosted PWA on one hostname.
+- **Fallback constant:** `src/constants/ogmPublicBase.ts` → `DEFAULT_OGM_PUBLIC_BASE_URL` (Render URL). Override at **build** with **`VITE_OGM_PUBLIC_BASE_URL`**.
 - **Runtime override:** Settings → **Converter server URL** → stored in **`localStorage`** key `ogm_converter_server_url`. Logic: `src/services/converterServerUrl.ts` → `resolveConverterApiBaseUrl()`.
 
 ### Android APK
 
-- **Baked default:** `BuildConfig.CONVERTER_BASE_URL` from `app/build.gradle.kts` (defaults to AppDeploy). Rebuild with Gradle property **`OGM_CONVERTER_BASE_URL=https://your-host`** to change the default in new APKs.
+- **Ship model:** `MainActivity` is a **WebView shell** loading the live PWA (`versionCode` 2+ / `1.1.0+`). Uninstall older native Compose APKs first.
+- **Baked default:** `BuildConfig.CONVERTER_BASE_URL` from `app/build.gradle.kts` (defaults to `https://open-grace-music2.onrender.com`). Rebuild with Gradle property **`OGM_CONVERTER_BASE_URL=https://your-host`** to change the start URL in new APKs.
 - **Per-device override:** Settings → **Converter server URL** → `ConverterServerPrefs` (`converter_server_url`). **Clear the field** to use the baked-in default again.
-- **Helper copy:** `OgmPublicBase.DEFAULT_APPDEPLOY_BASE_URL` in UI placeholder text.
+- **Helper copy:** `OgmPublicBase.DEFAULT_PUBLIC_BASE_URL` in UI placeholder text.
+- **UI updates:** After the WebView shell is installed, **Render redeploys** update what the APK shows. Rebuild/commit `public/OpenGraceMusic.apk` only when changing the shell or baked URL.
 
-When you move off AppDeploy, either rebuild the APK with `OGM_CONVERTER_BASE_URL`, or have each family member paste the new base URL once in Settings (no trailing slash).
+When you change hosts, either rebuild the APK with `OGM_CONVERTER_BASE_URL`, or have each family member paste the new base URL once in Settings (no trailing slash).
 
 ---
 

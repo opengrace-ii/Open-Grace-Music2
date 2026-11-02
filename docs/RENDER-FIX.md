@@ -56,7 +56,7 @@ curl -sS -i "$BASE/api/health"
 
 Expect **HTTP 200** and JSON like `{"ok":true,"service":"ogm-converter"}`.
 
-**Clients:** Download the APK from Render (`/download` or `/OpenGraceMusic.apk`); the PWA on the same origin needs no converter URL in Settings; after `./gradlew :app:assembleRelease`, commit `public/OpenGraceMusic.apk` so the hosted file matches the new default.
+**Clients:** Download the APK from Render (`/download` or `/OpenGraceMusic.apk`). The APK is a **WebView shell** of the Render PWA (`versionCode` 2+); uninstall older native Compose APKs first. The PWA on the same origin needs no converter URL in Settings; after `./gradlew :app:assembleDebug` (or release), commit `public/OpenGraceMusic.apk` so the hosted file matches the new shell / start URL. UI changes ship via Render redeploy without a new APK once the WebView shell is installed.
 
 From the repo (after `npm ci`):
 

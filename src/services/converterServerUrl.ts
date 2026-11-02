@@ -8,7 +8,7 @@ const STORAGE_KEY = 'ogm_converter_server_url';
 
 export { DEFAULT_OGM_PUBLIC_BASE_URL, isAppDeployHost };
 
-/** User override for API base (APK/PWA). Empty = AppDeploy tab origin or same-origin. */
+/** User override for API base (APK/PWA). Empty = tab origin or Render default. */
 export function getSavedConverterServerUrl(): string {
   if (typeof window === 'undefined') return '';
   try {
@@ -33,7 +33,7 @@ export function setSavedConverterServerUrl(url: string): void {
 }
 
 /**
- * Effective API origin: saved override → current tab origin (AppDeploy or self-hosted PWA) → default AppDeploy.
+ * Effective API origin: saved override → current tab origin (Render / self-hosted PWA) → default Render host.
  */
 export function resolveConverterApiBaseUrl(): string {
   const saved = getSavedConverterServerUrl();
@@ -47,4 +47,4 @@ export function resolveConverterApiBaseUrl(): string {
 }
 
 export const CONVERTER_SERVER_URL_HELPER =
-  `Leave blank to use this page (AppDeploy: ${DEFAULT_OGM_PUBLIC_BASE_URL}) or your self-hosted URL. Override only if you run npm start elsewhere.`;
+  `Leave blank to use this page (Render: ${DEFAULT_OGM_PUBLIC_BASE_URL}) or your self-hosted URL. Override only if you run npm start elsewhere.`;

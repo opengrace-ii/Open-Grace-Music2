@@ -77,11 +77,18 @@ Apps like **TubeMate** use dedicated on-device YouTube parsers tuned for fast MP
 
 ## Native Android Architecture (`/workspace/app`)
 
+The downloadable **`public/OpenGraceMusic.apk`** is a **WebView shell** (`MainActivity`) that loads the live PWA at
+**`https://open-grace-music2.onrender.com`** (Listen / Library / Tuner / Schedule / More). Baked default:
+`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 2 / versionName 1.1.0**.
+
+Compose screens under `ui/` remain in-tree for optional native tooling, but they are **not** the launcher UI in
+shipped APKs — that is why an old binary looked “stuck” on the gramophone-only layout.
+
 The root workspace is a standard single-module **Android Studio Gradle project** (`:app`):
 
 ```text
 app/src/main/java/com/example/
-├── MainActivity.kt                  # Entry point, runtime permissions & YouTube SEND intent handler
+├── MainActivity.kt                  # WebView PWA shell + YouTube SEND intent → live Render URL
 ├── data/
 │   ├── LyricsGenerator.kt           # Vocal Lyrics & Instrument Chord Sheet engine (Key, BPM, Time Sig)
 │   ├── StorageHelper.kt             # Device & library storage telemetry
@@ -115,15 +122,15 @@ app/src/main/java/com/example/
 
 ---
 
-## Primary host: AppDeploy
+## Primary host: Render
 
-**Production PWA + converter:** [https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai](https://ogm-open-grace-music-w3bpvx.v2.appdeploy.ai)
+**Production PWA + converter:** [https://open-grace-music2.onrender.com](https://open-grace-music2.onrender.com)
 
-- **PWA in Chrome:** open that URL → Add to Home screen. Converter uses same origin automatically.
-- **Native APK:** ships with AppDeploy as default `CONVERTER_BASE_URL` — **Settings → Converter server URL** can stay **empty** for most family users.
+- **PWA in Chrome:** open that URL → Add to Home screen. Converter uses same origin automatically. **This is the latest UI path.**
+- **APK:** WebView shell loads the same Render URL by default (`CONVERTER_BASE_URL`) — **Settings → Converter server URL** can stay **empty** for most family users. **Uninstall older APKs (versionCode 1)** before installing a new build so Android does not keep the stale native UI.
 - **Offline library / local import:** no server required.
 
-Redeploy steps: see [`docs/APPDEPLOY.md`](docs/APPDEPLOY.md).
+Legacy AppDeploy notes: [`docs/APPDEPLOY.md`](docs/APPDEPLOY.md). Deployment options: [`docs/DEPLOYMENT-PATHS.md`](docs/DEPLOYMENT-PATHS.md).
 
 ### Self-hosting (optional)
 
@@ -138,13 +145,13 @@ Keep the Render service awake (paid instance or a health ping) to avoid the “A
 
 | Goal | What to do |
 | :--- | :--- |
-| **YouTube → MP3 / FLAC** | Use AppDeploy (default) or paste your `npm start` URL in **Settings** on the APK |
+| **YouTube → MP3 / FLAC** | Use Render (default) or paste your `npm start` URL in **Settings** |
 | **Same Wi‑Fi (PC + phone)** | `http://192.168.1.42:43123` (your LAN IP) |
 | **Android emulator** | `http://10.0.2.2:43123` |
 
 **Gradle override (developers):** `./gradlew :app:assembleDebug -POGM_CONVERTER_BASE_URL=http://10.0.2.2:43123`
 
-Set **`OGM_PUBLIC_BASE_URL`** / **`VITE_OGM_PUBLIC_BASE_URL`** when building if your AppDeploy hostname changes.
+Set **`OGM_PUBLIC_BASE_URL`** / **`VITE_OGM_PUBLIC_BASE_URL`** when building if your public hostname changes.
 
 ---
 
@@ -175,14 +182,18 @@ You **can** download APK files on Android in general. What often fails is tappin
 
 The in-app **APK / INSTALL** button uses `window.location.origin + '/OpenGraceMusic.apk'` so it works when you are already on the public site in Chrome; if nothing happens, use the `/download` page in Chrome as above.
 
-### Optional: Native APK sideload
+### Optional: APK sideload (WebView → live PWA)
 
 When Advanced Protection is **off** and **Auto Blocker** allows your install source:
 
-1. Download `OpenGraceMusic.apk` from `/download`, `/OpenGraceMusic.apk`, or the in-app install guide.
-2. **Settings → Security → Install unknown apps** — allow **My Files** or **Chrome**.
-3. **Samsung Auto Blocker**: Settings → Security and privacy → Auto Blocker — allow installation from your chosen source for this install.
-4. Open the APK and tap Install. Play Protect may warn on sideload builds not from Play; only proceed if you trust this repository.
+1. **Uninstall** any older Open Grace Music APK first (versionCode 1 was a native Compose UI without the current page nav).
+2. Download `OpenGraceMusic.apk` (version **1.1.0+** / versionCode **2+**) from `/download`, `/OpenGraceMusic.apk`, or the in-app install guide.
+3. **Settings → Security → Install unknown apps** — allow **My Files** or **Chrome**.
+4. **Samsung Auto Blocker**: Settings → Security and privacy → Auto Blocker — allow installation from your chosen source for this install.
+5. Open the APK and tap Install. Play Protect may warn on sideload builds not from Play; only proceed if you trust this repository.
+6. If the UI still looks old after install, clear the app’s cache / Android System WebView data, or use the **PWA** until Render has the latest deploy.
+
+The APK loads **`https://open-grace-music2.onrender.com`** inside a WebView. A **Render redeploy** of the web app updates what the APK shows; you do **not** need a new APK for every UI change once this WebView shell is installed. Rebuild the APK only when changing the baked start URL, signing, or shell code.
 
 If you see **“App blocked by Advanced Protection”**, sideloading cannot be enabled by the app — use the PWA path above or publish via Google Play / Samsung Galaxy Store.
 
@@ -202,12 +213,19 @@ Set `VITE_GITHUB_REPO_URL` when building the web app to point the install guide 
 # Run unit and Robolectric tests
 ./gradlew :app:testDebugUnitTest
 
-# Build the installable Debug APK
+# Build the installable Debug APK (WebView shell → Render)
 ./gradlew :app:assembleDebug
+cp app/build/outputs/apk/debug/app-debug.apk public/OpenGraceMusic.apk
 ```
 The compiled APK will be generated at:
 `app/build/outputs/apk/debug/app-debug.apk`
 
+Override the baked PWA URL:
+`./gradlew :app:assembleDebug -POGM_CONVERTER_BASE_URL=https://your-host`
+
 ### Pre-packaged Android Studio Project Archive
 A complete, self-contained zip archive of the Android Studio project is also available at:
 `public/OpenGraceMusic-Android.zip`
+
+Refresh the zip after Android source changes:
+`zip -r public/OpenGraceMusic-Android.zip app build.gradle.kts settings.gradle.kts gradle.properties gradlew gradle -x '*/build/*' -x '**/.gradle/*'`

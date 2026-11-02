@@ -31,7 +31,7 @@ import com.example.ui.theme.TextLight
 import com.example.ui.theme.TextMuted
 
 private const val HELPER =
-    "Leave blank to use AppDeploy (default). Override only if you self-host npm start elsewhere."
+    "Leave blank to use the Render production host (default). Override only if you self-host npm start elsewhere."
 
 @Composable
 fun SettingsSheet(
@@ -81,7 +81,7 @@ fun SettingsSheet(
             Text(text = HELPER, fontSize = 11.sp, color = TextMuted, lineHeight = 15.sp)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Primary host: AppDeploy (${OgmPublicBase.DEFAULT_APPDEPLOY_BASE_URL}). " +
+                text = "Primary host: Render (${OgmPublicBase.DEFAULT_PUBLIC_BASE_URL}). " +
                     "Clear the field and save to use the default. Self-host: http://192.168.x.x:43123 on same Wi‑Fi.",
                 fontSize = 11.sp,
                 color = TextMuted,

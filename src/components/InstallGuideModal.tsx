@@ -77,11 +77,18 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             </span>
           </p>
           <p>
-            <strong className="text-[#eeeae2] font-medium">Primary host: AppDeploy.</strong> YouTube→MP3/FLAC
-            uses the converter on{' '}
-            <code className="text-[#b8d99e]">ogm-open-grace-music-w3bpvx.v2.appdeploy.ai</code> by default — APK
-            users usually leave Settings blank. Override only if you self-host with{' '}
+            <strong className="text-[#eeeae2] font-medium">Primary host: Render.</strong> The APK is a WebView
+            shell of the live PWA at{' '}
+            <code className="text-[#b8d99e]">open-grace-music2.onrender.com</code> (Listen / Library / Tuner /
+            Schedule / More). Leave Settings blank unless you self-host with{' '}
             <code className="text-[#b8d99e]">npm start</code>. Offline library and local import need no server.
+          </p>
+          <p>
+            <strong className="text-[#fbbf24] font-medium">Updating from an older APK?</strong> Uninstall the
+            previous Open Grace Music install first (or install the new <code className="text-[#b8d99e]">versionCode 2+</code>{' '}
+            over it), then clear Chrome/WebView cache if the UI still looks old. Until a fresh APK is on your
+            phone, <strong className="text-[#b8d99e] font-medium">Add to Home screen</strong> from the live site
+            always has the latest UI.
           </p>
           <a
             href={REPO_URL}
@@ -154,8 +161,12 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </p>
           <ol className="list-decimal list-inside space-y-2 text-xs text-[#eeeae2] leading-relaxed pl-1">
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB) below or
-              from the mobile download page.
+              <strong>Uninstall</strong> any older Open Grace Music APK first so Android does not keep a
+              stale native UI (versionCode 1).
+            </li>
+            <li>
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.1+)
+              below or from the mobile download page.
             </li>
             <li>
               Settings → Security → <strong>Install unknown apps</strong> → allow{' '}

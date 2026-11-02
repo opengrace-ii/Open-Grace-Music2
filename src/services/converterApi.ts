@@ -56,7 +56,7 @@ export async function fetchWithTimeout(
       );
     }
     throw new ConverterApiError(
-      'Cannot reach converter. Check AppDeploy / your network, or set a self-hosted server URL in Settings.',
+      'Cannot reach converter. Check Render / your network, or set a self-hosted server URL in Settings.',
       'NETWORK'
     );
   } finally {
@@ -93,7 +93,7 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
   if (err instanceof TypeError && /fetch|network|failed/i.test(String(err.message))) {
     return {
       message:
-        'Cannot reach converter. AppDeploy may be down, or set a self-hosted URL in Settings.',
+        'Cannot reach converter. Render may be down, or set a self-hosted URL in Settings.',
       code: 'NETWORK',
     };
   }

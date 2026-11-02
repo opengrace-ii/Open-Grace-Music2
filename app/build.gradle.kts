@@ -16,9 +16,11 @@ android {
     applicationId = "com.aistudio.opengracemusic.wqvxb"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    // Bump on every downloadable APK refresh so phones do not silently keep an old install.
+    versionCode = 2
+    versionName = "1.1.0"
 
+    // WebView start URL + converter default (same origin as the live PWA).
     val defaultConverterBaseUrl = "https://open-grace-music2.onrender.com"
     val converterBaseUrl =
       (project.findProperty("OGM_CONVERTER_BASE_URL") as String?)?.trim().orEmpty()
