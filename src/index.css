@@ -23,6 +23,14 @@
   }
 }
 
+.ogm-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.ogm-page-nav {
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+}
+
 .font-serif-display {
   font-family: 'Playfair Display', Georgia, serif;
 }

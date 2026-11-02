@@ -11,18 +11,27 @@ import {
   showListenNotification,
 } from '../services/scheduleService';
 import { getAllPlaylists } from '../services/storage';
+import { LastNotifiedListen, saveLastNotifiedListen } from '../services/lastNotified';
 
 interface UseListenScheduleRunnerOptions {
   ready: boolean;
   onPlay: (pending: PendingPlay) => void;
   onInAppReminder: (schedule: ListenSchedule, pending: PendingPlay) => void;
+  onNotified?: (item: LastNotifiedListen) => void;
 }
 
-export function useListenScheduleRunner({ ready, onPlay, onInAppReminder }: UseListenScheduleRunnerOptions) {
+export function useListenScheduleRunner({
+  ready,
+  onPlay,
+  onInAppReminder,
+  onNotified,
+}: UseListenScheduleRunnerOptions) {
   const onPlayRef = useRef(onPlay);
   const onInAppRef = useRef(onInAppReminder);
+  const onNotifiedRef = useRef(onNotified);
   onPlayRef.current = onPlay;
   onInAppRef.current = onInAppReminder;
+  onNotifiedRef.current = onNotified;
   const checkingRef = useRef(false);
   const launchConsumedRef = useRef(false);
 
@@ -110,6 +119,16 @@ export function useListenScheduleRunner({ ready, onPlay, onInAppReminder }: UseL
             schedule,
             mix?.name || (schedule.freshQuery ? `newest match for “${schedule.freshQuery}”` : '')
           );
+          const notified = saveLastNotifiedListen({
+            title: schedule.name,
+            query: schedule.freshQuery,
+            scheduleName: schedule.name,
+            freshMode: schedule.freshMode || 'latest',
+            playlistId: schedule.playlistId,
+            trackId: schedule.trackId,
+            at: Date.now(),
+          });
+          onNotifiedRef.current?.(notified);
           if (!shown) {
             onInAppRef.current(schedule, pending);
           }

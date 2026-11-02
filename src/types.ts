@@ -161,6 +161,8 @@ export interface TimePreset {
 
 export type LoopMode = 'OFF' | 'ALL' | 'ONE';
 
+export type AppPage = 'home' | 'library' | 'tuner' | 'schedule' | 'more';
+
 export interface StorageInfo {
   usedBytes: number;
   quotaBytes: number;

@@ -31,6 +31,8 @@ interface NowPlayingBarProps {
   onCycleLoop: () => void;
   onVolumeChange: (val: number) => void;
   onOpenFullPlayer: () => void;
+  /** Lift above the mobile page nav. */
+  dockClassName?: string;
 }
 
 export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
@@ -49,6 +51,7 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
   onCycleLoop,
   onVolumeChange,
   onOpenFullPlayer,
+  dockClassName,
 }) => {
   if (!currentTrack) return null;
 
@@ -62,7 +65,11 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[#121510]/95 backdrop-blur-md border-t border-[#2b3326] px-3 sm:px-6 py-2.5 shadow-[0_-12px_32px_rgba(0,0,0,0.85)]">
+    <footer
+      className={`fixed left-0 right-0 z-40 bg-[#121510]/95 backdrop-blur-md border-t border-[#2b3326] px-3 sm:px-6 py-2.5 shadow-[0_-12px_32px_rgba(0,0,0,0.85)] ${
+        dockClassName || 'bottom-0'
+      }`}
+    >
       {/* Top Analog Tape Scrubber Ribbon */}
       <div className="absolute -top-1.5 left-0 right-0 group cursor-pointer h-3">
         <input

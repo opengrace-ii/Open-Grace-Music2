@@ -1,27 +1,28 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, Search, Youtube, Radio, Play, ClipboardPaste } from 'lucide-react';
+import { X, Search, Youtube, Radio, Play, ClipboardPaste, Plus } from 'lucide-react';
 import { extractYouTubeId } from '../services/mediaResolver';
 import { apiUrl, fetchWithTimeout } from '../services/converterApi';
+import {
+  addTunerSearchChip,
+  loadTunerSearchChips,
+  removeTunerSearchChip,
+} from '../services/tunerSearchChips';
 
 interface YouTubeBrowserModalProps {
   isOpen: boolean;
   initialUrl?: string | null;
   initialQuery?: string | null;
   onClose: () => void;
+  presentation?: 'overlay' | 'page';
   onConvertVideo: (
     videoUrl: string,
     meta?: { title?: string; author?: string }
   ) => void;
+  onListenVideo?: (
+    videoUrl: string,
+    meta?: { title?: string; author?: string }
+  ) => void;
 }
-
-const MOOD_STATIONS = [
-  { label: 'Late night', query: 'late night deep house mix' },
-  { label: 'Piano', query: 'solo piano peaceful' },
-  { label: 'Devotional', query: 'devotional bhajan instrumental' },
-  { label: 'Classical', query: 'orchestral masterpiece' },
-  { label: 'Focus', query: 'focus study instrumental' },
-  { label: 'Vinyl soul', query: 'vinyl soul jazz mix' },
-];
 
 type TunerMode = 'browse' | 'watch';
 
@@ -42,7 +43,9 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   initialUrl,
   initialQuery,
   onClose,
+  presentation = 'overlay',
   onConvertVideo,
+  onListenVideo,
 }) => {
   const initialId = extractYouTubeId(initialUrl || '');
   const [mode, setMode] = useState<TunerMode>(initialId ? 'watch' : 'browse');
@@ -53,6 +56,8 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   const [catalog, setCatalog] = useState<CatalogVideo[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [savedSearches, setSavedSearches] = useState<string[]>(() => loadTunerSearchChips());
+  const [chipDraft, setChipDraft] = useState('');
 
   const fetchInfo = useCallback(async (id: string) => {
     try {
@@ -104,6 +109,12 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   useEffect(() => {
     if (selectedYtId) fetchInfo(selectedYtId);
   }, [selectedYtId, fetchInfo]);
+
+  const addSavedSearch = (raw: string) => {
+    const next = addTunerSearchChip(raw, savedSearches);
+    setSavedSearches(next);
+    setChipDraft('');
+  };
 
   if (!isOpen) return null;
 
@@ -192,21 +203,32 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     </div>
   );
 
+  const shellClass =
+    presentation === 'page'
+      ? 'flex flex-col flex-1 min-h-[70vh] w-full cassette-card rounded-3xl overflow-hidden'
+      : 'fixed inset-0 z-50 flex flex-col bg-[#0a0c09]/95 backdrop-blur-sm animate-in fade-in duration-200';
+  const innerClass =
+    presentation === 'page'
+      ? 'flex flex-col flex-1 min-h-0 w-full overflow-hidden'
+      : 'flex flex-col flex-1 min-h-0 w-full max-w-5xl mx-auto sm:my-2 sm:rounded-3xl sm:border sm:border-[#2b3326] cassette-card shadow-2xl overflow-hidden';
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0c09]/95 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="flex flex-col flex-1 min-h-0 w-full max-w-5xl mx-auto sm:my-2 sm:rounded-3xl sm:border sm:border-[#2b3326] cassette-card shadow-2xl overflow-hidden">
+    <div className={shellClass}>
+      <div className={innerClass}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#272c23] shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#2a1818] text-[#f87171] border border-[#4a2626]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-[#2a1818] text-[#f87171] border border-[#4a2626] shrink-0">
               <Youtube className="w-5 h-5" />
             </div>
-            <h3 className="font-serif-display text-base sm:text-lg font-bold text-[#f0ece1]">
+            <h3 className="font-serif-display text-base sm:text-lg font-bold text-[#f0ece1] truncate">
               YouTube Studio Tuner
             </h3>
           </div>
-          <button onClick={onClose} className="cassette-btn p-2 text-[#9fa396]" type="button">
-            <X className="w-4 h-4" />
-          </button>
+          {presentation === 'overlay' && (
+            <button onClick={onClose} className="cassette-btn p-2 text-[#9fa396]" type="button">
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <div className="cassette-bank flex gap-1.5 px-4 py-2 shrink-0 border-b border-[#1f241c]">
@@ -230,21 +252,54 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
           ))}
         </div>
 
-        <div className="px-4 pt-1 flex flex-wrap gap-1.5 shrink-0">
-          {MOOD_STATIONS.map((station) => (
-            <button
-              key={station.query}
-              type="button"
-              className="cassette-btn px-2.5 py-1 text-[10px] font-mono text-[#e2c986]"
-              onClick={() => {
-                setSearchInput(station.query);
-                setMode('browse');
-                void loadCatalog(station.query);
-              }}
-            >
-              {station.label}
+        <div className="px-4 pt-2 flex flex-col gap-1.5 shrink-0">
+          {savedSearches.length === 0 ? (
+            <p className="text-[11px] font-mono text-[#9fa396]">Add a search you use often.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {savedSearches.map((station) => (
+                <div key={station} className="cassette-btn px-2 py-1 text-[10px] font-mono text-[#e2c986] max-w-full">
+                  <button
+                    type="button"
+                    className="min-w-0 break-words text-left"
+                    onClick={() => {
+                      setSearchInput(station);
+                      setMode('browse');
+                      void loadCatalog(station);
+                    }}
+                  >
+                    {station}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[#686b60] hover:text-[#f87171] shrink-0"
+                    title="Remove saved search"
+                    onClick={() => setSavedSearches(removeTunerSearchChip(station, savedSearches))}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <form
+            className="flex gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              addSavedSearch(chipDraft);
+            }}
+          >
+            <input
+              value={chipDraft}
+              onChange={(e) => setChipDraft(e.target.value)}
+              placeholder="Save a search you use often"
+              className="flex-1 cassette-window rounded-xl px-3 py-1.5 bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none min-w-0"
+            />
+            <button type="submit" className="cassette-btn px-2.5 py-1.5 text-[10px] font-mono text-[#b8d99e] shrink-0">
+              <Plus className="w-3 h-3" />
+              Add
             </button>
-          ))}
+          </form>
         </div>
 
         <form onSubmit={handleSearchSubmit} className="px-4 py-2 flex gap-2 shrink-0">
@@ -294,33 +349,48 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               {videoPlayer}
 
-              <div className="p-3 rounded-2xl cassette-window flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-3 shrink-0">
-                <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-                  <div className="flex flex-wrap items-center gap-2 min-w-0 mb-1">
-                    <span className="inline-flex px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] font-mono font-bold text-[#b8d99e] whitespace-nowrap shrink-0">
-                      VIDEO DETECTED
-                    </span>
-                    <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] truncate min-w-0 flex-1">
-                      {previewInfo?.title || `YouTube Master (${selectedYtId})`}
-                    </h4>
-                  </div>
-                  <p className="text-xs font-mono text-[#b8d99e] mt-0.5 truncate">
+              <div className="p-3 rounded-2xl cassette-window flex flex-col gap-3 shrink-0">
+                <div className="min-w-0 w-full">
+                  <span className="inline-flex px-2 py-0.5 rounded-md bg-[#1c2418] border border-[#3a4533] text-[10px] font-mono font-bold text-[#b8d99e]">
+                    VIDEO DETECTED
+                  </span>
+                  <h4 className="font-serif-display text-sm sm:text-base font-bold text-[#f0ece1] break-words mt-1.5">
+                    {previewInfo?.title || `YouTube Master (${selectedYtId})`}
+                  </h4>
+                  <p className="text-xs font-mono text-[#b8d99e] mt-0.5 break-words">
                     {previewInfo?.author || 'Studio Stream Ready'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    watchUrl &&
-                    onConvertVideo(watchUrl, previewInfo
-                      ? { title: previewInfo.title, author: previewInfo.author }
-                      : undefined)
-                  }
-                  className="cassette-btn cassette-btn-primary w-full sm:w-auto px-5 py-2.5 text-xs font-mono shrink-0"
-                >
-                  <Radio className="w-4 h-4" />
-                  <span>⏺ KEEP ON CASSETTE</span>
-                </button>
+                <div className="flex flex-col gap-2 w-full">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      watchUrl &&
+                      (onListenVideo || onConvertVideo)(
+                        watchUrl,
+                        previewInfo ? { title: previewInfo.title, author: previewInfo.author } : undefined
+                      )
+                    }
+                    className="cassette-btn w-full px-5 py-2.5 text-xs font-mono"
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>LISTEN</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      watchUrl &&
+                      onConvertVideo(
+                        watchUrl,
+                        previewInfo ? { title: previewInfo.title, author: previewInfo.author } : undefined
+                      )
+                    }
+                    className="cassette-btn cassette-btn-primary w-full px-5 py-2.5 text-xs font-mono"
+                  >
+                    <Radio className="w-4 h-4" />
+                    <span>RECORD</span>
+                  </button>
+                </div>
               </div>
               {catalog.length > 0 ? (
                 <div className="min-h-0 flex-1 flex flex-col gap-1">

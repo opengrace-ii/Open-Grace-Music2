@@ -39,6 +39,7 @@ interface ScheduleModalProps {
   tracks: Track[];
   onClose: () => void;
   onPlayNow: (pending: PendingPlay) => void;
+  presentation?: 'overlay' | 'page';
 }
 
 const TZ_CHOICES = [
@@ -72,6 +73,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   tracks,
   onClose,
   onPlayNow,
+  presentation = 'overlay',
 }) => {
   const [schedules, setSchedules] = useState<ListenSchedule[]>([]);
   const [draft, setDraft] = useState(emptyDraft);
@@ -299,9 +301,23 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     : 'No upcoming slot';
   const whatPlays = describeWhatPlays(draftAsSchedule, playlists, tracks);
 
+  const isPage = presentation === 'page';
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm">
-      <div className="w-full max-w-3xl max-h-[94vh] overflow-y-auto cassette-card rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl">
+    <div
+      className={
+        isPage
+          ? 'w-full'
+          : 'fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm'
+      }
+    >
+      <div
+        className={
+          isPage
+            ? 'w-full cassette-card rounded-3xl p-5 sm:p-6'
+            : 'w-full max-w-3xl max-h-[94vh] overflow-y-auto cassette-card rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl'
+        }
+      >
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-center gap-2 min-w-0">
             <BellRing className="w-5 h-5 text-[#e2c986] shrink-0" />
@@ -312,9 +328,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               </p>
             </div>
           </div>
-          <button type="button" className="cassette-btn p-2 text-[#9fa396]" onClick={onClose}>
-            <X className="w-4 h-4" />
-          </button>
+          {!isPage && (
+            <button type="button" className="cassette-btn p-2 text-[#9fa396]" onClick={onClose}>
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <div
@@ -380,18 +398,20 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                         editingId === s.id ? 'cassette-btn-engaged' : ''
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <button type="button" className="min-w-0 text-left flex-1" onClick={() => startEdit(s)}>
-                          <p className="font-serif-display text-sm text-[#f0ece1] truncate">{s.name}</p>
-                          <p className="text-[10px] font-mono text-[#e2c986]">
+                      <div className="flex flex-col gap-2">
+                        <button type="button" className="min-w-0 w-full text-left" onClick={() => startEdit(s)}>
+                          <p className="font-serif-display text-sm text-[#f0ece1] break-words whitespace-normal">
+                            {s.name}
+                          </p>
+                          <p className="text-[10px] font-mono text-[#e2c986] break-words">
                             {formatClock(s.hour, s.minute)} · {describeRepeat(s)} ·{' '}
                             {scheduleTimeZone(s) === DEFAULT_SCHEDULE_TZ ? 'IST' : scheduleTimeZone(s)}
                           </p>
-                          <p className="text-[10px] font-mono text-[#9fa396] truncate">
+                          <p className="text-[10px] font-mono text-[#9fa396] break-words whitespace-normal">
                             {describeWhatPlays(s, playlists, tracks)}
                           </p>
                         </button>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex flex-wrap items-center gap-1">
                           <button
                             type="button"
                             title={s.enabled ? 'Turn off' : 'Turn on'}

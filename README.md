@@ -134,6 +134,8 @@ npm run build
 PORT=43123 NODE_ENV=production npm start
 ```
 
+Keep the Render service awake (paid instance or a health ping) to avoid the “APPLICATION LOADING / WELCOME TO RENDER” splash on every visit — that HTML is Render waking a sleeping free instance and cannot be removed from our PWA.
+
 | Goal | What to do |
 | :--- | :--- |
 | **YouTube → MP3 / FLAC** | Use AppDeploy (default) or paste your `npm start` URL in **Settings** on the APK |
