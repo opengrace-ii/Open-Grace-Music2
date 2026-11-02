@@ -85,10 +85,13 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </p>
           <p>
             <strong className="text-[#fbbf24] font-medium">Updating from an older APK?</strong> Uninstall the
-            previous Open Grace Music install first (or install the new <code className="text-[#b8d99e]">versionCode 2+</code>{' '}
-            over it), then clear Chrome/WebView cache if the UI still looks old. Until a fresh APK is on your
-            phone, <strong className="text-[#b8d99e] font-medium">Add to Home screen</strong> from the live site
-            always has the latest UI.
+            previous Open Grace Music install first, then install{' '}
+            <code className="text-[#b8d99e]">versionCode 3+</code> / <code className="text-[#b8d99e]">1.2.0+</code>{' '}
+            for background playback with a media notification. On Android 13+, allow{' '}
+            <strong className="text-[#eeeae2] font-medium">Notifications</strong>. Clear Chrome/WebView cache if
+            the UI still looks old. Until a fresh APK is on your phone,{' '}
+            <strong className="text-[#b8d99e] font-medium">Add to Home screen</strong> from the live site always
+            has the latest UI.
           </p>
           <a
             href={REPO_URL}
@@ -161,11 +164,11 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </p>
           <ol className="list-decimal list-inside space-y-2 text-xs text-[#eeeae2] leading-relaxed pl-1">
             <li>
-              <strong>Uninstall</strong> any older Open Grace Music APK first so Android does not keep a
-              stale native UI (versionCode 1).
+              <strong>Uninstall</strong> any older Open Grace Music APK first (versionCode 1–2 stop
+              music when minimized).
             </li>
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.1+)
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.2.0+)
               below or from the mobile download page.
             </li>
             <li>
@@ -180,6 +183,11 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             <li>
               Open the APK in Downloads and tap Install. Debug or sideload builds may show a Play
               Protect notice — tap <strong>Install anyway</strong> only if you trust this source.
+            </li>
+            <li>
+              Allow <strong>Notifications</strong> (Android 13+) so background play can show
+              persistent play/pause controls. Start a track, then minimize — music should keep
+              going with a notification.
             </li>
           </ol>
           <div className="flex flex-col sm:flex-row gap-2">

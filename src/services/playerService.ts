@@ -19,7 +19,23 @@ declare global {
       PlayerState: { PLAYING: number; PAUSED: number; ENDED: number };
     };
     onYouTubeIframeAPIReady?: () => void;
+    /** Injected by the Open Grace Music Android WebView shell. */
+    OgmAndroid?: {
+      onPlaybackState: (playing: boolean, title: string, artist: string) => void;
+    };
+    __ogmPlayerEngine?: {
+      togglePlayPause: () => void;
+      pause: () => void;
+      requestNext: () => void;
+      requestPrev: () => void;
+    };
+    __ogmNativeCommand?: (cmd: string) => void;
   }
+}
+
+function isApkWebViewShell(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /OpenGraceMusicAPK\//i.test(navigator.userAgent);
 }
 
 type YoutubePlayerHandle = {
@@ -204,6 +220,23 @@ class AudioPlayerEngine {
 
   private notifyPlayState(isPlaying: boolean) {
     this.listeners.forEach((l) => l.onPlayStateChange(isPlaying));
+    this.notifyAndroidBridge(isPlaying);
+  }
+
+  /** Keep the APK foreground MediaSessionService in sync with HTML5 / YouTube playback. */
+  private notifyAndroidBridge(isPlaying: boolean) {
+    if (typeof window === 'undefined') return;
+    if (!isApkWebViewShell() && !window.OgmAndroid) return;
+    try {
+      const track = this.currentTrack;
+      window.OgmAndroid?.onPlaybackState?.(
+        isPlaying,
+        track?.title || 'Open Grace Music',
+        track?.artist || 'Open Grace Music'
+      );
+    } catch {
+      // Native bridge unavailable (browser / PWA)
+    }
   }
 
   private notifyTime(current: number, duration: number) {
@@ -378,6 +411,34 @@ class AudioPlayerEngine {
     }
   }
 
+  public pause(): void {
+    if (this.usingYoutube && this.ytPlayer) {
+      this.ytPlayer.pauseVideo();
+      return;
+    }
+    this.htmlAudio.pause();
+  }
+
+  public isPlaying(): boolean {
+    if (this.usingYoutube && this.ytPlayer) {
+      const playing = window.YT?.PlayerState?.PLAYING;
+      try {
+        return playing !== undefined && this.ytPlayer.getPlayerState() === playing;
+      } catch {
+        return false;
+      }
+    }
+    return !this.htmlAudio.paused && !this.htmlAudio.ended;
+  }
+
+  public requestNext(): void {
+    this.listeners.forEach((l) => l.onNextRequested?.());
+  }
+
+  public requestPrev(): void {
+    this.listeners.forEach((l) => l.onPrevRequested?.());
+  }
+
   public seekTo(seconds: number): void {
     if (this.usingYoutube && this.ytPlayer) {
       this.ytPlayer.seekTo(seconds, true);
@@ -409,3 +470,17 @@ class AudioPlayerEngine {
 }
 
 export const playerEngine = new AudioPlayerEngine();
+
+if (typeof window !== 'undefined') {
+  window.__ogmPlayerEngine = playerEngine;
+  window.__ogmNativeCommand = (cmd: string) => {
+    try {
+      if (cmd === 'toggle') playerEngine.togglePlayPause();
+      else if (cmd === 'pause') playerEngine.pause();
+      else if (cmd === 'next') playerEngine.requestNext();
+      else if (cmd === 'prev') playerEngine.requestPrev();
+    } catch {
+      // ignore
+    }
+  };
+}

@@ -1,11 +1,15 @@
 package com.example
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -16,25 +20,37 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.example.data.ConverterServerPrefs
 import com.example.data.OgmPublicBase
+import com.example.player.OgmPlaybackService
 
 /**
  * Thin WebView shell that loads the live Open Grace Music PWA (Render by default).
- * Native Compose UI remains in the tree for optional offline tooling, but the shipped
- * APK must track the web product (Listen / Library / Tuner / Schedule / More).
+ *
+ * Background audio: do **not** call [WebView.onPause] while media is active — that pauses
+ * HTML5 / iframe playback. A sticky [OgmPlaybackService] foreground notification keeps the
+ * process eligible for media playback when the Activity is minimized.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
 
     private lateinit var webView: WebView
+    @Volatile
+    private var mediaPlaying: Boolean = false
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* optional */ }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        OgmPlaybackService.webBridge = this
+        maybeRequestNotificationPermission()
 
         webView = WebView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -46,11 +62,15 @@ class MainActivity : ComponentActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.setSupportMultipleWindows(false)
+            // Keep media eligible while Activity is backgrounded.
             settings.userAgentString = settings.userAgentString + " OpenGraceMusicAPK/" +
                 BuildConfig.VERSION_NAME
 
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+            addJavascriptInterface(OgmJsBridge(), "OgmAndroid")
 
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
@@ -63,7 +83,6 @@ class MainActivity : ComponentActivity() {
                     if (isAppHostedUrl(url) || isYouTubeUrl(url)) {
                         return false
                     }
-                    // External links (Play Protect docs, GitHub, etc.) open in the system browser.
                     runCatching {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     }
@@ -73,10 +92,14 @@ class MainActivity : ComponentActivity() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                 }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    injectBackgroundAudioBridge()
+                }
             }
 
             setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                // Prefer Chrome / Downloads for APK and large files from the install guide.
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     data = Uri.parse(url)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -84,7 +107,6 @@ class MainActivity : ComponentActivity() {
                 if (URLUtil.isNetworkUrl(url)) {
                     runCatching { startActivity(intent) }
                 } else {
-                    // Fallback no-op; contentDisposition kept for debugging.
                     android.util.Log.d("OgmWebShell", "download $mimeType $contentDisposition $userAgent")
                 }
             }
@@ -131,16 +153,183 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         webView.onResume()
+        webView.resumeTimers()
     }
 
+    /**
+     * Critical: [WebView.onPause] pauses HTML5 media. While audio is playing we only pause
+     * non-media timers via leaving timers running ([resumeTimers]) and skip [WebView.onPause].
+     */
     override fun onPause() {
-        webView.onPause()
+        if (mediaPlaying) {
+            webView.resumeTimers()
+            OgmPlaybackService.ensureRunning(this)
+        } else {
+            // Still avoid killing media that started after last bridge tick.
+            webView.resumeTimers()
+        }
+        // Intentionally do NOT call webView.onPause() — that stops PWA audio.
         super.onPause()
     }
 
+    override fun onStop() {
+        if (mediaPlaying) {
+            OgmPlaybackService.ensureRunning(this)
+            webView.resumeTimers()
+        }
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        OgmPlaybackService.webBridge = null
+        if (!mediaPlaying) {
+            OgmPlaybackService.stopService(this)
+        }
+        webView.removeJavascriptInterface("OgmAndroid")
         webView.destroy()
         super.onDestroy()
+    }
+
+    override fun onTransportToggle() {
+        runOnUiThread {
+            webView.evaluateJavascript(
+                "(function(){try{if(window.__ogmNativeCommand)window.__ogmNativeCommand('toggle');" +
+                    "else if(window.__ogmPlayerEngine)window.__ogmPlayerEngine.togglePlayPause();}" +
+                    "catch(e){}})();",
+                null
+            )
+        }
+    }
+
+    override fun onTransportNext() {
+        runOnUiThread {
+            webView.evaluateJavascript(
+                "(function(){try{if(window.__ogmNativeCommand)window.__ogmNativeCommand('next');}" +
+                    "catch(e){}})();",
+                null
+            )
+        }
+    }
+
+    override fun onTransportPrev() {
+        runOnUiThread {
+            webView.evaluateJavascript(
+                "(function(){try{if(window.__ogmNativeCommand)window.__ogmNativeCommand('prev');}" +
+                    "catch(e){}})();",
+                null
+            )
+        }
+    }
+
+    override fun onTransportStop() {
+        runOnUiThread {
+            mediaPlaying = false
+            webView.evaluateJavascript(
+                "(function(){try{if(window.__ogmNativeCommand)window.__ogmNativeCommand('pause');}" +
+                    "catch(e){}})();",
+                null
+            )
+        }
+    }
+
+    private fun maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun injectBackgroundAudioBridge() {
+        val script = """
+            (function(){
+              if (window.__ogmBgBridgeInstalled) return;
+              window.__ogmBgBridgeInstalled = true;
+              function report(playing, title, artist) {
+                try {
+                  if (window.OgmAndroid && window.OgmAndroid.onPlaybackState) {
+                    window.OgmAndroid.onPlaybackState(!!playing, title || '', artist || '');
+                  }
+                } catch (e) {}
+              }
+              function hookEl(el) {
+                if (!el || el.__ogmHooked) return;
+                el.__ogmHooked = true;
+                el.addEventListener('play', function(){
+                  report(true, document.title || 'Open Grace Music', '');
+                });
+                el.addEventListener('playing', function(){
+                  report(true, document.title || 'Open Grace Music', '');
+                });
+                el.addEventListener('pause', function(){
+                  report(false, document.title || 'Open Grace Music', '');
+                });
+                el.addEventListener('ended', function(){
+                  report(false, document.title || 'Open Grace Music', '');
+                });
+              }
+              function scan() {
+                try {
+                  document.querySelectorAll('audio,video').forEach(hookEl);
+                } catch (e) {}
+              }
+              scan();
+              try {
+                new MutationObserver(scan).observe(document.documentElement, {childList:true, subtree:true});
+              } catch (e) {}
+              setInterval(function(){
+                try {
+                  var list = Array.prototype.slice.call(document.querySelectorAll('audio,video'));
+                  var playing = list.some(function(m){ return !m.paused && !m.ended; });
+                  if (playing) report(true, document.title || 'Open Grace Music', '');
+                } catch (e) {}
+              }, 2500);
+              if (!window.__ogmNativeCommand) {
+                window.__ogmNativeCommand = function(cmd) {
+                  try {
+                    var eng = window.__ogmPlayerEngine;
+                    if (eng) {
+                      if (cmd === 'toggle') eng.togglePlayPause();
+                      else if (cmd === 'pause') {
+                        if (eng.htmlAudio && !eng.htmlAudio.paused) eng.htmlAudio.pause();
+                        else eng.togglePlayPause();
+                      }
+                      return;
+                    }
+                    var medias = Array.prototype.slice.call(document.querySelectorAll('audio,video'));
+                    if (cmd === 'toggle' || cmd === 'pause') {
+                      var active = medias.find(function(m){ return !m.paused; });
+                      if (active) active.pause();
+                      else {
+                        var ready = medias.find(function(m){ return m.readyState >= 2; }) || medias[0];
+                        if (ready && ready.play) ready.play();
+                      }
+                    }
+                  } catch (e) {}
+                };
+              }
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(script, null)
+    }
+
+    private inner class OgmJsBridge {
+        @JavascriptInterface
+        fun onPlaybackState(playing: Boolean, title: String?, artist: String?) {
+            runOnUiThread {
+                mediaPlaying = playing
+                val t = title?.takeIf { it.isNotBlank() } ?: "Open Grace Music"
+                val a = artist?.takeIf { it.isNotBlank() } ?: "Open Grace Music"
+                if (playing) {
+                    OgmPlaybackService.updateNotification(this@MainActivity, t, a, true)
+                } else {
+                    OgmPlaybackService.updateNotification(this@MainActivity, t, a, false)
+                }
+            }
+        }
     }
 
     private fun resolveStartUrl(intent: Intent?): String {
@@ -166,7 +355,6 @@ class MainActivity : ComponentActivity() {
     private fun buildShareDeepLink(sharedText: String): String {
         val base = publicBaseUrl()
         val encoded = Uri.encode(sharedText.trim())
-        // PWA opens Tuner/download flows from query; harmless if ignored by an older deploy.
         return "$base/?sharedUrl=$encoded"
     }
 

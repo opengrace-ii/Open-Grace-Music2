@@ -30,8 +30,8 @@ Open Grace Music supports true high-resolution and lossless audio workflows with
 - Supports scanning existing local audio files on the phone (`scanDeviceMusic`) and importing files via Android's Storage Access Framework (`ActivityResultContracts.GetMultipleContents`).
 
 ### 4. Background Playback, Lock-Screen Controls & Live Visual Frequency Equalizer
-- Powered by **AndroidX Media3 ExoPlayer** (`OgmPlayer.kt`) and a foreground **`MediaSessionService`** (`OgmPlaybackService.kt`).
-- Continues playing seamlessly when the screen is off, locked, or when switching apps, complete with system notification and lock-screen transport controls.
+- **APK 1.2.0+:** WebView PWA audio is kept alive by a sticky foreground **`OgmPlaybackService`** (`FOREGROUND_SERVICE_MEDIA_PLAYBACK`) with MediaSession notification controls. The shell skips `WebView.onPause()` so HTML5 / YouTube playback is not frozen when minimized. Native `OgmPlayer` remains available for in-tree Compose tooling.
+- Continues playing when the screen is off, locked, or when switching apps (subject to OEM battery killers — see install notes).
 - Full-screen **Audiophile Master Turntable (`FullPlayerDialog.kt`)** features:
   - Rotating vinyl LP artwork disc
   - **Live Visual Frequency Equalizer** (28-bar real-time animated spectrum analyzer across `32Hz` – `96kHz` with live sample rate, bit depth, and bitrate readout)
@@ -79,7 +79,7 @@ Apps like **TubeMate** use dedicated on-device YouTube parsers tuned for fast MP
 
 The downloadable **`public/OpenGraceMusic.apk`** is a **WebView shell** (`MainActivity`) that loads the live PWA at
 **`https://open-grace-music2.onrender.com`** (Listen / Library / Tuner / Schedule / More). Baked default:
-`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 2 / versionName 1.1.0**.
+`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 3 / versionName 1.2.0** (background playback + media notification).
 
 Compose screens under `ui/` remain in-tree for optional native tooling, but they are **not** the launcher UI in
 shipped APKs — that is why an old binary looked “stuck” on the gramophone-only layout.
@@ -104,8 +104,8 @@ app/src/main/java/com/example/
 │   └── model/
 │       └── Track.kt                 # AudiophileFormat enum (FLAC, ALAC, DSD, WAV, MP3) & Track model
 ├── player/
-│   ├── OgmPlaybackService.kt        # Media3 MediaSessionService for background & lock-screen audio
-│   └── OgmPlayer.kt                 # ExoPlayer controller (queue, shuffle, loop, speed, progress)
+│   ├── OgmPlaybackService.kt        # Foreground mediaPlayback service + MediaSession (WebView + native)
+│   └── OgmPlayer.kt                 # Native MediaPlayer controller (queue, shuffle, loop, speed)
 └── ui/
     ├── MainViewModel.kt             # StateFlow state holder combining Room DB + MediaStore + Player
     ├── OgmApp.kt                    # Main Jetpack Compose screen & modal orchestration
@@ -127,7 +127,7 @@ app/src/main/java/com/example/
 **Production PWA + converter:** [https://open-grace-music2.onrender.com](https://open-grace-music2.onrender.com)
 
 - **PWA in Chrome:** open that URL → Add to Home screen. Converter uses same origin automatically. **This is the latest UI path.**
-- **APK:** WebView shell loads the same Render URL by default (`CONVERTER_BASE_URL`) — **Settings → Converter server URL** can stay **empty** for most family users. **Uninstall older APKs (versionCode 1)** before installing a new build so Android does not keep the stale native UI.
+- **APK:** WebView shell loads the same Render URL by default (`CONVERTER_BASE_URL`) — **Settings → Converter server URL** can stay **empty** for most family users. **Uninstall older APKs** before installing **1.2.0 / versionCode 3** so background playback and the media notification ship correctly.
 - **Offline library / local import:** no server required.
 
 Legacy AppDeploy notes: [`docs/APPDEPLOY.md`](docs/APPDEPLOY.md). Deployment options: [`docs/DEPLOYMENT-PATHS.md`](docs/DEPLOYMENT-PATHS.md).
@@ -186,14 +186,17 @@ The in-app **APK / INSTALL** button uses `window.location.origin + '/OpenGraceMu
 
 When Advanced Protection is **off** and **Auto Blocker** allows your install source:
 
-1. **Uninstall** any older Open Grace Music APK first (versionCode 1 was a native Compose UI without the current page nav).
-2. Download `OpenGraceMusic.apk` (version **1.1.0+** / versionCode **2+**) from `/download`, `/OpenGraceMusic.apk`, or the in-app install guide.
+1. **Uninstall** any older Open Grace Music APK first (versionCode 1–2 lack reliable background play; 1 was native Compose UI).
+2. Download `OpenGraceMusic.apk` (version **1.2.0+** / versionCode **3+**) from `/download`, `/OpenGraceMusic.apk`, or the in-app install guide.
 3. **Settings → Security → Install unknown apps** — allow **My Files** or **Chrome**.
 4. **Samsung Auto Blocker**: Settings → Security and privacy → Auto Blocker — allow installation from your chosen source for this install.
 5. Open the APK and tap Install. Play Protect may warn on sideload builds not from Play; only proceed if you trust this repository.
-6. If the UI still looks old after install, clear the app’s cache / Android System WebView data, or use the **PWA** until Render has the latest deploy.
+6. On **Android 13+**, allow **Notifications** when prompted (needed for the persistent playback controls while music runs in the background).
+7. If the UI still looks old after install, clear the app’s cache / Android System WebView data, or use the **PWA** until Render has the latest deploy.
 
-The APK loads **`https://open-grace-music2.onrender.com`** inside a WebView. A **Render redeploy** of the web app updates what the APK shows; you do **not** need a new APK for every UI change once this WebView shell is installed. Rebuild the APK only when changing the baked start URL, signing, or shell code.
+The APK loads **`https://open-grace-music2.onrender.com`** inside a WebView. **1.2.0+** keeps HTML5 / YouTube audio playing when you minimize the app (foreground `mediaPlayback` service + media notification). A **Render redeploy** updates the PWA UI inside the shell; rebuild the APK when changing shell/background-audio code, the baked start URL, or signing.
+
+**OEM battery limits:** aggressive “battery optimization”, “sleeping apps”, or manufacturer killers (Samsung, Xiaomi, Oppo, etc.) can still stop background audio after a while. Exempt Open Grace Music from battery optimization if playback dies only after long idle.
 
 If you see **“App blocked by Advanced Protection”**, sideloading cannot be enabled by the app — use the PWA path above or publish via Google Play / Samsung Galaxy Store.
 
