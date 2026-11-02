@@ -151,6 +151,9 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   const isLossless = ['FLAC', 'ALAC', 'DSD', 'WAV'].includes(
     currentTrack.format.toUpperCase()
   );
+  const isLiveYoutube =
+    currentTrack.format.toUpperCase() === 'YOUTUBE' ||
+    (currentTrack.mimeType || '').includes('youtube');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
@@ -270,13 +273,15 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               <div className="flex items-center justify-between text-[10px] font-mono text-[#e2c986] mb-1.5">
                 <span>ANALOG VU SPECTRUM</span>
                 <span>
-                  {currentTrack.format} ·{' '}
-                  {currentTrack.sampleRateHz
-                    ? `${currentTrack.sampleRateHz / 1000} KHZ`
-                    : isLossless
-                    ? '96 KHZ'
-                    : '48 KHZ'}{' '}
-                  · {currentTrack.bitDepth || (isLossless ? '24-BIT' : '16-BIT')}
+                  {isLiveYoutube
+                    ? 'LIVE YOUTUBE · STREAM'
+                    : `${currentTrack.format} · ${
+                        currentTrack.sampleRateHz
+                          ? `${currentTrack.sampleRateHz / 1000} KHZ`
+                          : isLossless
+                            ? '96 KHZ'
+                            : '48 KHZ'
+                      } · ${currentTrack.bitDepth || (isLossless ? '24-BIT' : '16-BIT')}`}
                 </span>
               </div>
               <canvas

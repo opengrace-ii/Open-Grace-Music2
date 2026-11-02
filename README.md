@@ -73,6 +73,12 @@ Keys: set `GEMINI_API_KEY` and/or `NVIDIA_API_KEY` in `.env`, or paste them in *
 ### YouTube conversion speed vs TubeMate
 Apps like **TubeMate** use dedicated on-device YouTube parsers tuned for fast MP4/MP3 grabs. **Open Grace Music** routes YouTube through a **server-side yt-dlp + FFmpeg audiophile pipeline** (true MP3 320, FLAC, ALAC, and more). For a TubeMate-like wait time, choose **MP3 320** (typically ~20–60 seconds); studio **FLAC/ALAC** masters may take **2–5 minutes**. OGM does not bundle or ship TubeMate.
 
+### True FLAC vs YouTube source limits
+- **FFmpeg does emit real `.flac`** (ffprobe `codec_name=flac`) when a FLAC job succeeds. Library badges and IndexedDB `format` / `mimeType` / extension come from the job response (`Content-Type`, `X-Audio-Format`, `X-Audio-Extension`, probed codec) — not a hardcoded “MP3 320”.
+- **YouTube audio is already lossy** (AAC/Opus). A FLAC of that stream is a **lossless container of a lossy source**, not a studio master of the original recording. The recorder UI states this when you pick FLAC/ALAC/WAV.
+- If conversion fails (bot check / extract / timeout), OGM may keep a **Live YouTube** tape for listening. That tape is labeled **LIVE STREAM · YOUTUBE**, never FLAC and never MP3 320.
+- **Verify a real FLAC tape:** export from the library (`.flac`), then `ffprobe -show_entries stream=codec_name -of csv=p=0 yourfile.flac` → `flac`. Or check the cassette badge reads **TYPE IV METAL · FLAC 24-BIT** and album notes mention the YouTube lossy-source caveat.
+
 ---
 
 ## Native Android Architecture (`/workspace/app`)

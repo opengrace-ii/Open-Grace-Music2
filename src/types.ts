@@ -22,7 +22,7 @@ export const AUDIOPHILE_FORMATS: AudiophileFormatOption[] = [
     id: 'FLAC',
     name: 'FLAC (Free Lossless)',
     badge: '24-BIT / 96 kHz',
-    spec: 'Studio Master Lossless (.flac)',
+    spec: 'Lossless .flac container (YouTube source is still lossy AAC/Opus)',
     extension: 'flac',
     mimeType: 'audio/flac',
     bitrateKbps: 2304,

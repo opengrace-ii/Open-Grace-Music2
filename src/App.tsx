@@ -78,6 +78,12 @@ import {
   studioFormatWarning,
   waitForConvertJob,
 } from './services/converterApi';
+import {
+  bitrateKbpsForFormat,
+  extensionForFormat,
+  formatFromMimeOrExt,
+  mimeForFormat,
+} from './utils/audioFormatLabel';
 
 export default function App() {
   const { isInstallable, install, isAndroid, isInstalled } = usePWAInstall();
@@ -738,13 +744,26 @@ export default function App() {
         ? decodeURIComponent(response.headers.get('X-Audio-Artist')!)
         : customArtist || 'Open Grace Music';
       const headerDuration = parseInt(response.headers.get('X-Audio-Duration') || '0', 10);
-      const headerFormat = (response.headers.get('X-Audio-Format') || format) as AudiophileFormatId;
-      const headerExt = response.headers.get('X-Audio-Extension') || formatObj.extension;
+      const contentType = (response.headers.get('Content-Type') || '').split(';')[0].trim();
+      const headerExtRaw = response.headers.get('X-Audio-Extension') || '';
+      const headerFormatRaw = (response.headers.get('X-Audio-Format') || '').toUpperCase();
+      const probedFromMime = formatFromMimeOrExt(contentType, headerExtRaw);
+      // Prefer server-probed format; never keep a requested FLAC label if the body is MPEG.
+      let headerFormat = (headerFormatRaw || probedFromMime || format) as AudiophileFormatId;
+      if (probedFromMime && headerFormatRaw && probedFromMime !== headerFormatRaw) {
+        headerFormat = probedFromMime;
+      }
+      const resolvedFormatObj =
+        AUDIOPHILE_FORMATS.find((f) => f.id === headerFormat) || formatObj;
+      const headerExt =
+        headerExtRaw ||
+        resolvedFormatObj.extension ||
+        extensionForFormat(headerFormat);
       const headerSampleRate = parseInt(
-        response.headers.get('X-Audio-Sample-Rate') || String(formatObj.sampleRateHz),
+        response.headers.get('X-Audio-Sample-Rate') || String(resolvedFormatObj.sampleRateHz),
         10
       );
-      const headerBitDepth = response.headers.get('X-Audio-Bit-Depth') || formatObj.bitDepth;
+      const headerBitDepth = response.headers.get('X-Audio-Bit-Depth') || resolvedFormatObj.bitDepth;
       const headerThumb = response.headers.get('X-Audio-Thumbnail')
         ? decodeURIComponent(response.headers.get('X-Audio-Thumbnail')!)
         : ytId
@@ -755,6 +774,34 @@ export default function App() {
       if (!audioBlob || audioBlob.size < 20000) {
         throw new Error('Audio stream was empty.');
       }
+
+      // If the blob MIME disagrees with a lossless claim, trust the blob — never show FLAC for MPEG.
+      const blobMime = (audioBlob.type || contentType || '').split(';')[0].trim();
+      const blobFormat = formatFromMimeOrExt(blobMime, headerExt);
+      if (blobFormat && blobFormat !== headerFormat) {
+        if (headerFormat === 'FLAC' || headerFormat === 'ALAC' || headerFormat === 'WAV' || headerFormat === 'DSD') {
+          if (blobFormat === 'MP3') {
+            headerFormat = 'MP3';
+          }
+        }
+      }
+      if (
+        (format === 'FLAC' || format === 'ALAC' || format === 'WAV' || format === 'DSD') &&
+        headerFormat === 'MP3'
+      ) {
+        throw new Error(
+          `Asked for ${format} but the converter returned MP3. Nothing was saved as ${format}.`
+        );
+      }
+
+      const persistFormatObj =
+        AUDIOPHILE_FORMATS.find((f) => f.id === headerFormat) || resolvedFormatObj;
+      const persistMime =
+        contentType ||
+        blobMime ||
+        persistFormatObj.mimeType ||
+        mimeForFormat(headerFormat);
+      const persistBitrate = bitrateKbpsForFormat(headerFormat, bitrateKbps);
 
       let finalDuration = headerDuration;
       if (!finalDuration || finalDuration <= 0) {
@@ -780,16 +827,19 @@ export default function App() {
         id: ytId ? `yt_${ytId}_${headerFormat.toLowerCase()}` : `url_${Date.now()}`,
         title: headerTitle,
         artist: headerArtist,
-        album: `Open Grace · ${headerFormat}`,
+        album:
+          ytId && (headerFormat === 'FLAC' || headerFormat === 'ALAC' || headerFormat === 'WAV')
+            ? `Open Grace · ${headerFormat} (YouTube source is lossy AAC/Opus)`
+            : `Open Grace · ${headerFormat}`,
         duration: finalDuration,
         sizeBytes: audioBlob.size,
         format: headerFormat,
-        mimeType: audioBlob.type || formatObj.mimeType,
+        mimeType: persistMime,
         source: ytId ? 'YOUTUBE' : 'DIRECT_URL',
         storageStatus: 'PERSISTENT',
         addedAt: Date.now(),
         thumbnailUrl: headerThumb,
-        bitrateKbps,
+        bitrateKbps: persistBitrate,
         sampleRateHz: headerSampleRate,
         bitDepth: headerBitDepth,
         isFavorite: false,
@@ -801,7 +851,11 @@ export default function App() {
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
 
       if (saveToDeviceFolder) {
-        triggerBrowserDownload(audioBlob, headerTitle, headerExt);
+        triggerBrowserDownload(
+          audioBlob,
+          headerTitle,
+          extensionForFormat(headerFormat) || headerExt
+        );
       }
 
       setShowDownloadDialog(false);
@@ -809,7 +863,11 @@ export default function App() {
       setInlineUrl('');
       setInlinePreview(null);
 
-      addToast(`♪ Recorded "${headerTitle}" (${headerFormat})`, 'success');
+      const honesty =
+        ytId && (headerFormat === 'FLAC' || headerFormat === 'ALAC' || headerFormat === 'WAV')
+          ? ` · real .${extensionForFormat(headerFormat)} from lossy YouTube source`
+          : '';
+      addToast(`♪ Recorded "${headerTitle}" (${headerFormat}${honesty})`, 'success');
       playTrack(saved);
     } catch (err: unknown) {
       const { message, code } = humanizeConverterError(err);
@@ -818,7 +876,7 @@ export default function App() {
           id: `yt_live_${ytId}`,
           title: customTitle || inlinePreview?.title || 'YouTube tape',
           artist: customArtist || inlinePreview?.author || 'YouTube',
-          album: 'Open Grace · Live YouTube',
+          album: `Open Grace · Live YouTube (not ${format})`,
           duration: 0,
           sizeBytes: 0,
           format: 'YouTube',
@@ -837,7 +895,10 @@ export default function App() {
         setDownloadError(null);
         setShowDownloadDialog(false);
         setActivePage('home');
-        addToast(`♪ Playing "${saved.title}" in OGM — same YouTube video, live in the deck`, 'success');
+        addToast(
+          `♪ Live YouTube only — ${format} file was not saved. Library badge shows Live YouTube, not ${format}.`,
+          'info'
+        );
         await playTrack(saved);
         return;
       }
@@ -975,14 +1036,14 @@ export default function App() {
             album: s.album,
             duration: 180,
             sizeBytes: blob.size,
-            format: 'FLAC',
-            mimeType: 'audio/mpeg',
+            format: 'MP3',
+            mimeType: blob.type || 'audio/mpeg',
             source: 'SAMPLE_AUDIO',
             storageStatus: 'PERSISTENT',
             addedAt: Date.now(),
-            bitrateKbps: 1411,
-            sampleRateHz: 96000,
-            bitDepth: '24-bit',
+            bitrateKbps: 320,
+            sampleRateHz: 48000,
+            bitDepth: '16-bit',
             isFavorite: false,
           };
           const saved = await saveTrackToDB(track, blob);

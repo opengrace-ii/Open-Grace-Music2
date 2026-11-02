@@ -1,6 +1,7 @@
 import React from 'react';
 import { Play, Pause, RefreshCw, Music2, Download, Trash2, Heart, ListPlus } from 'lucide-react';
 import { Track } from '../types';
+import { isLosslessFormat, tapeTypeBadge } from '../utils/audioFormatLabel';
 
 interface TrackCardProps {
   track: Track;
@@ -37,17 +38,9 @@ export const TrackCard: React.FC<TrackCardProps> = ({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const fmtUpper = track.format.toUpperCase();
-  const isLossless = ['FLAC', 'ALAC', 'DSD', 'WAV'].includes(fmtUpper);
+  const isLossless = isLosslessFormat(track.format);
   const isSpinning = isPlayingThis && isCurrentlyPlaying;
-
-  const tapeTypeBadge = (() => {
-    if (fmtUpper === 'FLAC') return 'TYPE IV METAL · FLAC 24-BIT';
-    if (fmtUpper === 'ALAC') return 'TYPE II CrO₂ · ALAC 24-BIT';
-    if (fmtUpper === 'DSD') return 'MASTER REEL · DSD 192KHZ';
-    if (fmtUpper === 'WAV') return 'STUDIO MASTER · WAV 24-BIT';
-    return `TYPE I NORMAL · MP3 ${track.bitrateKbps || 320}K`;
-  })();
+  const badge = tapeTypeBadge(track);
 
   return (
     <div
@@ -146,7 +139,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({
                     : 'bg-[#141712] text-[#9fa396] border-[#272c23]'
                 }`}
               >
-                {tapeTypeBadge}
+                {badge}
               </span>
             </div>
           </div>

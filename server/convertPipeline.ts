@@ -79,6 +79,74 @@ function clearRawSourceArtifacts(workDir: string) {
   }
 }
 
+/** Probe container + audio codec so we never label MP3 as FLAC (or the reverse). */
+async function probeMasterFile(filePath: string): Promise<{
+  durationSec: number;
+  codecName: string;
+  formatName: string;
+  sampleRate: number;
+}> {
+  let durationSec = 0;
+  let codecName = '';
+  let formatName = '';
+  let sampleRate = 0;
+  try {
+    const { stdout } = await execFileAsync('/usr/bin/ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration,format_name:stream=codec_name,sample_rate',
+      '-select_streams',
+      'a:0',
+      '-of',
+      'json',
+      filePath,
+    ]);
+    const parsed = JSON.parse(stdout) as {
+      format?: { duration?: string; format_name?: string };
+      streams?: Array<{ codec_name?: string; sample_rate?: string }>;
+    };
+    durationSec = Math.round(parseFloat(parsed.format?.duration || '0') || 0);
+    formatName = (parsed.format?.format_name || '').toLowerCase();
+    const stream = parsed.streams?.[0];
+    codecName = (stream?.codec_name || '').toLowerCase();
+    sampleRate = parseInt(stream?.sample_rate || '0', 10) || 0;
+  } catch {
+    // fall through with empty probe
+  }
+  return { durationSec, codecName, formatName, sampleRate };
+}
+
+function codecMatchesRequestedFormat(
+  requested: AudioFormatSpec['format'],
+  codecName: string,
+  formatName: string
+): boolean {
+  const codec = codecName.toLowerCase();
+  const container = formatName.toLowerCase();
+  switch (requested) {
+    case 'FLAC':
+      return codec === 'flac' || container.split(',').includes('flac');
+    case 'ALAC':
+      return codec === 'alac';
+    case 'WAV':
+    case 'DSD':
+      return codec.startsWith('pcm_') || container.split(',').includes('wav');
+    case 'MP3':
+      return codec === 'mp3' || container.split(',').includes('mp3');
+    default:
+      return false;
+  }
+}
+
+function formatMismatchError(requested: string, codecName: string, formatName: string): string {
+  const got = codecName || formatName || 'unknown';
+  return (
+    `Requested ${requested} but FFmpeg wrote ${got}. ` +
+    `OGM will not label this as ${requested} — retry or pick MP3 320.`
+  );
+}
+
 export type ConvertErrorCode = 'YOUTUBE_BOT_CHECK' | 'TIMEOUT' | 'FFMPEG_FAILED' | 'EXTRACTION_FAILED';
 
 export type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
@@ -363,23 +431,20 @@ export async function runConvertPipeline(
         };
       }
 
-      progress('save', 92, 'Probing duration & packaging master file…');
+      progress('save', 92, 'Probing codec & packaging master file…');
 
-      let durationSec = 0;
-      try {
-        const { stdout } = await execFileAsync('/usr/bin/ffprobe', [
-          '-v',
-          'error',
-          '-show_entries',
-          'format=duration',
-          '-of',
-          'default=noprint_wrappers=1:nokey=1',
-          outputFilePath,
-        ]);
-        durationSec = Math.round(parseFloat(stdout.trim()) || 0);
-      } catch {
-        durationSec = 210;
+      const probe = await probeMasterFile(outputFilePath);
+      if (!codecMatchesRequestedFormat(formatSpec.format, probe.codecName, probe.formatName)) {
+        return {
+          ok: false,
+          error: formatMismatchError(formatSpec.format, probe.codecName, probe.formatName),
+          code: 'FFMPEG_FAILED',
+          workDir,
+        };
       }
+
+      const durationSec = probe.durationSec || 210;
+      const actualSampleRate = probe.sampleRate || formatSpec.sampleRate;
 
       const safeFilename =
         title
@@ -395,9 +460,11 @@ export async function runConvertPipeline(
         'X-Audio-Duration': durationSec.toString(),
         'X-Audio-Format': formatSpec.format,
         'X-Audio-Extension': formatSpec.extension,
-        'X-Audio-Sample-Rate': formatSpec.sampleRate.toString(),
+        'X-Audio-Sample-Rate': actualSampleRate.toString(),
         'X-Audio-Bit-Depth': formatSpec.bitDepth,
         'X-Audio-Bitrate-Label': encodeURIComponent(formatSpec.bitrateLabel),
+        'X-Audio-Codec': probe.codecName || formatSpec.format.toLowerCase(),
+        'X-Audio-Container': probe.formatName || formatSpec.extension,
         'X-Audio-Source': extractionMethod,
       };
       if (thumbnailUrl) {
@@ -459,39 +526,50 @@ export async function runConvertPipeline(
     const outputFilePath = path.join(workDir, `master_output.${formatSpec.extension}`);
     progress('ffmpeg', 70, `Transcoding to ${formatSpec.format}…`);
 
-    await execFileAsync(
-      '/usr/bin/ffmpeg',
-      [
-        '-y',
-        '-i',
-        rawDirectPath,
-        ...formatSpec.ffmpegArgs,
-        '-metadata',
-        `title=${title}`,
-        '-metadata',
-        `artist=${artist}`,
-        '-metadata',
-        'album=Open Grace Music · Audiophile Master',
-        outputFilePath,
-      ],
-      { timeout: transcodeTimeout }
-    );
-
-    let durationSec = 0;
     try {
-      const { stdout } = await execFileAsync('/usr/bin/ffprobe', [
-        '-v',
-        'error',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'default=noprint_wrappers=1:nokey=1',
-        outputFilePath,
-      ]);
-      durationSec = Math.round(parseFloat(stdout.trim()) || 0);
-    } catch {
-      durationSec = 180;
+      await execFileAsync(
+        '/usr/bin/ffmpeg',
+        [
+          '-y',
+          '-i',
+          rawDirectPath,
+          ...formatSpec.ffmpegArgs,
+          '-metadata',
+          `title=${title}`,
+          '-metadata',
+          `artist=${artist}`,
+          '-metadata',
+          'album=Open Grace Music · Audiophile Master',
+          outputFilePath,
+        ],
+        { timeout: transcodeTimeout }
+      );
+    } catch (ffmpegErr) {
+      const failure = classifyPipelineError(ffmpegErr, 'ffmpeg');
+      return { ok: false, ...failure, workDir };
     }
+
+    if (!fs.existsSync(outputFilePath) || fs.statSync(outputFilePath).size < 1000) {
+      return {
+        ok: false,
+        error: 'FFmpeg transcoding produced an invalid output file.',
+        code: 'FFMPEG_FAILED',
+        workDir,
+      };
+    }
+
+    const probe = await probeMasterFile(outputFilePath);
+    if (!codecMatchesRequestedFormat(formatSpec.format, probe.codecName, probe.formatName)) {
+      return {
+        ok: false,
+        error: formatMismatchError(formatSpec.format, probe.codecName, probe.formatName),
+        code: 'FFMPEG_FAILED',
+        workDir,
+      };
+    }
+
+    const durationSec = probe.durationSec || 180;
+    const actualSampleRate = probe.sampleRate || formatSpec.sampleRate;
 
     const safeFilename =
       title
@@ -506,9 +584,11 @@ export async function runConvertPipeline(
       'X-Audio-Duration': durationSec.toString(),
       'X-Audio-Format': formatSpec.format,
       'X-Audio-Extension': formatSpec.extension,
-      'X-Audio-Sample-Rate': formatSpec.sampleRate.toString(),
+      'X-Audio-Sample-Rate': actualSampleRate.toString(),
       'X-Audio-Bit-Depth': formatSpec.bitDepth,
       'X-Audio-Bitrate-Label': encodeURIComponent(formatSpec.bitrateLabel),
+      'X-Audio-Codec': probe.codecName || formatSpec.format.toLowerCase(),
+      'X-Audio-Container': probe.formatName || formatSpec.extension,
       'X-Audio-Source': 'direct-url',
     };
 

@@ -146,6 +146,44 @@ app.use((req, res, next) => {
   next();
 });
 
+/** Let the PWA (same-origin or Settings override) read real container/codec headers. */
+const AUDIO_EXPOSE_HEADERS = [
+  'Content-Type',
+  'Content-Disposition',
+  'Content-Length',
+  'X-Audio-Id',
+  'X-Audio-Title',
+  'X-Audio-Artist',
+  'X-Audio-Duration',
+  'X-Audio-Format',
+  'X-Audio-Extension',
+  'X-Audio-Sample-Rate',
+  'X-Audio-Bit-Depth',
+  'X-Audio-Bitrate-Label',
+  'X-Audio-Codec',
+  'X-Audio-Container',
+  'X-Audio-Source',
+  'X-Audio-Thumbnail',
+].join(', ');
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', AUDIO_EXPOSE_HEADERS);
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Extract clean 11-character YouTube Video ID from any URL variant
 export function extractYouTubeId(rawUrl: string): string | null {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
