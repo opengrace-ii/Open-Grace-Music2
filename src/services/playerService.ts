@@ -290,6 +290,7 @@ class AudioPlayerEngine {
     if (this.showVideo) {
       // Reserved pocket above NowPlayingBar + AppPageNav — never under the transport.
       host.style.cssText = [
+        'display:block',
         'position:fixed',
         'left:12px',
         `bottom:${AudioPlayerEngine.YT_DOCK_CLEARANCE}`,
@@ -317,7 +318,7 @@ class AudioPlayerEngine {
     } else {
       // Audio-only: keep the IFrame API alive off-viewport (do not pause).
       host.style.cssText =
-        'position:fixed;width:1px;height:1px;left:-9999px;top:0;opacity:0;overflow:hidden;pointer-events:none;z-index:0;border:0';
+        'display:block;position:fixed;width:1px;height:1px;left:-9999px;top:0;opacity:0;overflow:hidden;pointer-events:none;z-index:0;border:0';
     }
   }
 
