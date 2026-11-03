@@ -21,6 +21,8 @@ data class ResolvedAudio(
     val durationSec: Int,
     val clientName: String,
     val userAgent: String,
+    /** Extra headers (Cookie, Origin, Referer, …) copied from a captured WebView request. */
+    val extraHeaders: Map<String, String> = emptyMap(),
 )
 
 class OnDeviceException(message: String) : Exception(message)

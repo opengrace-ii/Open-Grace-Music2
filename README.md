@@ -83,7 +83,7 @@ OGM is honest about the difference between a **real offline file** and a **live 
 | **Online-only (live)** | **No blob** — only the YouTube video id | `LIVE STREAM · YOUTUBE`, album `Online only · Live YouTube (not downloaded)` | **No** (plays via the YouTube IFrame; needs a connection) | **No** (an iframe pauses when minimized/offline) |
 
 - **A successful record is a genuine offline file.** The server (`server/convertPipeline.ts` + the `/api/convert-audio` job in `server.ts`) fetches the exact video with yt-dlp, transcodes with FFmpeg, probes the codec, and streams the bytes back. The client reads the whole response as a **blob**, verifies it is non-empty and matches the requested family (never labels MPEG as FLAC), and saves it with `saveTrackToDB(track, blob)`. `playerService` then plays that blob from an object URL on a plain HTML5 `<audio>` element — so pause / seek / next and background playback all work, even offline.
-- **OGM never fakes a download.** If the server cannot produce bytes (YouTube `LOGIN_REQUIRED` / bot-check, extraction failure, or timeout — common on the Render free host), **nothing is saved**. You get a clear failure explaining the real fixes (paste youtube.com cookies via the key icon, use the Android APK’s on-device capture, or import a file). A live tape is **never** silently saved and relabeled as MP3/FLAC.
+- **OGM never fakes a download.** If the server cannot produce bytes (YouTube `LOGIN_REQUIRED` / bot-check, extraction failure, or timeout — common on the Render free host), **nothing is saved**. You get a clear failure explaining the real fixes (paste youtube.com cookies via the key icon so the **server** can retry, play the video in the Android APK so the phone can grab YouTube’s stream, or import a file). A live tape is **never** silently saved and relabeled as MP3/FLAC.
 - **Listening live is a separate, explicit choice.** Open the YouTube **Tuner** and tap **Listen** to play a video as a live stream. That tape is labeled `LIVE STREAM · YOUTUBE` / `Online only · Live YouTube (not downloaded)` and is honest that it streams only while online and will not play in the background. The “stuck, cannot pause/forward” symptom is exactly a live tape with no connection — recording it as MP3/FLAC (a real offline file) fixes it.
 - **FFmpeg does emit real `.flac`** (ffprobe `codec_name=flac`) when a FLAC job succeeds. Library badges and IndexedDB `format` / `mimeType` / extension come from the job response (`Content-Type`, `X-Audio-Format`, `X-Audio-Extension`, probed codec) — not a hardcoded “MP3 320”.
 - **YouTube audio is already lossy** (AAC/Opus). A FLAC of that stream is a **lossless container of a lossy source**, not a studio master of the original recording. The recorder UI states this when you pick FLAC/ALAC/WAV.
@@ -107,7 +107,7 @@ Every recording, device-file import, conversion, and live listen is written to a
 
 The downloadable **`public/OpenGraceMusic.apk`** is a **WebView shell** (`MainActivity`) that loads the live PWA at
 **`https://open-grace-music2.onrender.com`** (Listen / Library / Tuner / Schedule / More). Baked default:
-`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 6 / versionName 1.3.0** (adds on-device YouTube audio download — see below; 1.2.2 added the native file picker so LOAD DEVICE FILES works) (background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change).
+`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 7 / versionName 1.3.1** (WebView googlevideo capture for on-device YouTube recording — **reinstall once**; 1.3.0’s InnerTube-only path 403s in 2026). 1.2.2 added the native file picker so LOAD DEVICE FILES works. Background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change.
 
 Compose screens under `ui/` remain in-tree for optional native tooling, but they are **not** the launcher UI in
 shipped APKs — that is why an old binary looked “stuck” on the gramophone-only layout.
@@ -150,19 +150,24 @@ app/src/main/java/com/example/
 
 ---
 
-### On-device YouTube recording (APK 1.3.0+)
+### On-device YouTube recording (APK 1.3.1+ — reinstall once)
 
-Render's datacenter IP is bot-checked by YouTube, so server-side downloads often fail with "Sign in to confirm you're not a bot". Inside the APK, **RECORD now downloads on the phone first** (the phone's own IP), then falls back to the server:
+Render's datacenter IP is bot-checked by YouTube, so server-side downloads often fail with "Sign in to confirm you're not a bot". **1.3.0** tried a hand-rolled InnerTube `player` call on the phone; in 2026 those clients return googlevideo URLs that **HTTP 403** without a real YouTube session (PO token / n-sig). The in-app YouTube embed already talks to YouTube as a real client — **1.3.1 captures that stream**.
 
-1. **APK:** `OgmAndroid.downloadYouTubeAudio(videoId, format, callbackId)` → native InnerTube `youtubei/v1/player` call (clients ANDROID_VR, IOS, ANDROID; hand-rolled, no extra dependency) → the resolved `videoId` must equal the requested id → ranged (1 MiB) download of the best audio stream to app cache under a short foreground notification → served to the PWA at `https://ogm.local/dl/<token>` (intercepted in `shouldInterceptRequest`, streamed from disk) → the PWA `fetch()`es it as a Blob and stores it in IndexedDB.
-2. **Not in the APK, or on-device failed:** the existing server pipeline (yt-dlp with rotating player clients + optional pasted cookies).
-3. **Everything failed:** an accurate error says what failed on the phone and on the server; nothing is saved and a live placeholder is never stored as a download.
+**You must reinstall the APK once** (versionCode 7 / 1.3.1). Then:
+
+1. Play the video in Open Grace Music (tap **Play** on the embed if it is paused) so YouTube issues a real `googlevideo.com/videoplayback` request.
+2. Tap **Record**. The WebView observes that request (URL + Cookie / User-Agent / Origin / Referer), then ranged-downloads the same audio itag. Native waits ~14s if the stream has not appeared yet.
+3. The file is served to the PWA at `https://ogm.local/dl/<token>` and stored in IndexedDB.
+4. If capture never saw a stream, InnerTube is a last resort only. A 403 does **not** dump ANDROID_VR/IOS walls — it tells you to play the video and retry.
+5. **Not in the APK, or on-device failed:** server pipeline (yt-dlp + optional pasted cookies — cookies still help the *server* fallback).
+6. **Everything failed:** nothing is saved; a live placeholder is never stored as a download.
 
 **What file you get:** YouTube audio is already lossy, so the real container is kept and labelled honestly — **M4A (AAC)** (or **OPUS/WebM** if no AAC stream exists). If you picked **MP3**, the downloaded audio is converted on the phone (lamejs) from the lossy source. If you picked **FLAC / ALAC / WAV**, the already-downloaded bytes are POSTed to `POST /api/transcode?format=…` (server FFmpeg, no YouTube access, so no bot-check); if that is unreachable the real M4A is saved instead and the toast says so. DSD is not produced on-device. FLAC/WAV from YouTube is a lossless container around a lossy source — no quality is gained.
 
-Each attempt is written to the **Activity log** (`started` / `progress` / `saved` / `failed`, with `route=on-device` or `route=server`).
+Each attempt is written to the **Activity log** (`started` / `progress` / `saved` / `failed`, with `route=on-device-capture`, `route=on-device-innertube`, or `route=server`).
 
-If YouTube changes its player API, on-device resolution fails loudly with YouTube's real reason; it never substitutes another song.
+OGM never substitutes another song. googlevideo’s `id=` query is often not the watch id; capture binds to the **currently playing** watch id plus recency.
 
 ## Primary host: Render
 
@@ -211,7 +216,7 @@ Use the in-app **INSTALL / Samsung Install** button for step-by-step help.
 
 ### Load device files / import folder
 
-- **APK 1.3.0 (versionCode 6) is required for on-device YouTube recording** (1.2.2 / versionCode 5 is required for LOAD DEVICE FILES). Older shells lack the native file chooser and/or the on-device downloader. These are native shell changes: **reinstall the APK once** (ordinary UI updates still come from the site). The PWA / Chrome works after a normal reload.
+- **APK 1.3.1 (versionCode 7) is required for on-device YouTube recording** (WebView stream capture; 1.3.0 InnerTube-only 403s). 1.2.2 / versionCode 5 is required for LOAD DEVICE FILES. These are native shell changes: **reinstall the APK once** (ordinary UI updates still come from the site). The PWA / Chrome works after a normal reload. Capture needs the video to **actually start playing in the app once** so YouTube issues a real stream.
 - LOAD DEVICE FILES opens the system picker (multi-select audio). Imports run one at a time with an `Importing 12/80` counter, skip non-audio, skip duplicates (same name + size), store real blobs in IndexedDB (offline / background playback), and log each file as SAVED/FAILED in the Activity log.
 - **IMPORT FOLDER** (`webkitdirectory`) appears only in browsers that support it (desktop Chrome/Edge, some Android Chrome). The APK WebView cannot pick folders, and there is no native MediaStore scan: use multi-select there.
 

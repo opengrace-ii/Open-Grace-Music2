@@ -34,9 +34,10 @@ class RangedDownloader(private val http: OkHttpClient) {
                 if (isCancelled()) throw OnDeviceException("Cancelled")
                 val startOffset = offset
                 val end = minOf(offset + CHUNK, total) - 1
-                val req = Request.Builder()
-                    .url(audio.url)
-                    .header("User-Agent", audio.userAgent)
+                val req = applyCapturedHeaders(
+                    Request.Builder().url(audio.url),
+                    audio,
+                )
                     .header("Range", "bytes=$offset-$end")
                     .build()
                 http.newCall(req).execute().use { resp ->
@@ -75,6 +76,35 @@ class RangedDownloader(private val http: OkHttpClient) {
             throw OnDeviceException("Downloaded only $offset bytes — not a real audio file")
         }
         return offset
+    }
+
+    fun probeContentLength(audio: ResolvedAudio): Long {
+        val req = applyCapturedHeaders(
+            Request.Builder().url(audio.url),
+            audio,
+        )
+            .header("Range", "bytes=0-0")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val range = resp.header("Content-Range").orEmpty()
+            val m = Regex("bytes \\d+-\\d+/(\\d+)").find(range)
+            if (m != null) return m.groupValues[1].toLong()
+            val cl = resp.header("Content-Length")?.toLongOrNull()
+            if (resp.code == 206 && cl != null && cl > 1L) return cl
+            if (resp.code == 200 && cl != null && cl > MIN_AUDIO_BYTES) return cl
+            throw OnDeviceException("Could not determine googlevideo length (HTTP ${resp.code})")
+        }
+    }
+
+    private fun applyCapturedHeaders(builder: Request.Builder, audio: ResolvedAudio): Request.Builder {
+        for ((k, v) in audio.extraHeaders) {
+            if (k.equals("Range", true) || k.equals("Host", true) || k.equals("Content-Length", true)) continue
+            builder.header(k, v)
+        }
+        val ua = audio.extraHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+            ?: audio.userAgent
+        builder.header("User-Agent", ua)
+        return builder
     }
 
     private fun looksLikeAudioContainer(f: File, container: String): Boolean {

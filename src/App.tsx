@@ -90,6 +90,7 @@ import {
   downloadYouTubeAudioOnDevice,
   isInsideApk,
   isOnDeviceDownloadAvailable,
+  onDeviceRoute,
   transcodeOnServer,
 } from './services/onDeviceDownload';
 
@@ -169,10 +170,11 @@ export default function App() {
   const filePickerRef = useRef<HTMLInputElement>(null);
   const folderPickerRef = useRef<HTMLInputElement>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number; name: string } | null>(null);
+  const insideApk = isInsideApk();
   const supportsFolderPick =
     typeof document !== 'undefined' &&
     'webkitdirectory' in document.createElement('input') &&
-    !/OpenGraceMusicAPK/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+    !insideApk;
   const [selectedTrackForLyrics, setSelectedTrackForLyrics] = useState<Track | null>(null);
   const [prefilledUrl, setPrefilledUrl] = useState<string | null>(null);
 
@@ -753,10 +755,22 @@ export default function App() {
     await importFiles(files);
   };
 
+  const openDeviceFilePicker = () => {
+    if (importProgress) return;
+    addToast('Opening file picker…', 'info');
+    filePickerRef.current?.click();
+  };
+
+  const deviceFilesHint = insideApk
+    ? 'On this app, pick files (you can select many). Folder pick is for Chrome.'
+    : supportsFolderPick
+      ? 'Pick several songs at once. Folder import reads every audio file inside.'
+      : 'Pick several songs at once (hold a tap to multi-select). Whole-folder import is not available in this browser; select multiple files instead.';
+
   /**
-   * APK-only: resolve + download the exact video's audio on the phone (phone IP, not the
-   * bot-checked server). Saves a real offline blob with its TRUE container. Returns null on
-   * success, or the real failure reason so the caller can fall back to the server route.
+   * APK-only: play the in-app YouTube embed so the WebView loads a real googlevideo
+   * stream, then capture that URL on the phone. Saves a real offline blob with its TRUE
+   * container. Returns the failure reason so the caller can fall back to the server route.
    */
   const recordOnDevice = async (
     ytId: string,
@@ -769,21 +783,39 @@ export default function App() {
   ): Promise<{ ok: true } | { ok: false; reason: string }> => {
     const label = 'Record YouTube';
     let lastLoggedStage = '';
+    let route = 'on-device-capture';
     try {
-      setDownloadProgress(0.04);
-      setDownloadStatus('ON-DEVICE: asking YouTube from this phone…');
+      setDownloadProgress(0.03);
+      setDownloadStatus('Capturing stream: playing this video in Open Grace Music…');
+      setShowVideo(true);
+      try {
+        window.OgmAndroid?.setPlayingYouTubeId?.(ytId);
+      } catch {
+        // older shells
+      }
+      await playerEngine.playYouTubeId(ytId, { title: customTitle, artist: customArtist });
       logActivity({
         action: 'record',
         label,
         result: 'started',
         format,
-        detail: `route=on-device · downloading ${ytId} on the phone (not the server)`,
+        detail: `route=on-device-capture · play then grab googlevideo for ${ytId}`,
         source: trimmedUrl,
       });
 
       const { blob: rawBlob, info } = await downloadYouTubeAudioOnDevice(ytId, format, (p) => {
-        setDownloadProgress(Math.max(0.04, Math.min(0.85, (p.percent || 0) / 100 * 0.85)));
-        setDownloadStatus(`ON-DEVICE: ${p.message}`);
+        const stage = p.stage || '';
+        if (stage === 'capture') route = 'on-device-capture';
+        else if (stage === 'resolve') route = 'on-device-innertube';
+        const pct = Math.max(0.04, Math.min(0.85, ((p.percent || 0) / 100) * 0.85));
+        setDownloadProgress(pct);
+        if (stage === 'capture') {
+          setDownloadStatus(`Capturing stream: ${p.message}`);
+        } else if (stage === 'download') {
+          setDownloadStatus(`Downloading: ${p.message}`);
+        } else {
+          setDownloadStatus(`ON-DEVICE: ${p.message}`);
+        }
         if (p.stage && p.stage !== lastLoggedStage) {
           lastLoggedStage = p.stage;
           logActivity({
@@ -791,11 +823,12 @@ export default function App() {
             label,
             result: 'progress',
             format,
-            detail: `route=on-device · ${p.stage} · ${p.message}`,
+            detail: `route=${route} · ${p.stage} · ${p.message}`,
             source: trimmedUrl,
           });
         }
       });
+      route = onDeviceRoute(info.client);
 
       const title = customTitle || info.title || `YouTube ${ytId}`;
       const artist = customArtist || info.author || 'Open Grace Music';
@@ -879,6 +912,7 @@ export default function App() {
       }
 
       setDownloadProgress(0.97);
+      setDownloadStatus('Saving recorded audio to Library…');
       const saved = await saveTrackToDB(track, finalBlob);
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
       if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, ext);
@@ -894,7 +928,7 @@ export default function App() {
         result: 'saved',
         format: finalFormat,
         sizeBytes: finalBlob.size,
-        detail: `route=on-device (${info.client}) · real .${ext} stored in Library · plays offline${note}`,
+        detail: `route=${onDeviceRoute(info.client)} (${info.client}) · real .${ext} stored in Library · plays offline${note}`,
         source: trimmedUrl,
       });
       addToast(`♪ Recorded "${title}" on this phone (${finalFormat}${note})`, 'success');
@@ -907,7 +941,7 @@ export default function App() {
         label,
         result: 'failed',
         format,
-        detail: `route=on-device · ${reason}`,
+        detail: `route=${route} · ${reason}`,
         source: trimmedUrl,
       });
       return { ok: false, reason };
@@ -1192,15 +1226,13 @@ export default function App() {
       let display: string;
       if (ytId && insideApk) {
         display =
-          `Couldn’t record this video. On this phone: ${onDeviceFailure ?? 'not attempted'}. ` +
-          `On the server: ${message}. Nothing was saved as ${format}. ` +
-          `Try again (check your connection or switch Wi‑Fi/mobile data), paste youtube.com cookies via the key icon ` +
-          `so the server can try, or import an audio file. To only listen live (not an offline file), ` +
-          `open the YouTube Tuner and tap Listen.`;
+          `Couldn’t record this video. ${onDeviceFailure ?? 'The phone did not capture a YouTube audio stream yet.'} ` +
+          `Play the video in Open Grace Music so the phone can grab the same stream YouTube already sent, then retry. ` +
+          `Cookies in Settings still help the server fallback. On the server: ${message}. Nothing was saved as ${format}.`;
       } else if (ytId && serverBlocked) {
         display =
           `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
-          `Paste youtube.com cookies via the key icon and retry, install the Android APK (it downloads on your phone), ` +
+          `Paste youtube.com cookies via the key icon and retry, install the Android APK (play the video in the app so the phone can grab YouTube’s stream), ` +
           `or import an audio file. To only listen live (streams when online, not an offline file), ` +
           `open the YouTube Tuner and tap Listen.`;
       } else {
@@ -1630,6 +1662,27 @@ export default function App() {
 
         {activePage === 'library' && (
         <>
+        <input
+          ref={filePickerRef}
+          type="file"
+          multiple
+          accept="audio/*"
+          onChange={handleLocalFiles}
+          style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+        <input
+          ref={folderPickerRef}
+          type="file"
+          multiple
+          // @ts-expect-error non-standard attribute
+          webkitdirectory=""
+          onChange={handleLocalFiles}
+          style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
         {/* Studio Master Tape Deck (Streamlined URL / YouTube Recorder) */}
         <section className="cassette-card rounded-3xl p-5 sm:p-6 space-y-4">
           {converterApiOnline === false && (
@@ -1871,14 +1924,43 @@ export default function App() {
 
         {/* Cassette Library — all downloads & imports */}
         <section id="cassette-library" className="scroll-mt-24 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="font-serif-display text-xl sm:text-2xl font-bold text-[#f0ece1]">
                 Cassette Library
               </h2>
               <p className="text-xs font-mono text-[#b8d99e] mt-0.5">
                 Your downloads &amp; imports · {tracks.length} track{tracks.length === 1 ? '' : 's'}
               </p>
+            </div>
+            <div className="flex flex-col items-stretch sm:items-end gap-1.5 shrink-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!!importProgress}
+                  onClick={openDeviceFilePicker}
+                  className="cassette-btn cassette-btn-primary px-4 py-2.5 text-xs font-mono"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>
+                    {importProgress
+                      ? `Importing ${importProgress.done + 1}/${importProgress.total}`
+                      : '⏏ LOAD DEVICE FILES'}
+                  </span>
+                </button>
+                {supportsFolderPick && (
+                  <button
+                    type="button"
+                    disabled={!!importProgress}
+                    onClick={() => folderPickerRef.current?.click()}
+                    className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1]"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-[#b8d99e]" />
+                    <span>IMPORT FOLDER</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] font-mono text-[#7d8174] sm:text-right max-w-xs">{deviceFilesHint}</p>
             </div>
           </div>
         </section>
@@ -1987,6 +2069,15 @@ export default function App() {
               <Bell className="w-3 h-3" />
               <span>SCHEDULE</span>
             </button>
+            <button
+              type="button"
+              disabled={!!importProgress}
+              onClick={openDeviceFilePicker}
+              className="cassette-btn px-3 py-1.5 text-xs font-mono whitespace-nowrap text-[#f0ece1]"
+            >
+              <FolderOpen className="w-3 h-3 text-[#b8d99e]" />
+              <span>{importProgress ? 'IMPORTING…' : 'LOAD DEVICE FILES'}</span>
+            </button>
           </div>
 
           <div className="cassette-window flex items-center px-3 py-1.5 rounded-xl min-w-[220px]">
@@ -2048,28 +2139,24 @@ export default function App() {
               {!selectedPlaylistId ? (
               <div className="cassette-bank flex flex-wrap items-center justify-center gap-2">
                 <button
-                  onClick={handleLoadSampleTracks}
-                  className="cassette-btn cassette-btn-primary px-4 py-2.5 text-xs font-mono"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>▶ PLAY STUDIO SAMPLES</span>
-                </button>
-
-<button
                   type="button"
                   disabled={!!importProgress}
-                  onClick={() => {
-                    addToast('Opening file picker…', 'info');
-                    filePickerRef.current?.click();
-                  }}
-                  className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1]"
+                  onClick={openDeviceFilePicker}
+                  className="cassette-btn cassette-btn-primary px-4 py-2.5 text-xs font-mono"
                 >
-                  <FolderOpen className="w-3.5 h-3.5 text-[#b8d99e]" />
+                  <FolderOpen className="w-3.5 h-3.5" />
                   <span>
                     {importProgress
                       ? `Importing ${importProgress.done + 1}/${importProgress.total}`
                       : '⏏ LOAD DEVICE FILES'}
                   </span>
+                </button>
+                <button
+                  onClick={handleLoadSampleTracks}
+                  className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1]"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>▶ PLAY STUDIO SAMPLES</span>
                 </button>
                 {supportsFolderPick && (
                   <button
@@ -2082,36 +2169,12 @@ export default function App() {
                     <span>IMPORT FOLDER</span>
                   </button>
                 )}
-                <input
-                  ref={filePickerRef}
-                  type="file"
-                  multiple
-                  accept="audio/*"
-                  onChange={handleLocalFiles}
-                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
-                  tabIndex={-1}
-                  aria-hidden="true"
-                />
-                <input
-                  ref={folderPickerRef}
-                  type="file"
-                  multiple
-                  // @ts-expect-error non-standard attribute
-                  webkitdirectory=""
-                  onChange={handleLocalFiles}
-                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
-                  tabIndex={-1}
-                  aria-hidden="true"
-                />
                 {importProgress && (
                   <p className="w-full text-center text-[10px] font-mono text-[#9fa396] truncate">
                     {importProgress.name}
                   </p>
                 )}
-                <p className="w-full text-center text-[10px] font-mono text-[#7d8174]">
-                  Pick several songs at once (hold a tap to multi-select).
-                  {supportsFolderPick ? ' Folder import reads every audio file inside.' : ' Whole-folder import is not available in this app; select multiple files instead.'}
-                </p>
+                <p className="w-full text-center text-[10px] font-mono text-[#7d8174]">{deviceFilesHint}</p>
               </div>
               ) : (
                 <button

@@ -31,6 +31,7 @@ import com.example.data.ConverterServerPrefs
 import com.example.data.OgmPublicBase
 import com.example.ondevice.DownloadEvents
 import com.example.ondevice.OnDeviceDownloadManager
+import com.example.ondevice.WebViewStreamCapture
 import com.example.player.OgmPlaybackService
 import org.json.JSONObject
 import android.webkit.WebResourceResponse
@@ -219,8 +220,11 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                 override fun shouldInterceptRequest(
                     view: WebView?,
                     request: WebResourceRequest?
-                ): android.webkit.WebResourceResponse? =
-                    serveLocalDownload(request) ?: super.shouldInterceptRequest(view, request)
+                ): android.webkit.WebResourceResponse? {
+                    // Side-effect only: remember googlevideo audio URLs the IFrame already loaded.
+                    runCatching { WebViewStreamCapture.observe(request) }
+                    return serveLocalDownload(request) ?: super.shouldInterceptRequest(view, request)
+                }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
@@ -526,16 +530,23 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         @JavascriptInterface
         fun shellVersion(): String = BuildConfig.VERSION_NAME
 
+        /** Watch id currently playing in the PWA IFrame — used to bind googlevideo intercepts. */
+        @JavascriptInterface
+        fun setPlayingYouTubeId(videoId: String?) {
+            WebViewStreamCapture.setCurrentlyPlaying(videoId)
+        }
+
         /**
-         * Resolve + download the exact video's audio on this phone. Results arrive via
+         * Capture + download the exact video's audio on this phone. Prefers the googlevideo
+         * URL the WebView already loaded. Results arrive via
          * window.__ogmNativeDownload(callbackId, 'progress'|'done'|'error', jsonString).
-         * [format] is the user's requested format; the file delivered is always the real
-         * downloaded container (M4A/AAC or OPUS) and the web layer decides any transcoding.
          */
         @JavascriptInterface
         fun downloadYouTubeAudio(videoId: String?, format: String?, callbackId: String?) {
             val cb = callbackId?.takeIf { it.isNotBlank() } ?: return
-            downloadManager.start(videoId.orEmpty().trim(), cb, downloadEvents)
+            val id = videoId.orEmpty().trim()
+            WebViewStreamCapture.setRequested(id)
+            downloadManager.start(id, cb, downloadEvents)
         }
 
         @JavascriptInterface

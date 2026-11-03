@@ -1,8 +1,8 @@
 /**
  * Bridge to the Android APK shell's on-device YouTube audio downloader.
  *
- * The native side resolves the exact video's audio stream on the phone (phone IP, not the
- * bot-checked datacenter), downloads it to app cache, and serves it at https://ogm.local/dl/<token>
+ * Native side prefers the googlevideo URL the WebView IFrame already loaded (real YouTube
+ * session), downloads it ranged to app cache, and serves it at https://ogm.local/dl/<token>
  * so we can fetch() it as a Blob without base64-ing huge strings through the JS bridge.
  */
 
@@ -20,6 +20,12 @@ export interface OnDeviceDone {
   author: string;
   durationSec: number;
   client: string;
+}
+
+export type OnDeviceRoute = 'on-device-capture' | 'on-device-innertube';
+
+export function onDeviceRoute(client: string | undefined): OnDeviceRoute {
+  return client === 'WEBVIEW_CAPTURE' ? 'on-device-capture' : 'on-device-innertube';
 }
 
 export interface OnDeviceProgress {
@@ -71,7 +77,7 @@ function installReceiver() {
   };
 }
 
-/** True only inside the APK shell version that ships the downloader (1.3.0+). */
+/** True only inside the APK shell version that ships the downloader (1.3.1+ capture). */
 export function isOnDeviceDownloadAvailable(): boolean {
   try {
     const b = typeof window !== 'undefined' ? window.OgmAndroid : undefined;

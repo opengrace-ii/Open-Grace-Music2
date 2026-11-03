@@ -99,7 +99,7 @@
     <div class="wrap">
       <h1>Open Grace Music</h1>
       <p class="sub">
-        Android WebView shell (~25 MB, version 1.3.0+ (needed for on-device YouTube recording — reinstall once)) that loads the live PWA (Listen / Library / Tuner /
+        Android WebView shell (~25 MB, version 1.3.1+ (needed for on-device YouTube recording — reinstall once)) that loads the live PWA (Listen / Library / Tuner /
         Schedule / More) and keeps music playing in the background. Open this page in <strong>Chrome</strong> on your phone.
       </p>
 
@@ -127,14 +127,15 @@
       <div class="card note">
         <h2>On-device vs server recording</h2>
       <p class="sub">
-        <strong>1.3.0+</strong> downloads YouTube audio <strong>on your phone</strong> first (your own IP, so no
-        bot-check), then falls back to the server. You get a real M4A (AAC) file, or MP3/FLAC converted from it —
-        YouTube audio is already lossy. Installing 1.3.0 needs a <strong>one-time reinstall</strong>.
+        <strong>1.3.1+</strong> captures the YouTube audio stream the in-app player already loads (play the
+        video once so YouTube issues a real googlevideo request), then falls back to the server. You get a real
+        M4A (AAC) file, or MP3/FLAC converted from it — YouTube audio is already lossy. Installing 1.3.1 needs a
+        <strong>one-time reinstall</strong> (1.3.0 InnerTube-only recording 403s).
       </p>
 
       <h2>Do you need to reinstall every time?</h2>
         <p>
-          <strong>No.</strong> After WebView shell <strong>1.3.0+ (needed for on-device YouTube recording — reinstall once)</strong> / versionCode <strong>6+</strong>,
+          <strong>No.</strong> After WebView shell <strong>1.3.1+ (needed for on-device YouTube recording — reinstall once)</strong> / versionCode <strong>7+</strong>,
           UI and music features come from the <strong>live website</strong> when Render redeploys —
           just reopen the app. Reinstall the APK <strong>only</strong> when the native shell changes
           (background audio, permissions). Phone looks old? Force-stop + reopen or clear app cache.
@@ -146,7 +147,7 @@
       <div class="card">
         <h2>Samsung Galaxy S25 — install steps</h2>
         <ol>
-          <li>Uninstall any older Open Grace Music APK (use versionCode 6+ / 1.3.0: background play, file picker, and on-device YouTube recording).</li>
+          <li>Uninstall any older Open Grace Music APK (use versionCode 7+ / 1.3.1: play the video in the app, then record — the phone grabs YouTube’s stream).</li>
           <li>After download, open the APK from <strong>My Files → Downloads</strong>.</li>
           <li>
             <strong>Settings → Security → Install unknown apps</strong> — allow

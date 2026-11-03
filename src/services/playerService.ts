@@ -22,12 +22,13 @@ declare global {
     /** Injected by the Open Grace Music Android WebView shell. */
     OgmAndroid?: {
       onPlaybackState: (playing: boolean, title: string, artist: string) => void;
-      /** APK 1.3.0+: on-device YouTube audio download. */
+      /** APK 1.3.1+: WebView googlevideo capture + on-device download. */
       supportsOnDeviceDownload?: () => boolean;
       shellVersion?: () => string;
       downloadYouTubeAudio?: (videoId: string, format: string, callbackId: string) => void;
       cancelDownload?: (callbackId: string) => void;
       releaseDownload?: (token: string) => void;
+      setPlayingYouTubeId?: (videoId: string) => void;
     };
     __ogmNativeDownload?: (callbackId: string, event: string, payloadJson: string) => void;
     __ogmPlayerEngine?: {
@@ -243,9 +244,53 @@ class AudioPlayerEngine {
         track?.title || 'Open Grace Music',
         track?.artist || 'Open Grace Music'
       );
+      this.notifyPlayingYouTubeId();
     } catch {
       // Native bridge unavailable (browser / PWA)
     }
+  }
+
+  private notifyPlayingYouTubeId() {
+    try {
+      const id = this.usingYoutube ? this.currentTrack?.ytVideoId || '' : '';
+      window.OgmAndroid?.setPlayingYouTubeId?.(id);
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Start the in-app YouTube IFrame for [videoId] so the APK WebView loads a real
+   * googlevideo stream (needed for on-device capture). Does not save a library tape.
+   */
+  public async playYouTubeId(
+    videoId: string,
+    meta?: { title?: string; artist?: string }
+  ): Promise<void> {
+    const track: Track = {
+      id: `yt_capture_${videoId}`,
+      title: meta?.title || `YouTube ${videoId}`,
+      artist: meta?.artist || 'YouTube',
+      album: 'Open Grace Music',
+      duration: 0,
+      sizeBytes: 0,
+      format: 'YouTube',
+      mimeType: 'video/youtube',
+      source: 'YOUTUBE',
+      storageStatus: 'DEVICE_LOCAL',
+      addedAt: Date.now(),
+      thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      bitrateKbps: 0,
+      isFavorite: false,
+      originalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      ytVideoId: videoId,
+    };
+    try {
+      window.OgmAndroid?.setPlayingYouTubeId?.(videoId);
+    } catch {
+      // ignore
+    }
+    await this.playTrack(track);
   }
 
   private notifyTime(current: number, duration: number) {
@@ -365,6 +410,7 @@ class AudioPlayerEngine {
     }
     this.ytPlayer = null;
     this.usingYoutube = false;
+    this.notifyPlayingYouTubeId();
     if (this.ytHost) {
       this.ytHost.style.display = 'none';
     }
@@ -378,6 +424,7 @@ class AudioPlayerEngine {
       this.htmlAudio.pause();
       this.htmlAudio.removeAttribute('src');
       this.usingYoutube = true;
+      this.notifyPlayingYouTubeId();
       this.ensureYtHost();
       await loadYoutubeIframeApi();
       const videoId = track.ytVideoId;
