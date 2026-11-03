@@ -1,4 +1,4 @@
-# Audit notes (1.3.4)
+# Audit notes (1.3.5)
 
 Findings from the Kotlin + TS/React + server pass. Fixed in this ship unless marked remaining.
 
@@ -14,7 +14,7 @@ Findings from the Kotlin + TS/React + server pass. Fixed in this ship unless mar
 | Med | `server.ts` convert cookies | Cookies accepted on **query string** (access logs) | Yes — body only. |
 | Med | `youtubeSession.ts` `openYouTubeActivateTab` | TV verification URL not host-checked | Yes — Google/YouTube https only. |
 | Med | `YouTubeConnectPanel.tsx`, `App.tsx`, `MorePage.tsx` | Instruction-manual copy; duplicate Connect blocks / error essays | Yes — ~2 short lines + Connect/Sign out; ToS on More + README. |
-| Low | `OnDeviceDownloadManager.kt` | Unused InnerTube production path (clients 403 without PO token) | Remaining — parser kept for unit tests only; download path does not call it. |
+| Low | `OnDeviceDownloadManager.kt` | InnerTube last-resort | Fixed in 1.3.5 — WEB / WEB_EMBEDDED / TVHTML5 with CookieManager cookies; 403 is not labelled mismatch. |
 | Low | `app/.../ui/` Compose | Second YouTube WebView / JS bridge in unused Compose screens | Remaining — not the shipped launcher. |
 | Low | `src/services/youtubeCookies.ts` / oauth localStorage | XSS on the PWA origin can still read pasted cookies / TV tokens | Remaining — expected for a same-origin PWA; native cookies are no longer written to localStorage. |
 | Low | `src/components/StorageBanner.tsx` | Unused React banner | Yes — deleted. |

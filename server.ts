@@ -36,9 +36,9 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 43123;
 
 app.use(express.json({ limit: '10mb' }));
 
-const YT_DLP_TIMEOUT_MS = 120_000;
+const YT_DLP_TIMEOUT_MS = 300_000;
 const YT_DLP_MP3_TIMEOUT_MS = 90_000;
-const FFMPEG_TIMEOUT_MS = 120_000;
+const FFMPEG_TIMEOUT_MS = 240_000;
 const FFMPEG_MP3_TIMEOUT_MS = 90_000;
 
 type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
@@ -98,14 +98,18 @@ function classifyPipelineError(
   if (killed || lower.includes('timed out') || lower.includes('etimedout')) {
     return {
       code: 'TIMEOUT',
-      error: 'Conversion timed out after 2 minutes. Try MP3 on Wi‑Fi or retry shortly.',
+      error:
+        'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
     };
   }
-  if (/sign in to confirm|not a bot|http error 429|http error 403|cookies are needed/i.test(lower)) {
+  if (
+    /login_required|sign in to confirm|please sign in|not a bot|http error 429|http error 403|cookies are needed|confirm your age/i.test(
+      lower
+    )
+  ) {
     return {
       code: 'YOUTUBE_BOT_CHECK',
-      error:
-        'YouTube blocked this video. Connect YouTube and retry.',
+      error: 'YouTube asked for a login (LOGIN_REQUIRED). Reconnect YouTube and retry.',
     };
   }
   if (phase === 'ffmpeg') {

@@ -29,6 +29,7 @@ declare global {
       cancelDownload?: (callbackId: string) => void;
       releaseDownload?: (token: string) => void;
       setPlayingYouTubeId?: (videoId: string) => void;
+      setRequestedYouTubeId?: (videoId: string) => void;
       startYouTubeLogin?: () => void;
       hasYouTubeSession?: () => boolean;
       youtubeSessionStatus?: () => string;
