@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bell, Disc3, ListMusic, Loader2, Play, Youtube } from 'lucide-react';
+import { Bell, Disc3, FolderOpen, ListMusic, Loader2, Play, Youtube } from 'lucide-react';
 import { AppPage, ListenSchedule, Track, UserPlaylist } from '../types';
 import { LastNotifiedListen } from '../services/lastNotified';
 import {
@@ -129,9 +129,17 @@ export const HomeListenDashboard: React.FC<HomeListenDashboardProps> = ({
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => onOpenPage('library')}
+          className="cassette-btn w-full justify-center px-4 py-3 text-xs font-mono text-[#f0ece1]"
+        >
+          <FolderOpen className="w-4 h-4 text-[#b8d99e]" />
+          <span>Library — Load Device Files lives there</span>
+        </button>
         <p className="text-[11px] font-mono text-[#686b60] leading-relaxed">
-          Studio AI is not a chat bot on this screen. Open a playing tape → full player STUDIO AI or NOTES → Transcript /
-          Listen notes.
+          Songs already on this phone are imported from Library (⏏ LOAD DEVICE FILES), not from Listen. Studio AI is
+          not a chat bot on this screen. Open a playing tape → full player STUDIO AI or NOTES → Transcript / Listen notes.
         </p>
       </div>
 
