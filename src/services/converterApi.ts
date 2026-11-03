@@ -101,44 +101,7 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
   return { message, code: 'EXTRACTION_FAILED' };
 }
 
-/** One accurate sentence for the recorder. Never says Connect YouTube when already connected. */
-export function recordFailureSentence(
-  format: string,
-  serverMessage: string,
-  code: ConverterErrorCode,
-  onDeviceFailure: string | null,
-  youtubeConnected: boolean
-): string {
-  const blob = `${serverMessage} ${onDeviceFailure || ''} ${code}`.toLowerCase();
-  if (code === 'TIMEOUT' || /timed out|timeout/.test(blob)) {
-    return `Couldn’t save this as ${format}. Conversion timed out — try MP3 320 or retry on Wi‑Fi.`;
-  }
-  if (
-    code === 'YOUTUBE_BOT_CHECK' ||
-    /login_required|asked for a login|sign in|not a bot|cookies are needed/.test(blob)
-  ) {
-    return youtubeConnected
-      ? `Couldn’t save this as ${format}. YouTube asked for a login again — reconnect and retry.`
-      : `Couldn’t save this as ${format}. Connect YouTube and retry.`;
-  }
-  if (/did not match|different video/.test(blob)) {
-    return `Couldn’t save this as ${format}. YouTube resolved a different video — retry this exact URL.`;
-  }
-  if (/http 403|blocked this stream/.test(blob)) {
-    return youtubeConnected
-      ? `Couldn’t save this as ${format}. YouTube blocked the stream (403). Play the video, then retry.`
-      : `Couldn’t save this as ${format}. Connect YouTube and retry.`;
-  }
-  if (
-    code === 'EXTRACTION_FAILED' ||
-    /missed this video|no audio|no stream|could not fetch|no playable/.test(blob)
-  ) {
-    return youtubeConnected
-      ? `Couldn’t save this as ${format}. No playable audio stream for this video. Play it, then retry Record.`
-      : `Couldn’t save this as ${format}. Connect YouTube and retry.`;
-  }
-  return `Couldn’t save this as ${format}. ${serverMessage}`;
-}
+export { recordFailureSentence } from './recordFailureSentence';
 
 export async function checkConverterApiAvailable(): Promise<boolean> {
   try {

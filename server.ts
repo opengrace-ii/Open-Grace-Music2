@@ -109,7 +109,8 @@ function classifyPipelineError(
   ) {
     return {
       code: 'YOUTUBE_BOT_CHECK',
-      error: 'YouTube asked for a login (LOGIN_REQUIRED). Reconnect YouTube and retry.',
+      error:
+        'YouTube asked for a login (LOGIN_REQUIRED). Converter host is blocked — Chrome cookies (key icon) or APK 1.3.5 Record.',
     };
   }
   if (phase === 'ffmpeg') {

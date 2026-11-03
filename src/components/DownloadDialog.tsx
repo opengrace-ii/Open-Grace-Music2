@@ -352,7 +352,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
                 rows={2}
                 value={cookies}
                 onChange={(e) => setCookies(e.target.value)}
-                placeholder="Optional: paste youtube.com cookies"
+                placeholder="Chrome youtube.com cookies (Netscape or header)"
                 className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
             </div>

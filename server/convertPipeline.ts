@@ -3,14 +3,21 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { refreshYoutubeAccessToken } from './youtubeTvOauth.ts';
 import {
   describeYoutubeIdMatch,
   inspectInfoJson,
   matchExtractedYoutubeId,
   type YoutubeIdMatchResult,
 } from './youtubeIdMatch.ts';
-import { YOUTUBE_PLAYER_CLIENTS_OAUTH, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
+import { YOUTUBE_PLAYER_CLIENTS_COOKIES, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
+import {
+  EXTRACT_STALL_MS,
+  parseYtDlpDownloadPercent,
+  runYtDlpWatched,
+  YtDlpWatchdogError,
+} from './ytDlpWatchdog.ts';
+
+export { EXTRACT_STALL_MS, runYtDlpWatched, YtDlpWatchdogError } from './ytDlpWatchdog.ts';
 export interface AudioFormatSpec {
   format: 'FLAC' | 'ALAC' | 'DSD' | 'WAV' | 'MP3';
   extension: string;
@@ -190,11 +197,28 @@ export type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' |
 
 export type ProgressEmitter = (stage: ConvertStage, percent: number, message: string) => void;
 
+export const YOUTUBE_LOGIN_REQUIRED_ERROR =
+  'YouTube asked for a login (LOGIN_REQUIRED). Converter host is blocked — Chrome cookies (key icon) or APK 1.3.5 Record.';
+
 function pipelineErrorText(err: unknown): string {
   if (!err || typeof err !== 'object') return String(err);
-  const e = err as { message?: string; stderr?: string | Buffer };
+  const e = err as { message?: string; stderr?: string | Buffer; lastUsefulLine?: string };
   const stderr = e.stderr ? String(e.stderr) : '';
-  return [stderr, e.message].filter(Boolean).join(' ').trim();
+  const last = e.lastUsefulLine ? String(e.lastUsefulLine) : '';
+  return [last, stderr, e.message].filter(Boolean).join(' ').trim();
+}
+
+function lastExtractLine(err: unknown): string {
+  if (!err || typeof err !== 'object') return '';
+  const e = err as { lastUsefulLine?: string; stderr?: string | Buffer; message?: string };
+  const last = (e.lastUsefulLine || '').trim();
+  if (last) return last.slice(0, 180);
+  const stderr = e.stderr ? String(e.stderr).trim() : '';
+  if (stderr) {
+    const lines = stderr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    return (lines[lines.length - 1] || '').slice(0, 180);
+  }
+  return (e.message || '').slice(0, 180);
 }
 
 export function classifyPipelineError(
@@ -203,15 +227,11 @@ export function classifyPipelineError(
 ): { code: ConvertErrorCode; error: string } {
   const raw = pipelineErrorText(err);
   const lower = raw.toLowerCase();
+  const stalled = !!(err && typeof err === 'object' && (err as { stalled?: boolean }).stalled);
+  const timedOut = !!(err && typeof err === 'object' && (err as { timedOut?: boolean }).timedOut);
   const killed = !!(err && typeof err === 'object' && (err as { killed?: boolean }).killed);
+  const lastLine = lastExtractLine(err);
 
-  if (killed || lower.includes('timed out') || lower.includes('etimedout')) {
-    return {
-      code: 'TIMEOUT',
-      error:
-        'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
-    };
-  }
   if (
     /login_required|sign in to confirm|please sign in|not a bot|http error 429|http error 403|cookies are needed|confirm your age/i.test(
       lower
@@ -219,7 +239,30 @@ export function classifyPipelineError(
   ) {
     return {
       code: 'YOUTUBE_BOT_CHECK',
-      error: 'YouTube asked for a login (LOGIN_REQUIRED). Reconnect YouTube and retry.',
+      error: YOUTUBE_LOGIN_REQUIRED_ERROR,
+    };
+  }
+  if (stalled) {
+    return {
+      code: 'TIMEOUT',
+      error: lastLine
+        ? `YouTube extract stalled — ${lastLine}`
+        : 'YouTube extract stalled (no yt-dlp progress). Converter host may be blocked.',
+    };
+  }
+  if (killed || timedOut || lower.includes('timed out') || lower.includes('etimedout')) {
+    if (phase === 'extract') {
+      return {
+        code: 'TIMEOUT',
+        error: lastLine
+          ? `YouTube extract timed out — ${lastLine}`
+          : 'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
+      };
+    }
+    return {
+      code: 'TIMEOUT',
+      error:
+        'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -244,7 +287,7 @@ export function classifyPipelineError(
   }
   return {
     code: 'EXTRACTION_FAILED',
-    error: technical.slice(0, 220) || 'Could not extract an audio stream for this link.',
+    error: (lastLine || technical).slice(0, 220) || 'Could not extract an audio stream for this link.',
   };
 }
 
@@ -253,7 +296,7 @@ export interface ConvertPipelineParams {
   formatSpec: AudioFormatSpec;
   requestedBitrate: number;
   userCookies?: string;
-  /** YouTube TV oauth refresh token from Connect YouTube (web). Never log. */
+  /** TV oauth refresh token from Connect YouTube (web). Ignored by yt-dlp — cookies only. Never log. */
   youtubeOauthRefresh?: string;
   customTitle?: string;
   customArtist?: string;
@@ -337,26 +380,28 @@ export async function runConvertPipeline(
       const canonicalWatchUrl = `https://www.youtube.com/watch?v=${ytId}`;
       let downloadedRawPath: string | null = null;
 
-      let accessToken = '';
-      const oauthRefresh = youtubeOauthRefresh.trim();
-      if (oauthRefresh) {
-        const refreshed = await refreshYoutubeAccessToken(oauthRefresh);
-        if (refreshed) accessToken = refreshed.accessToken;
+      if (youtubeOauthRefresh.trim() && !userCookies) {
+        console.log('[convert-audio] TV oauth is not used by yt-dlp (YouTube OAuth removed); cookies required');
       }
-      const cookieArgs = youtubeYtdlpAuthArgs(workDir, userCookies, accessToken);
-      const playerClients = accessToken
-        ? [...YOUTUBE_PLAYER_CLIENTS_OAUTH, ...YOUTUBE_PLAYER_CLIENTS.filter((c) => !YOUTUBE_PLAYER_CLIENTS_OAUTH.includes(c))]
+      const cookieArgs = youtubeYtdlpAuthArgs(workDir, userCookies);
+      const playerClients = userCookies
+        ? [
+            ...YOUTUBE_PLAYER_CLIENTS_COOKIES,
+            ...YOUTUBE_PLAYER_CLIENTS.filter((c) => !YOUTUBE_PLAYER_CLIENTS_COOKIES.includes(c)),
+          ]
         : YOUTUBE_PLAYER_CLIENTS;
 
       let lastExtractFailure: { code: ConvertErrorCode; error: string } | null = null;
 
-      progress('extract', 28, `Extracting source audio (${formatSpec.format})…`);
+      progress('extract', 32, `Extracting source audio (${formatSpec.format})…`);
 
-      let extractPercent = 30;
+      let extractPercent = 32;
+      let lastOutputAt = Date.now();
       const extractHeartbeat = setInterval(() => {
-        extractPercent = Math.min(58, extractPercent + 4);
-        progress('extract', extractPercent, `Extracting from YouTube (yt-dlp)… ${extractPercent}%`);
-      }, 3500);
+        if (Date.now() - lastOutputAt >= 8000) {
+          progress('extract', extractPercent, 'Waiting on YouTube…');
+        }
+      }, 4000);
 
       const markExtracted = (playerClient: string | null, attempt: ExtractAttempt & { status: 'ok' }) => {
         downloadedRawPath = attempt.path;
@@ -375,15 +420,17 @@ export async function runConvertPipeline(
             clientArgs.push('--extractor-args', `youtube:player_client=${playerClient}`);
           }
           try {
-            await execFileAsync(
-              'yt-dlp',
+            await runYtDlpWatched(
               [
                 '--no-playlist',
                 '--no-warnings',
+                '--newline',
                 '--socket-timeout',
-                '30',
+                '20',
                 '--retries',
-                '2',
+                '1',
+                '--fragment-retries',
+                '1',
                 '--write-info-json',
                 ...ytDlpJsRuntimeArgs(),
                 '-f',
@@ -394,7 +441,24 @@ export async function runConvertPipeline(
                 rawInputTemplate,
                 canonicalWatchUrl,
               ],
-              { timeout: extractTimeout, maxBuffer: 8 * 1024 * 1024 }
+              {
+                timeoutMs: extractTimeout,
+                stallMs: EXTRACT_STALL_MS,
+                onLine: (line) => {
+                  lastOutputAt = Date.now();
+                  const dl = parseYtDlpDownloadPercent(line);
+                  if (dl != null) {
+                    extractPercent = 32 + Math.round((Math.min(100, dl) / 100) * 26);
+                    progress(
+                      'extract',
+                      extractPercent,
+                      `Extracting from YouTube (yt-dlp)… ${Math.round(dl)}%`
+                    );
+                  } else if (/ERROR:|LOGIN_REQUIRED/i.test(line)) {
+                    progress('extract', extractPercent, 'Waiting on YouTube…');
+                  }
+                },
+              }
             );
             const attempt = evaluateExtractedDownload(workDir, ytId);
             if (attempt.status === 'ok') {
@@ -412,15 +476,19 @@ export async function runConvertPipeline(
             }
           } catch (directErr) {
             const classified = classifyPipelineError(directErr, 'extract');
-            const attempt = evaluateExtractedDownload(workDir, ytId);
-            if (attempt.status === 'ok') {
-              markExtracted(playerClient, attempt);
-              break;
-            }
-            if (classified.code === 'TIMEOUT' || classified.code === 'YOUTUBE_BOT_CHECK') {
-              lastExtractFailure = classified;
-            } else if (attempt.status === 'mismatch' && attempt.match.reportedId) {
-              lastExtractFailure = mismatchError(ytId, attempt.match.reportedId);
+            const watchdogErr = directErr instanceof YtDlpWatchdogError ? directErr : null;
+            const aborted = classified.code === 'TIMEOUT' || classified.code === 'YOUTUBE_BOT_CHECK';
+            if (!watchdogErr?.stalled && !watchdogErr?.killed && !watchdogErr?.timedOut) {
+              const attempt = evaluateExtractedDownload(workDir, ytId);
+              if (attempt.status === 'ok') {
+                markExtracted(playerClient, attempt);
+                break;
+              }
+              if (attempt.status === 'mismatch' && attempt.match.reportedId) {
+                lastExtractFailure = mismatchError(ytId, attempt.match.reportedId);
+              } else {
+                lastExtractFailure = classified;
+              }
             } else {
               lastExtractFailure = classified;
             }
@@ -428,6 +496,7 @@ export async function runConvertPipeline(
               `[convert-audio] YouTube direct failed (${ytId}${playerClient ? ` client=${playerClient}` : ''}):`,
               lastExtractFailure.error
             );
+            if (aborted) break;
           }
         }
       } finally {

@@ -129,10 +129,14 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ compac
   };
 
   const blurb = nativeLogin
-    ? 'Sign in on Google’s page in this app. We never collect your password.'
+    ? status === 'connected'
+      ? 'Signed in on this phone. Record uses this session.'
+      : 'Sign in on Google’s page in this app. We never collect your password.'
     : insideApk
       ? 'This APK is too old. Reinstall 1.3.5+ for Connect YouTube, or use a TV code in Chrome.'
-      : 'Opens a YouTube TV code in a new tab. We never collect your password.';
+      : status === 'connected'
+        ? 'Valid in this browser. Render Record still needs cookies (key) or APK 1.3.5.'
+        : 'TV code stays in this browser — not a download session. Cookies (key) or APK 1.3.5 Record.';
 
   return (
     <div className={`rounded-xl border border-[#3a4433] bg-[#11120f] ${compact ? 'p-2.5' : 'p-3.5'} space-y-2`}>

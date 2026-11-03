@@ -6,7 +6,6 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenAI } from '@google/genai';
 import { fetchYoutubeTranscript } from './youtubeTranscript.ts';
-import { refreshYoutubeAccessToken } from './youtubeTvOauth.ts';
 import { youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
 
 const execFileAsync = promisify(execFile);
@@ -80,13 +79,7 @@ async function extractShortMp3(
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-ai-'));
   const outTemplate = path.join(workDir, 'clip.%(ext)s');
   const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  let accessToken = '';
-  const refresh = (auth?.youtubeOauthRefresh || '').trim();
-  if (refresh) {
-    const refreshed = await refreshYoutubeAccessToken(refresh);
-    if (refreshed) accessToken = refreshed.accessToken;
-  }
-  const authArgs = youtubeYtdlpAuthArgs(workDir, auth?.cookies || '', accessToken);
+  const authArgs = youtubeYtdlpAuthArgs(workDir, auth?.cookies || '');
   try {
     try {
       await execFileAsync(
@@ -125,7 +118,7 @@ async function extractShortMp3(
           ok: false,
           loginRequired: true,
           error:
-            'YouTube asked for a login. Connect YouTube, then retry Transcript.',
+            'YouTube asked for a login. Converter host is blocked — Chrome cookies (key) or APK 1.3.5.',
         };
       }
       return {
