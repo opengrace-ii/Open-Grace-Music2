@@ -75,6 +75,10 @@ Keys: set `GEMINI_API_KEY` and/or `NVIDIA_API_KEY` in `.env`, or paste them in *
 ### YouTube conversion speed vs TubeMate
 Apps like **TubeMate** use dedicated on-device YouTube parsers tuned for fast MP4/MP3 grabs. **Open Grace Music** routes YouTube through a **server-side yt-dlp + FFmpeg audiophile pipeline** (true MP3 320, FLAC, ALAC, and more). For a TubeMate-like wait time, choose **MP3 320** (typically ~20–60 seconds); studio **FLAC/ALAC** masters may take **2–5 minutes**. OGM does not bundle or ship TubeMate.
 
+### Web Record (Chrome / Edge PWA) — this-tab audio
+
+On the website, **Record** does not send the YouTube URL to Render yt-dlp unless you pasted youtube.com cookies (key icon). TV **Connected** is not cookies. Chrome asks to share **this tab**; tick **Also share tab audio**, choose the Open Grace Music tab. The in-app player plays that exact watch id and MediaRecorder saves a real IndexedDB blob (`route=browser-tab`). Ask for MP3 and it is encoded with lamejs; FLAC/ALAC/WAV cannot be lossless-encoded in the browser, so the file is labelled WEBM/M4A honestly. Progress is recording time, not a fake extract percent. Render convert remains a cookies-only fallback. The Android APK still uses on-device googlevideo intercept (no screen share).
+
 ### What “download” means (offline file vs online-only live tape)
 
 OGM is honest about the difference between a **real offline file** and a **live YouTube stream**. There are only two possible outcomes when you record a link, and the app never blurs them:
@@ -178,7 +182,7 @@ No APK version bump for this web path. Google can still refuse the download.
 
 **What file you get:** YouTube audio is already lossy, so the real container is kept and labelled honestly — **M4A (AAC)** (or **OPUS/WebM** if no AAC stream exists). If you picked **MP3**, the downloaded audio is converted on the phone (lamejs) from the lossy source. If you picked **FLAC / ALAC / WAV**, the already-downloaded bytes are POSTed to `POST /api/transcode?format=…` (server FFmpeg, no YouTube access, so no bot-check); if that is unreachable the real M4A is saved instead and the toast says so. DSD is not produced on-device. FLAC/WAV from YouTube is a lossless container around a lossy source — no quality is gained.
 
-Each attempt is written to the **Activity log** (`started` / `progress` / `saved` / `failed`, with `route=on-device-capture`, `route=on-device-innertube`, or `route=server`).
+Each attempt is written to the **Activity log** (`started` / `progress` / `saved` / `failed`, with `route=browser-tab` on Chrome, `route=on-device-capture`, `route=on-device-innertube`, or `route=server`).
 
 OGM never substitutes another song. googlevideo’s `id=` query is often not the watch id; capture binds to the **currently playing** watch id plus recency.
 

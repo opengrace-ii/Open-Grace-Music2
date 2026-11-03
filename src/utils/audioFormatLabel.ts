@@ -25,7 +25,7 @@ export function formatFromMimeOrExt(
 export function mimeForFormat(format: string): string {
   const upper = format.toUpperCase();
   if (upper === 'M4A') return 'audio/mp4';
-  if (upper === 'OPUS') return 'audio/webm';
+  if (upper === 'OPUS' || upper === 'WEBM') return 'audio/webm';
   const opt = AUDIOPHILE_FORMATS.find((f) => f.id === upper);
   if (opt) return opt.mimeType;
   if (upper === 'YOUTUBE') return 'video/youtube';
@@ -33,8 +33,10 @@ export function mimeForFormat(format: string): string {
 }
 
 export function extensionForFormat(format: string): string {
-  if (format.toUpperCase() === 'OPUS') return 'webm';
-  const id = format.toUpperCase() as AudiophileFormatId;
+  const upper = format.toUpperCase();
+  if (upper === 'OPUS' || upper === 'WEBM') return 'webm';
+  if (upper === 'M4A') return 'm4a';
+  const id = upper as AudiophileFormatId;
   const opt = AUDIOPHILE_FORMATS.find((f) => f.id === id);
   if (opt) return opt.extension;
   return format.toLowerCase() || 'bin';
@@ -75,7 +77,9 @@ export function tapeTypeBadge(track: {
     return `TYPE I NORMAL · MP3 ${kbps}K`;
   }
   if (fmt === 'M4A') return `TYPE I NORMAL · M4A AAC ${track.bitrateKbps ? track.bitrateKbps + 'K' : ''}`.trim();
-  if (fmt === 'OPUS') return `TYPE I NORMAL · OPUS ${track.bitrateKbps ? track.bitrateKbps + 'K' : ''}`.trim();
+  if (fmt === 'OPUS' || fmt === 'WEBM' || mime.includes('webm') || mime.includes('opus')) {
+    return `TYPE I NORMAL · WEBM/OPUS${track.bitrateKbps ? ' ' + track.bitrateKbps + 'K' : ''}`;
+  }
   if (fmt) return `TAPE · ${fmt}`;
   return 'TAPE · UNKNOWN';
 }

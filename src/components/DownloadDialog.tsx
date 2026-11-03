@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Disc3,
   Radio,
+  Square,
 } from 'lucide-react';
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
@@ -26,6 +27,10 @@ interface DownloadDialogProps {
   downloadProgress: number;
   downloadStatus: string;
   downloadError?: string | null;
+  downloadMeterLabel?: string;
+  tabRecordingActive?: boolean;
+  webTabHint?: string | null;
+  onStopTabRecording?: () => void;
   onClose: () => void;
   onStartDownload: (
     url: string,
@@ -46,6 +51,10 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   downloadProgress,
   downloadStatus,
   downloadError,
+  downloadMeterLabel,
+  tabRecordingActive,
+  webTabHint,
+  onStopTabRecording,
   onClose,
   onStartDownload,
   onOpenYouTubeBrowser,
@@ -254,6 +263,9 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
           {studioFormatWarning(selectedFormat) && (
             <p className="mt-2 text-[11px] font-mono text-[#e2c986] leading-snug">
               {studioFormatWarning(selectedFormat)}
+              {webTabHint
+                ? ` Chrome cannot encode ${selectedFormat} in this tab — Record saves WEBM/M4A with an honest label.`
+                : ''}
             </p>
           )}
 
@@ -361,12 +373,14 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
           {/* Recording Progress Meter */}
           {isDownloading && (
             <div className="cassette-window p-3.5 rounded-xl space-y-2">
-              <div className="flex items-center justify-between text-xs font-mono text-[#b8d99e]">
-                <span className="flex items-center gap-2">
+              <div className="flex items-center justify-between text-xs font-mono text-[#b8d99e] gap-2">
+                <span className="flex items-center gap-2 min-w-0">
                   <span className="cassette-led cassette-led-rec animate-ping" />
-                  <span>{downloadStatus || `RECORDING ${selectedFormat} MASTER...`}</span>
+                  <span className="truncate">{downloadStatus || `RECORDING ${selectedFormat} MASTER...`}</span>
                 </span>
-                <span>{Math.round(downloadProgress * 100)}%</span>
+                <span className="shrink-0">
+                  {downloadMeterLabel || `${Math.round(downloadProgress * 100)}%`}
+                </span>
               </div>
               <div className="w-full h-2 bg-[#161a13] rounded-full overflow-hidden">
                 <div
@@ -387,25 +401,40 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             </div>
           )}
 
+          {webTabHint && !isDownloading && (
+            <p className="text-[11px] font-mono text-[#9fa396] leading-snug">{webTabHint}</p>
+          )}
+
           {/* Primary Cassette Transport Action Bank */}
           <div className="cassette-bank flex flex-col sm:flex-row gap-2 pt-1">
-            <button
-              type="submit"
-              disabled={!url.trim() || isDownloading}
-              className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40"
-            >
-              {isDownloading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>RECORDING {selectedFormat}...</span>
-                </>
-              ) : (
-                <>
-                  <Radio className="w-4 h-4" />
-                  <span>⏺ RECORD {selectedFormat} TO LIBRARY</span>
-                </>
-              )}
-            </button>
+            {tabRecordingActive ? (
+              <button
+                type="button"
+                onClick={() => onStopTabRecording?.()}
+                className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                <span>STOP</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!url.trim() || isDownloading}
+                className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40"
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>RECORDING {selectedFormat}...</span>
+                  </>
+                ) : (
+                  <>
+                    <Radio className="w-4 h-4" />
+                    <span>⏺ RECORD {selectedFormat} TO LIBRARY</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               type="button"

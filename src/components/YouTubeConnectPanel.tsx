@@ -135,8 +135,8 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ compac
     : insideApk
       ? 'This APK is too old. Reinstall 1.3.5+ for Connect YouTube, or use a TV code in Chrome.'
       : status === 'connected'
-        ? 'Valid in this browser. Render Record still needs cookies (key) or APK 1.3.5.'
-        : 'TV code stays in this browser — not a download session. Cookies (key) or APK 1.3.5 Record.';
+        ? 'Valid in this browser. Record captures this tab’s audio in Chrome. TV Connected is not cookies — paste the key only for Render extract.'
+        : 'TV code stays in this browser — not a download session. Record still captures this tab’s audio in Chrome.';
 
   return (
     <div className={`rounded-xl border border-[#3a4433] bg-[#11120f] ${compact ? 'p-2.5' : 'p-3.5'} space-y-2`}>

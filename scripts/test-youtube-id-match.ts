@@ -133,10 +133,11 @@ const connectedLogin = recordFailureSentence(
   null,
   true
 );
-assert.match(connectedLogin, /converter host is still blocked/i);
-assert.match(connectedLogin, /Chrome cookies \(key\) or APK 1\.3\.5/);
+assert.match(connectedLogin, /TV Connected is not a download session/i);
+assert.match(connectedLogin, /share this tab/i);
 assert.doesNotMatch(connectedLogin, /reconnect/i);
 assert.doesNotMatch(connectedLogin, /Connect YouTube and retry/i);
+assert.doesNotMatch(connectedLogin, /APK 1\.3\.5/);
 pass('Connected + LOGIN_REQUIRED does not say reconnect');
 
 const authDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-auth-'));
