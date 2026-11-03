@@ -12,6 +12,7 @@ import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.t
 import { fetchYoutubeTranscript } from './server/youtubeTranscript.ts';
 import {
   aiKeyStatus,
+  applyRequestAiKeys,
   listenNotesFromTranscript,
   relatedNextQueries,
   transcribeForOgm,
@@ -710,14 +711,12 @@ app.get('/api/ai/status', (_req, res) => {
 });
 
 app.post('/api/ai/config', (req, res) => {
-  const gemini = String(req.body?.geminiApiKey || '').trim();
-  const nvidia = String(req.body?.nvidiaApiKey || '').trim();
-  if (gemini) process.env.GEMINI_API_KEY = gemini;
-  if (nvidia) process.env.NVIDIA_API_KEY = nvidia;
+  applyRequestAiKeys(req.body);
   res.json({ ok: true, ...aiKeyStatus() });
 });
 
 app.post('/api/ai/transcribe', async (req, res) => {
+  applyRequestAiKeys(req.body);
   const videoId = String(req.body?.videoId || req.body?.ytVideoId || '').trim();
   const audioUrl = String(req.body?.audioUrl || '').trim();
   const title = String(req.body?.title || '').trim();
@@ -732,6 +731,7 @@ app.post('/api/ai/transcribe', async (req, res) => {
 });
 
 app.post('/api/ai/listen-notes', async (req, res) => {
+  applyRequestAiKeys(req.body);
   const transcript = String(req.body?.transcript || '').trim();
   const title = String(req.body?.title || '').trim();
   try {
@@ -745,6 +745,7 @@ app.post('/api/ai/listen-notes', async (req, res) => {
 });
 
 app.post('/api/ai/related-next', async (req, res) => {
+  applyRequestAiKeys(req.body);
   const query = String(req.body?.query || '').trim();
   const title = String(req.body?.title || '').trim();
   const transcript = String(req.body?.transcript || '').trim();
@@ -928,6 +929,7 @@ app.get('/api/proxy-audio', async (req, res) => {
 
 // API: Generate Lyrics & Chord Sheet with Gemini API
 app.post('/api/generate-lyrics', async (req, res) => {
+  applyRequestAiKeys(req.body);
   const { title, artist } = req.body;
   if (!title) {
     return res.status(400).json({ error: 'title is required' });

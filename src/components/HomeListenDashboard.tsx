@@ -129,6 +129,10 @@ export const HomeListenDashboard: React.FC<HomeListenDashboardProps> = ({
             </button>
           ))}
         </div>
+        <p className="text-[11px] font-mono text-[#686b60] leading-relaxed">
+          Studio AI is not a chat bot on this screen. Open a playing tape → full player STUDIO AI or NOTES → Transcript /
+          Listen notes.
+        </p>
       </div>
 
       <div className="cassette-card rounded-3xl p-5 space-y-3">

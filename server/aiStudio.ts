@@ -18,6 +18,16 @@ export function aiKeyStatus(): { gemini: boolean; nvidia: boolean } {
   };
 }
 
+/** Apply client-supplied keys onto process.env for this request (Settings → routes). */
+export function applyRequestAiKeys(body: unknown): void {
+  if (!body || typeof body !== 'object') return;
+  const b = body as { geminiApiKey?: unknown; nvidiaApiKey?: unknown };
+  const gemini = String(b.geminiApiKey || '').trim();
+  const nvidia = String(b.nvidiaApiKey || '').trim();
+  if (gemini) process.env.GEMINI_API_KEY = gemini;
+  if (nvidia) process.env.NVIDIA_API_KEY = nvidia;
+}
+
 function geminiKey(): string {
   return (process.env.GEMINI_API_KEY || '').trim();
 }

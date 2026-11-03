@@ -83,6 +83,8 @@ class AudioPlayerEngine {
   private ytPlayer: YoutubePlayerHandle | null = null;
   private ytHost: HTMLDivElement | null = null;
   private usingYoutube = false;
+  /** Music-first default: keep YouTube audio, hide the video surface. */
+  private showVideo = false;
 
   constructor() {
     this.htmlAudio = new Audio();
@@ -273,19 +275,78 @@ class AudioPlayerEngine {
     }
   }
 
+  /** Dock = page nav (~3.65rem) + Now Playing bar (~5.25rem) + gap. */
+  private static readonly YT_DOCK_CLEARANCE =
+    'calc(3.65rem + 5.25rem + env(safe-area-inset-bottom, 0px) + 10px)';
+
+  private applyYtHostLayout() {
+    const host = this.ytHost;
+    if (!host) return;
+    if (!this.usingYoutube) {
+      host.style.display = 'none';
+      return;
+    }
+    host.style.display = 'block';
+    if (this.showVideo) {
+      // Reserved pocket above NowPlayingBar + AppPageNav — never under the transport.
+      host.style.cssText = [
+        'position:fixed',
+        'left:12px',
+        `bottom:${AudioPlayerEngine.YT_DOCK_CLEARANCE}`,
+        'width:min(220px,calc(100vw - 24px))',
+        'height:auto',
+        'aspect-ratio:16/9',
+        'z-index:30',
+        'border-radius:12px',
+        'overflow:hidden',
+        'opacity:1',
+        'pointer-events:none',
+        'box-shadow:0 8px 24px rgba(0,0,0,.45)',
+        'border:1px solid rgba(184,217,158,.25)',
+      ].join(';');
+      const iframe = host.querySelector('iframe');
+      if (iframe) {
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+      }
+      const mount = host.querySelector('#ogm-yt-player') as HTMLElement | null;
+      if (mount) {
+        mount.style.width = '100%';
+        mount.style.height = '100%';
+      }
+    } else {
+      // Audio-only: keep the IFrame API alive off-viewport (do not pause).
+      host.style.cssText =
+        'position:fixed;width:1px;height:1px;left:-9999px;top:0;opacity:0;overflow:hidden;pointer-events:none;z-index:0;border:0';
+    }
+  }
+
   private ensureYtHost(): HTMLDivElement {
-    if (this.ytHost && document.body.contains(this.ytHost)) return this.ytHost;
+    if (this.ytHost && document.body.contains(this.ytHost)) {
+      this.applyYtHostLayout();
+      return this.ytHost;
+    }
     const host = document.createElement('div');
     host.id = 'ogm-yt-host';
     host.setAttribute('aria-hidden', 'true');
-    host.style.cssText =
-      'position:fixed;left:12px;bottom:88px;width:180px;height:101px;z-index:35;border-radius:12px;overflow:hidden;opacity:0.92;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.45)';
     const mount = document.createElement('div');
     mount.id = 'ogm-yt-player';
+    mount.style.cssText = 'width:100%;height:100%';
     host.appendChild(mount);
     document.body.appendChild(host);
     this.ytHost = host;
+    this.applyYtHostLayout();
     return host;
+  }
+
+  /** Toggle visible YouTube surface without stopping audio. Default off (music-first). */
+  public setShowVideo(show: boolean): void {
+    this.showVideo = Boolean(show);
+    this.applyYtHostLayout();
+  }
+
+  public getShowVideo(): boolean {
+    return this.showVideo;
   }
 
   private destroyYtPlayer() {
@@ -309,7 +370,7 @@ class AudioPlayerEngine {
       this.htmlAudio.pause();
       this.htmlAudio.removeAttribute('src');
       this.usingYoutube = true;
-      this.ensureYtHost().style.display = 'block';
+      this.ensureYtHost();
       await loadYoutubeIframeApi();
       const videoId = track.ytVideoId;
       const volume = Math.round(this.volume * 100);
@@ -318,14 +379,15 @@ class AudioPlayerEngine {
         this.ytPlayer.loadVideoById(videoId);
         this.ytPlayer.setVolume(volume);
         this.ytPlayer.playVideo();
+        this.applyYtHostLayout();
         this.notifyPlayState(true);
         this.startTimePoll();
         return;
       }
 
       this.ytPlayer = new window.YT!.Player('ogm-yt-player', {
-        width: '180',
-        height: '101',
+        width: '220',
+        height: '124',
         videoId,
         playerVars: {
           autoplay: 1,
@@ -338,6 +400,7 @@ class AudioPlayerEngine {
           onReady: (event: { target: YoutubePlayerHandle }) => {
             event.target.setVolume(volume);
             event.target.playVideo();
+            this.applyYtHostLayout();
             this.notifyPlayState(true);
             this.startTimePoll();
           },

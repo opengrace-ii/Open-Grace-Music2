@@ -8,7 +8,7 @@ import {
   setSavedConverterServerUrl,
 } from '../services/converterServerUrl';
 import { checkConverterApiAvailable } from '../services/converterApi';
-import { fetchAiStatus, saveAiKeys } from '../services/ogmAiService';
+import { fetchAiStatus, loadLocalAiKeys, saveAiKeys, saveLocalAiKeys } from '../services/ogmAiService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -120,8 +120,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             <h4 className="font-serif-display text-sm font-bold text-[#eeeae2]">Studio AI keys</h4>
           </div>
           <p className="text-[11px] text-[#a3a198] leading-relaxed">
-            Used for our own transcript and listen notes (not YouTube captions). Prefer <code className="text-[#b8d99e]">.env</code>
-            . Keys pasted here stay on this server process only. We never log or show the secret back.
+            Studio AI is on the full player (STUDIO AI / NOTES → Transcript, Listen notes, Related) — not a chat bot on
+            Home. Keys are saved to the converter server and kept locally so each AI request can reach{' '}
+            <code className="text-[#b8d99e]">/api/ai/transcribe</code> and notes. Prefer{' '}
+            <code className="text-[#b8d99e]">.env</code>. We never log or show the secret back.
           </p>
           <p className="text-[11px] font-mono text-[#9fa396]">
             Gemini: {aiStatus.gemini ? 'configured' : 'missing'} · NVIDIA: {aiStatus.nvidia ? 'configured' : 'missing'}
@@ -156,17 +158,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               void (async () => {
                 setAiSaving(true);
                 setAiMessage(null);
+                const payload = {
+                  geminiApiKey: geminiKey.trim() || undefined,
+                  nvidiaApiKey: nvidiaKey.trim() || undefined,
+                };
                 try {
-                  const next = await saveAiKeys({
-                    geminiApiKey: geminiKey.trim() || undefined,
-                    nvidiaApiKey: nvidiaKey.trim() || undefined,
-                  });
+                  const next = await saveAiKeys(payload);
                   setAiStatus(next);
                   setGeminiKey('');
                   setNvidiaKey('');
-                  setAiMessage('Keys saved on the running server. They are not written into the repo.');
+                  setAiMessage(
+                    'Keys saved for Studio AI. Open a playing tape → full player STUDIO AI → Transcript. Not used until then.'
+                  );
                 } catch {
-                  setAiMessage('Could not save keys. Use .env if Settings cannot reach the API.');
+                  saveLocalAiKeys(payload);
+                  const local = loadLocalAiKeys();
+                  setAiStatus({
+                    gemini: Boolean(local.geminiApiKey),
+                    nvidia: Boolean(local.nvidiaApiKey),
+                  });
+                  setGeminiKey('');
+                  setNvidiaKey('');
+                  setAiMessage(
+                    'Saved locally; server unreachable. Keys still go with each AI request when the API is back, or use .env.'
+                  );
                 } finally {
                   setAiSaving(false);
                 }

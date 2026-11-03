@@ -42,6 +42,8 @@ interface FullPlayerModalProps {
   onSelectTrack: (track: Track) => void;
   onExportTrack: (track: Track) => void;
   onOpenLyrics: (track: Track) => void;
+  showVideo?: boolean;
+  onShowVideoChange?: (show: boolean) => void;
 }
 
 export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
@@ -67,6 +69,8 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
   onSelectTrack,
   onExportTrack,
   onOpenLyrics,
+  showVideo = false,
+  onShowVideoChange,
 }) => {
   const [showQueue, setShowQueue] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -176,7 +180,7 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
           <div className="cassette-bank flex items-center gap-1.5">
             <button
               onClick={() => onOpenLyrics(currentTrack)}
-              title="Studio AI — lyrics, transcript, notes"
+              title="Studio AI — Transcript, Listen notes, Related (not a home-screen chat bot)"
               className="cassette-btn px-3 py-1.5 text-xs font-mono text-[#b8d99e]"
             >
               <Music2 className="w-3.5 h-3.5" />
@@ -299,6 +303,21 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               </h3>
               <p className="text-xs sm:text-sm font-mono text-[#b8d99e] mt-1">
                 {currentTrack.artist || 'Open Grace Ensemble'}
+              </p>
+              {isLiveYoutube && onShowVideoChange && (
+                <label className="mt-3 inline-flex items-center gap-2 text-[11px] font-mono text-[#9fa396] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showVideo}
+                    onChange={(e) => onShowVideoChange(e.target.checked)}
+                    className="rounded border-[#3a4533] bg-[#0b0d0a] accent-[#b8d99e] w-3.5 h-3.5"
+                  />
+                  Show video
+                  <span className="text-[#686b60]">(default off · audio keeps playing)</span>
+                </label>
+              )}
+              <p className="mt-2 text-[10px] font-mono text-[#686b60] leading-relaxed">
+                Studio AI lives on this deck — open STUDIO AI / NOTES for Transcript and Listen notes. Not a chat bot on Home.
               </p>
             </div>
           </div>

@@ -16,7 +16,13 @@ import {
 import { LyricOrChord, Track } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
 import { fetchAiLyricsOrChord, unavailableLyrics, unavailableTranscript } from '../services/lyricsService';
-import { fetchListenNotes, fetchOgmTranscript, fetchRelatedNext } from '../services/ogmAiService';
+import {
+  fetchAiStatus,
+  fetchListenNotes,
+  fetchOgmTranscript,
+  fetchRelatedNext,
+  hasLocalAiKeys,
+} from '../services/ogmAiService';
 
 interface LyricsModalProps {
   isOpen: boolean;
@@ -40,6 +46,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [notesLoading, setNotesLoading] = useState(false);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [keysReady, setKeysReady] = useState(false);
 
   useEffect(() => {
     if (!track) return;
@@ -49,6 +56,7 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
     setRelatedError(null);
     void loadLyrics(track);
     void loadTranscript(track);
+    void fetchAiStatus().then((s) => setKeysReady(s.gemini || s.nvidia || hasLocalAiKeys()));
   }, [track]);
 
   const loadLyrics = async (current: Track) => {
@@ -289,6 +297,13 @@ export const LyricsModal: React.FC<LyricsModalProps> = ({ isOpen, track, onClose
             <RefreshCw className={`w-3.5 h-3.5 ${showSpinner ? 'animate-spin' : ''}`} />
           </button>
         </div>
+
+        {keysReady && mode === 'LYRICS' && !showSpinner && (
+          <p className="text-[10px] font-mono text-[#686b60] leading-relaxed mb-1">
+            API key is set. Studio AI stays idle until you open Transcript (or NOTES / Related) — there is no chat agent
+            on Home.
+          </p>
+        )}
 
         <div className="flex-1 overflow-y-auto my-1 p-5 rounded-2xl cassette-window font-mono text-xs sm:text-sm text-[#f0ece1] leading-relaxed whitespace-pre-wrap selection:bg-[#b8d99e] selection:text-[#11120f]">
           {showSpinner ? (

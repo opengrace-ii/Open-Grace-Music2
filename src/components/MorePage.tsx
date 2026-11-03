@@ -1,5 +1,5 @@
-import React from 'react';
-import { Download, Settings, Smartphone, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Download, Settings, Smartphone, AlertCircle, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface MorePageProps {
   converterApiOnline: boolean | null;
@@ -24,6 +24,8 @@ export const MorePage: React.FC<MorePageProps> = ({
   onOpenAndroidProject,
   onPwaInstall,
 }) => {
+  const [studioHelpOpen, setStudioHelpOpen] = useState(false);
+
   return (
     <section className="space-y-3">
       <div>
@@ -38,6 +40,36 @@ export const MorePage: React.FC<MorePageProps> = ({
             Converter API is not reachable at {converterUrlLabel || '(no server set)'}. Home still works — set a URL in
             Settings if you need recording.
           </p>
+        </div>
+      )}
+
+      <p className="text-[11px] font-mono text-[#686b60] leading-relaxed px-0.5">
+        Studio AI is not a chat bot on this screen. Open a playing tape → full player STUDIO AI or NOTES → Transcript /
+        Listen notes.
+      </p>
+
+      <button
+        type="button"
+        onClick={() => setStudioHelpOpen((v) => !v)}
+        className="cassette-btn w-full justify-between px-4 py-3 text-sm font-mono"
+      >
+        <span className="inline-flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-[#e2c986]" />
+          Studio AI help
+        </span>
+        {studioHelpOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {studioHelpOpen && (
+        <div className="cassette-window rounded-2xl p-4 space-y-2 text-[11px] font-mono text-[#9fa396] leading-relaxed">
+          <p>
+            Keys in Settings are sent to this app&apos;s server for Transcript / Listen notes / Related — they do not
+            spawn a floating agent on Listen.
+          </p>
+          <p>
+            1. Play a tape (YouTube devotion or library). 2. Open the full player (expand / TURNTABLE). 3. Tap STUDIO AI,
+            then Transcript or NOTES.
+          </p>
+          <p>Until you open Transcript, a saved Gemini/NVIDIA key sits idle — that is expected.</p>
         </div>
       )}
 

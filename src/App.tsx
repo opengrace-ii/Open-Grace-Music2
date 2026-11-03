@@ -100,6 +100,15 @@ export default function App() {
   const [activePage, setActivePage] = useState<AppPage>('home');
   const [lastNotified, setLastNotified] = useState<LastNotifiedListen | null>(() => loadLastNotifiedListen());
   const [searchQuery, setSearchQuery] = useState('');
+  /** Music-first: YouTube video surface off by default; audio still plays. */
+  const [showVideo, setShowVideo] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('ogm_show_video') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   // Inline Tape Deck Recorder state
   const [inlineUrl, setInlineUrl] = useState('');
@@ -310,6 +319,15 @@ export default function App() {
   useEffect(() => {
     saveYoutubeCookies(inlineCookies);
   }, [inlineCookies]);
+
+  useEffect(() => {
+    playerEngine.setShowVideo(showVideo);
+    try {
+      localStorage.setItem('ogm_show_video', showVideo ? '1' : '0');
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [showVideo]);
 
   const refreshConverterHealth = () => {
     checkConverterApiAvailable().then((ok) => setConverterApiOnline(ok));
@@ -1145,7 +1163,9 @@ export default function App() {
     <div
       className={`min-h-screen flex flex-col bg-[#0e100d] text-[#f0ece1] relative overflow-hidden ${
         currentTrack
-          ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom,0px))] md:pb-28'
+          ? showVideo && currentTrack.ytVideoId
+            ? 'pb-[calc(8.75rem+7.5rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(7rem+8rem)]'
+            : 'pb-[calc(8.75rem+env(safe-area-inset-bottom,0px))] md:pb-28'
           : 'pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:pb-8'
       }`}
     >
@@ -1756,6 +1776,8 @@ export default function App() {
         onCycleLoop={cycleLoopMode}
         onVolumeChange={handleVolumeChange}
         onOpenFullPlayer={() => setShowFullPlayer(true)}
+        showVideo={showVideo}
+        onShowVideoChange={setShowVideo}
         dockClassName="bottom-[calc(3.65rem+env(safe-area-inset-bottom,0px))] md:bottom-0"
       />
       <AppPageNav active={activePage} onChange={setActivePage} variant="bottom" />
@@ -1784,6 +1806,8 @@ export default function App() {
         onSelectTrack={(t) => playTrack(t)}
         onExportTrack={handleExportTrack}
         onOpenLyrics={(t) => setSelectedTrackForLyrics(t)}
+        showVideo={showVideo}
+        onShowVideoChange={setShowVideo}
       />
 
       {/* Master Tape Deck Recorder Dialog */}

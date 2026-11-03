@@ -31,6 +31,9 @@ interface NowPlayingBarProps {
   onCycleLoop: () => void;
   onVolumeChange: (val: number) => void;
   onOpenFullPlayer: () => void;
+  /** Music-first: when false, YouTube keeps playing audio with no video surface. */
+  showVideo?: boolean;
+  onShowVideoChange?: (show: boolean) => void;
   /** Lift above the mobile page nav. */
   dockClassName?: string;
 }
@@ -51,6 +54,8 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
   onCycleLoop,
   onVolumeChange,
   onOpenFullPlayer,
+  showVideo = false,
+  onShowVideoChange,
   dockClassName,
 }) => {
   if (!currentTrack) return null;
@@ -63,6 +68,7 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const isYoutube = Boolean(currentTrack.ytVideoId);
 
   return (
     <footer
@@ -89,6 +95,21 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
           </div>
         </div>
       </div>
+
+      {isYoutube && onShowVideoChange && (
+        <label className="max-w-6xl mx-auto mb-1.5 flex items-center gap-2 text-[11px] font-mono text-[#9fa396] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showVideo}
+            onChange={(e) => onShowVideoChange(e.target.checked)}
+            className="rounded border-[#3a4533] bg-[#0b0d0a] accent-[#b8d99e] w-3.5 h-3.5"
+          />
+          <span>
+            Show video
+            <span className="text-[#686b60]"> · off = audio only</span>
+          </span>
+        </label>
+      )}
 
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
         {/* Left: Spinning Gramophone Disc & Track Title */}
