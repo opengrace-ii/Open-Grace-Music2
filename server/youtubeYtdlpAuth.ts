@@ -1,11 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 
-/** Cookie + TV oauth files for yt-dlp. Tokens stay on disk in the job temp dir — never log them. */
+/**
+ * Cookie file for yt-dlp. YouTube OAuth was removed from yt-dlp (Nov 2024);
+ * TV Bearer/refresh tokens are not Netscape cookies and cannot authenticate the YouTube IE.
+ * Do not use removed `--username oauth`. Do not send a global Authorization header (breaks CDN).
+ */
 export function youtubeYtdlpAuthArgs(
   workDir: string,
   userCookies: string,
-  accessToken: string
+  _accessToken: string = ''
 ): string[] {
   const args: string[] = [];
   const cookies = userCookies.replace(/[\r\n\0]/g, '').trim();
@@ -32,23 +36,17 @@ export function youtubeYtdlpAuthArgs(
     args.push('--cookies', cookieFilePath);
   }
 
-  const bearer = accessToken.replace(/[\r\n\0]/g, '').trim();
-  if (bearer && /^[\w./+=-]+$/.test(bearer)) {
-    const confPath = path.join(workDir, 'ytdlp-oauth.conf');
-    fs.writeFileSync(confPath, `--add-header Authorization:Bearer ${bearer}\n`, {
-      encoding: 'utf8',
-      mode: 0o600,
-    });
-    args.push('--ignore-config', '--config-locations', confPath);
-  }
-
   return args;
 }
 
-export const YOUTUBE_PLAYER_CLIENTS_OAUTH: (string | null)[] = [
+/** Prefer TV clients only when a real cookie file is present. */
+export const YOUTUBE_PLAYER_CLIENTS_COOKIES: (string | null)[] = [
   'tv',
   'tv_embedded',
   'web',
   'mweb,tv',
   'android,ios,tv_embedded,mweb',
 ];
+
+/** @deprecated yt-dlp no longer accepts YouTube OAuth; alias for cookie-backed clients. */
+export const YOUTUBE_PLAYER_CLIENTS_OAUTH = YOUTUBE_PLAYER_CLIENTS_COOKIES;
