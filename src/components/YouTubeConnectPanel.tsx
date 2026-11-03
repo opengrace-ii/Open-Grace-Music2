@@ -131,7 +131,7 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ compac
   const blurb = nativeLogin
     ? 'Sign in on Google’s page in this app. We never collect your password.'
     : insideApk
-      ? 'This APK is too old. Reinstall 1.3.4+ for Connect YouTube, or use a TV code in Chrome.'
+      ? 'This APK is too old. Reinstall 1.3.5+ for Connect YouTube, or use a TV code in Chrome.'
       : 'Opens a YouTube TV code in a new tab. We never collect your password.';
 
   return (

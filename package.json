@@ -14,7 +14,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:convert": "node scripts/test-youtube-convert.mjs",
-    "test:health": "node scripts/test-health.mjs"
+    "test:health": "node scripts/test-health.mjs",
+    "test:id-match": "tsx scripts/test-youtube-id-match.ts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

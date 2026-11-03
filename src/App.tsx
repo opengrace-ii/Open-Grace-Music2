@@ -43,7 +43,7 @@ import {
 import { convertBlobToMp3 } from './services/mp3Converter';
 import { loadSavedYoutubeCookies, saveYoutubeCookies, sanitizeCookieHeader } from './services/youtubeCookies';
 import { loadYoutubeOauthRefreshToken } from './services/youtubeOauth';
-import { pullNativeYoutubeCookies } from './services/youtubeSession';
+import { pullNativeYoutubeCookies, youtubeSessionStatus } from './services/youtubeSession';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -78,6 +78,7 @@ import {
   fetchWithTimeout,
   humanizeConverterError,
   readConverterError,
+  recordFailureSentence,
   startConvertJob,
   studioFormatWarning,
   waitForConvertJob,
@@ -793,15 +794,24 @@ export default function App() {
     const label = 'Record YouTube';
     let lastLoggedStage = '';
     let route = 'on-device-capture';
+    const restoreShowVideo = playerEngine.getShowVideo();
     try {
       setDownloadProgress(0.03);
       setDownloadStatus('Playing video…');
       try {
+        window.OgmAndroid?.setRequestedYouTubeId?.(ytId);
         window.OgmAndroid?.setPlayingYouTubeId?.(ytId);
       } catch {
         // older shells
       }
-      await playerEngine.playYouTubeId(ytId, { title: customTitle, artist: customArtist });
+      // A 2×2 hidden iframe often never fetches googlevideo. Reveal briefly so media loads.
+      playerEngine.setShowVideo(true);
+      try {
+        await playerEngine.playYouTubeId(ytId, { title: customTitle, artist: customArtist });
+        await new Promise((r) => setTimeout(r, 1600));
+      } catch {
+        // native wait still runs
+      }
       const playing = playerEngine.getCurrentTrack();
       if (playing) {
         setCurrentTrack(playing);
@@ -821,6 +831,9 @@ export default function App() {
         const stage = p.stage || '';
         if (stage === 'capture') route = 'on-device-capture';
         else if (stage === 'resolve') route = 'on-device-innertube';
+        if ((stage === 'download' || stage === 'resolve') && !restoreShowVideo) {
+          playerEngine.setShowVideo(false);
+        }
         const pct = Math.max(0.04, Math.min(0.85, ((p.percent || 0) / 100) * 0.85));
         setDownloadProgress(pct);
         if (stage === 'capture') {
@@ -959,6 +972,8 @@ export default function App() {
         source: trimmedUrl,
       });
       return { ok: false, reason };
+    } finally {
+      if (!restoreShowVideo) playerEngine.setShowVideo(false);
     }
   };
 
@@ -1059,7 +1074,7 @@ export default function App() {
                     ? 'SAVING'
                     : 'PROCESSING';
           setDownloadStatus(`${stageLabel}: ${status.message}`);
-          if (status.stage && status.stage !== loggedStage && status.stage !== 'done') {
+          if (status.stage && status.stage !== loggedStage && status.stage !== 'done' && status.stage !== 'error') {
             loggedStage = status.stage;
             logActivity({
               action: 'record',
@@ -1071,7 +1086,7 @@ export default function App() {
             });
           }
         },
-        180_000
+        480_000
       );
 
       setDownloadProgress(0.92);
@@ -1235,13 +1250,11 @@ export default function App() {
     } catch (err: unknown) {
       const { message, code } = humanizeConverterError(err);
       // Honest failure: we NEVER silently save a live-stream tape and call it a download.
-      // A genuine offline tape must carry real audio bytes. If the server could not produce
-      // them (YouTube login/bot-check on a free host, extraction/timeout), say so clearly and
-      // offer the real paths to an offline file. Live listening stays a separate, explicit choice.
       const serverBlocked =
         code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
+      const youtubeConnected = youtubeSessionStatus() === 'connected';
       const display = ytId
-        ? `Couldn’t save this as ${format}. Connect YouTube and retry.`
+        ? recordFailureSentence(format, message, code, onDeviceFailure, youtubeConnected)
         : message;
       logActivity({
         action: 'record',

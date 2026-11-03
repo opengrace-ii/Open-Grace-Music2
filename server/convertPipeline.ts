@@ -4,6 +4,12 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { refreshYoutubeAccessToken } from './youtubeTvOauth.ts';
+import {
+  describeYoutubeIdMatch,
+  inspectInfoJson,
+  matchExtractedYoutubeId,
+  type YoutubeIdMatchResult,
+} from './youtubeIdMatch.ts';
 import { YOUTUBE_PLAYER_CLIENTS_OAUTH, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
 export interface AudioFormatSpec {
   format: 'FLAC' | 'ALAC' | 'DSD' | 'WAV' | 'MP3';
@@ -50,24 +56,52 @@ function pickRawSourceFile(workDir: string): string | null {
   return null;
 }
 
-/** Ensures yt-dlp grabbed this exact YouTube video, not a search/random result. */
-function verifyExtractedYoutubeId(workDir: string, expectedYtId: string): boolean {
+export { matchExtractedYoutubeId, youtubeIdsEqual } from './youtubeIdMatch.ts';
+
+function inspectExtractedSidecars(workDir: string, expectedYtId: string): YoutubeIdMatchResult {
   const infoFiles = fs.readdirSync(workDir).filter((f) => f.endsWith('.info.json'));
+  let last: YoutubeIdMatchResult = {
+    kind: 'empty',
+    reportedId: null,
+    extractorKey: null,
+    extractor: null,
+  };
   for (const f of infoFiles) {
     try {
-      const info = JSON.parse(fs.readFileSync(path.join(workDir, f), 'utf8')) as {
-        id?: string;
-        extractor_key?: string;
-      };
-      if (info.extractor_key && info.extractor_key !== 'youtube') return false;
-      if (info.id && info.id !== expectedYtId) return false;
-      return !!info.id;
+      const inspect = inspectInfoJson(JSON.parse(fs.readFileSync(path.join(workDir, f), 'utf8')));
+      const result = matchExtractedYoutubeId(inspect.reportedId, expectedYtId, inspect);
+      if (result.kind === 'match') return result;
+      if (result.kind === 'mismatch') last = result;
+      else if (last.kind !== 'mismatch') last = result;
     } catch {
       // ignore malformed sidecar
     }
   }
-  // No sidecar: only accept when we cannot verify (legacy path) — treat as fail for safety
-  return false;
+  return last;
+}
+
+type ExtractAttempt =
+  | { status: 'ok'; path: string; match: YoutubeIdMatchResult }
+  | { status: 'mismatch'; match: YoutubeIdMatchResult }
+  | { status: 'no-file'; match: YoutubeIdMatchResult };
+
+/** Canonical-URL download: accept match or empty metadata; refuse a different nonempty id. */
+function evaluateExtractedDownload(workDir: string, expectedYtId: string): ExtractAttempt {
+  const match = inspectExtractedSidecars(workDir, expectedYtId);
+  console.log(`[convert-audio] yt-dlp ${describeYoutubeIdMatch(expectedYtId, match)}`);
+  const picked = pickRawSourceFile(workDir);
+  if (match.kind === 'mismatch') {
+    return { status: 'mismatch', match };
+  }
+  if (picked) return { status: 'ok', path: picked, match };
+  return { status: 'no-file', match };
+}
+
+function mismatchError(expectedYtId: string, reportedId: string): { code: ConvertErrorCode; error: string } {
+  return {
+    code: 'EXTRACTION_FAILED',
+    error: `Stream did not match this video (yt-dlp id ${reportedId}, requested ${expectedYtId}).`,
+  };
 }
 
 function clearRawSourceArtifacts(workDir: string) {
@@ -174,14 +208,18 @@ export function classifyPipelineError(
   if (killed || lower.includes('timed out') || lower.includes('etimedout')) {
     return {
       code: 'TIMEOUT',
-      error: 'Conversion timed out after 2 minutes. Try MP3 on Wi‑Fi or retry shortly.',
+      error:
+        'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
     };
   }
-  if (/sign in to confirm|not a bot|http error 429|http error 403|cookies are needed/i.test(lower)) {
+  if (
+    /login_required|sign in to confirm|please sign in|not a bot|http error 429|http error 403|cookies are needed|confirm your age/i.test(
+      lower
+    )
+  ) {
     return {
       code: 'YOUTUBE_BOT_CHECK',
-      error:
-        'YouTube blocked this video. Connect YouTube and retry.',
+      error: 'YouTube asked for a login (LOGIN_REQUIRED). Reconnect YouTube and retry.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -191,12 +229,17 @@ export function classifyPipelineError(
     };
   }
   const technical = raw.slice(0, 400);
+  if (/requested format is not available|no video formats|no audio formats/i.test(technical)) {
+    return {
+      code: 'EXTRACTION_FAILED',
+      error: 'No playable audio stream for this video.',
+    };
+  }
   if (/python3|command failed|must be suitable for the extractor/i.test(technical)) {
     console.warn('[convert-audio] extract failed:', technical);
     return {
       code: 'EXTRACTION_FAILED',
-      error:
-        'Could not fetch this track. Connect YouTube and retry.',
+      error: 'Could not fetch an audio stream for this video.',
     };
   }
   return {
@@ -315,9 +358,18 @@ export async function runConvertPipeline(
         progress('extract', extractPercent, `Extracting from YouTube (yt-dlp)… ${extractPercent}%`);
       }, 3500);
 
+      const markExtracted = (playerClient: string | null, attempt: ExtractAttempt & { status: 'ok' }) => {
+        downloadedRawPath = attempt.path;
+        extractionMethod = playerClient ? `youtube-direct (${playerClient})` : 'youtube-direct';
+        console.log(
+          `[convert-audio] yt-dlp succeeded for ${ytId} with player_client=${playerClient ?? 'default'} (${attempt.match.kind})`
+        );
+      };
+
       try {
         for (const playerClient of playerClients) {
           if (downloadedRawPath) break;
+          clearRawSourceArtifacts(workDir);
           const clientArgs: string[] = [];
           if (playerClient) {
             clientArgs.push('--extractor-args', `youtube:player_client=${playerClient}`);
@@ -329,7 +381,7 @@ export async function runConvertPipeline(
                 '--no-playlist',
                 '--no-warnings',
                 '--socket-timeout',
-                '15',
+                '30',
                 '--retries',
                 '2',
                 '--write-info-json',
@@ -344,24 +396,34 @@ export async function runConvertPipeline(
               ],
               { timeout: extractTimeout, maxBuffer: 8 * 1024 * 1024 }
             );
-            const picked = pickRawSourceFile(workDir);
-            if (picked && verifyExtractedYoutubeId(workDir, ytId)) {
-              downloadedRawPath = picked;
-              extractionMethod = playerClient
-                ? `youtube-direct (${playerClient})`
-                : 'youtube-direct';
-              console.log(`[convert-audio] yt-dlp succeeded for ${ytId} with player_client=${playerClient ?? 'default'}`);
+            const attempt = evaluateExtractedDownload(workDir, ytId);
+            if (attempt.status === 'ok') {
+              markExtracted(playerClient, attempt);
               break;
             }
-            if (picked) {
+            if (attempt.status === 'mismatch' && attempt.match.reportedId) {
+              lastExtractFailure = mismatchError(ytId, attempt.match.reportedId);
               clearRawSourceArtifacts(workDir);
+            } else if (!lastExtractFailure || lastExtractFailure.code !== 'TIMEOUT') {
               lastExtractFailure = {
                 code: 'EXTRACTION_FAILED',
-                error: 'Stream did not match this video. Connect YouTube and retry.',
+                error: 'No playable audio stream for this video.',
               };
             }
           } catch (directErr) {
-            lastExtractFailure = classifyPipelineError(directErr, 'extract');
+            const classified = classifyPipelineError(directErr, 'extract');
+            const attempt = evaluateExtractedDownload(workDir, ytId);
+            if (attempt.status === 'ok') {
+              markExtracted(playerClient, attempt);
+              break;
+            }
+            if (classified.code === 'TIMEOUT' || classified.code === 'YOUTUBE_BOT_CHECK') {
+              lastExtractFailure = classified;
+            } else if (attempt.status === 'mismatch' && attempt.match.reportedId) {
+              lastExtractFailure = mismatchError(ytId, attempt.match.reportedId);
+            } else {
+              lastExtractFailure = classified;
+            }
             console.warn(
               `[convert-audio] YouTube direct failed (${ytId}${playerClient ? ` client=${playerClient}` : ''}):`,
               lastExtractFailure.error
@@ -374,9 +436,8 @@ export async function runConvertPipeline(
 
       if (!downloadedRawPath) {
         const failure = lastExtractFailure || {
-          code: 'YOUTUBE_BOT_CHECK' as ConvertErrorCode,
-          error:
-            'Could not download this video. Connect YouTube and retry.',
+          code: 'EXTRACTION_FAILED' as ConvertErrorCode,
+          error: 'Could not fetch an audio stream for this video.',
         };
         return { ok: false, ...failure, workDir };
       }

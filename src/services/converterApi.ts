@@ -51,7 +51,7 @@ export async function fetchWithTimeout(
 
     if (isAbort) {
       throw new ConverterApiError(
-        'Conversion timed out (over 2 minutes). Try MP3 on Wi‑Fi or retry in a moment.',
+        'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
         'TIMEOUT'
       );
     }
@@ -99,6 +99,45 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
   }
   const message = err instanceof Error ? err.message : 'Failed to process audio';
   return { message, code: 'EXTRACTION_FAILED' };
+}
+
+/** One accurate sentence for the recorder. Never says Connect YouTube when already connected. */
+export function recordFailureSentence(
+  format: string,
+  serverMessage: string,
+  code: ConverterErrorCode,
+  onDeviceFailure: string | null,
+  youtubeConnected: boolean
+): string {
+  const blob = `${serverMessage} ${onDeviceFailure || ''} ${code}`.toLowerCase();
+  if (code === 'TIMEOUT' || /timed out|timeout/.test(blob)) {
+    return `Couldn’t save this as ${format}. Conversion timed out — try MP3 320 or retry on Wi‑Fi.`;
+  }
+  if (
+    code === 'YOUTUBE_BOT_CHECK' ||
+    /login_required|asked for a login|sign in|not a bot|cookies are needed/.test(blob)
+  ) {
+    return youtubeConnected
+      ? `Couldn’t save this as ${format}. YouTube asked for a login again — reconnect and retry.`
+      : `Couldn’t save this as ${format}. Connect YouTube and retry.`;
+  }
+  if (/did not match|different video/.test(blob)) {
+    return `Couldn’t save this as ${format}. YouTube resolved a different video — retry this exact URL.`;
+  }
+  if (/http 403|blocked this stream/.test(blob)) {
+    return youtubeConnected
+      ? `Couldn’t save this as ${format}. YouTube blocked the stream (403). Play the video, then retry.`
+      : `Couldn’t save this as ${format}. Connect YouTube and retry.`;
+  }
+  if (
+    code === 'EXTRACTION_FAILED' ||
+    /missed this video|no audio|no stream|could not fetch|no playable/.test(blob)
+  ) {
+    return youtubeConnected
+      ? `Couldn’t save this as ${format}. No playable audio stream for this video. Play it, then retry Record.`
+      : `Couldn’t save this as ${format}. Connect YouTube and retry.`;
+  }
+  return `Couldn’t save this as ${format}. ${serverMessage}`;
 }
 
 export async function checkConverterApiAvailable(): Promise<boolean> {
@@ -160,7 +199,7 @@ export async function fetchConvertJobStatus(jobId: string): Promise<ConvertJobSt
 
 export async function downloadConvertJobResult(jobId: string): Promise<Response> {
   return fetchWithTimeout(apiUrl(`/api/convert-audio/job/${encodeURIComponent(jobId)}/download`), {
-    timeoutMs: 180_000,
+    timeoutMs: 240_000,
   });
 }
 
@@ -175,11 +214,11 @@ export function studioFormatWarning(format: string): string | null {
   return `${format} is a lossless wrap of YouTube’s lossy audio — not a studio master.`;
 }
 
-/** Poll job progress until done/error or timeout (default 3 min). */
+/** Poll job progress until done/error or timeout (default 8 min — FLAC extract + FFmpeg). */
 export async function waitForConvertJob(
   jobId: string,
   onProgress?: (status: ConvertJobStatus) => void,
-  timeoutMs = 180_000
+  timeoutMs = 480_000
 ): Promise<ConvertJobStatus> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -194,7 +233,7 @@ export async function waitForConvertJob(
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new ConverterApiError(
-    'Conversion timed out after 3 minutes. Try MP3 320 on Wi‑Fi or retry shortly.',
+    'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
     'TIMEOUT'
   );
 }

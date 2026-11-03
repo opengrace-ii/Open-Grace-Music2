@@ -60,21 +60,32 @@ object WebViewStreamCapture {
         requestedWatchId = videoId?.trim()?.takeIf { WATCH_ID_RE.matches(it) }
     }
 
-    fun associatedWatchId(): String? = currentlyPlayingWatchId ?: requestedWatchId
+    /** Prefer the Record target over leftover "now playing" so we never bind the wrong watch id. */
+    fun associatedWatchId(): String? = requestedWatchId ?: currentlyPlayingWatchId
 
     fun observe(request: WebResourceRequest?) {
         if (request == null) return
-        observeUrl(request.url?.toString(), request.requestHeaders)
+        observeUrl(request.url?.toString(), request.requestHeaders, request.method)
     }
 
-    fun observeUrl(rawUrl: String?, requestHeaders: Map<String, String>?) {
-        val parsed = parseVideoPlayback(rawUrl ?: return, requestHeaders.orEmpty(), associatedWatchId())
+    fun observeUrl(rawUrl: String?, requestHeaders: Map<String, String>?, method: String? = "GET") {
+        val url = rawUrl ?: return
+        val host = runCatching { Uri.parse(url).host?.lowercase(Locale.US) }.getOrNull() ?: return
+        if (url.startsWith("blob:", ignoreCase = true)) {
+            // MSE blob media is not a re-fetchable googlevideo URL.
+            return
+        }
+        if (host.contains("youtube.com") && url.contains("/youtubei/")) {
+            // InnerTube traffic means the player is alive; capture still needs googlevideo.
+            return
+        }
+        val parsed = parseVideoPlayback(url, requestHeaders.orEmpty(), associatedWatchId(), method = method)
             ?: return
         remember(parsed)
     }
 
     fun remember(stream: CapturedStream) {
-        if (!isDownloadCandidate(stream.itag, stream.mime)) return
+        if (!isDownloadCandidate(stream.itag, stream.mime) && !isSabrUnknown(stream.itag, stream.mime)) return
         if (isAudioCandidate(stream.itag, stream.mime) || latestAudio.get() == null) {
             latestAudio.set(stream)
         } else {
@@ -105,7 +116,7 @@ object WebViewStreamCapture {
             if (latest.playingWatchId == watchId) return latest
             val playing = currentlyPlayingWatchId
             val requested = requestedWatchId
-            if (playing == watchId || (playing == null && requested == watchId)) {
+            if (playing == watchId || requested == watchId) {
                 // googlevideo `id` is often an sCPN-style identifier, not the watch id.
                 return latest
             }
@@ -127,12 +138,20 @@ object WebViewStreamCapture {
         requestHeaders: Map<String, String>,
         playingWatchId: String?,
         capturedAt: Long = System.currentTimeMillis(),
+        method: String? = "GET",
     ): CapturedStream? {
         val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return null
         val host = uri.host?.lowercase(Locale.US) ?: return null
         if (!host.endsWith("googlevideo.com")) return null
         val path = uri.path.orEmpty()
-        if (!path.contains("videoplayback")) return null
+        val hasItag = uri.getQueryParameter("itag") != null
+        val hasMime = uri.getQueryParameter("mime") != null
+        val playbackPath = path.contains("videoplayback") ||
+            path.contains("initplayback") ||
+            path.contains("videogoodput")
+        if (!playbackPath && !hasItag && !hasMime) return null
+        // POST SABR and GET DASH share this URL shape; HEAD is never a media body.
+        if ("HEAD".equals(method, true)) return null
 
         val itag = uri.getQueryParameter("itag")?.toIntOrNull()
         val mimeRaw = uri.getQueryParameter("mime")
@@ -169,6 +188,12 @@ object WebViewStreamCapture {
 
     fun isDownloadCandidate(itag: Int?, mime: String?): Boolean =
         isAudioCandidate(itag, mime) || isMuxedCandidate(itag, mime)
+
+    /** SABR / googlevideo with no itag yet — bind to the requested watch id, don't drop it. */
+    fun isSabrUnknown(itag: Int?, mime: String?): Boolean {
+        if (itag != null || !mime.isNullOrBlank()) return false
+        return associatedWatchId() != null
+    }
 
     /** Higher is better. Non-audio scores negative. */
     fun audioPreferenceScore(itag: Int?, mime: String?): Int {
@@ -318,5 +343,5 @@ object WebViewStreamCapture {
     const val DEFAULT_UA =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    const val WAIT_FOR_STREAM_MS = 18_000L
+    const val WAIT_FOR_STREAM_MS = 45_000L
 }

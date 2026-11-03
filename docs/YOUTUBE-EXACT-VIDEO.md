@@ -4,7 +4,7 @@ OGM records **the audio from the URL you paste** — never a “similar” track
 
 ## How it works now
 
-**Android APK 1.3.2+ (TubeMate-style):** tap **Connect YouTube** once — Google’s real pages inside the app WebView (`CookieManager`). Then OGM loads **that** watch page, intercepts `googlevideo.com` audio for that video ID, and can send the phone’s session to the studio server. No APK bump is required for the web login path.
+**Android APK 1.3.5+ (TubeMate-style):** tap **Connect YouTube** once — Google’s real pages inside the app WebView (`CookieManager`). Then OGM loads **that** watch page (briefly visible so media actually loads), intercepts `googlevideo.com` audio for that video ID, and can send the phone’s session to the studio server. No APK bump is required for the web login path.
 
 **PWA / Chrome / desktop:** Chrome cannot read YouTube’s HttpOnly cookies from this origin, so a Google login iframe here would not work. Tap **Connect YouTube** for a **YouTube TV device-code** flow:
 
@@ -25,4 +25,4 @@ When YouTube blocked the server (datacenter IP), an old **SoundCloud search fall
 
 1. Tap **Connect YouTube** (Settings, More, or the recorder) and finish the TV code in the new tab until status is **Connected**.
 2. Retry **Record**.
-3. If Google still blocks: paste **youtube.com** cookies via the key icon, or use the **1.3.2 APK** (native WebView login + on-device capture).
+3. If Google still blocks: paste **youtube.com** cookies via the key icon, or use the **1.3.5 APK** (native WebView login + on-device capture).

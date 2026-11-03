@@ -52,38 +52,23 @@ class InnerTubeResolver(
 
         val CLIENTS: List<InnerTubeClient> = listOf(
             InnerTubeClient(
-                name = "ANDROID_VR",
-                version = "1.60.19",
-                userAgent = "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-                clientNameId = "28",
-            ) {
-                put("deviceMake", "Oculus")
-                put("deviceModel", "Quest 3")
-                put("androidSdkVersion", 32)
-                put("osName", "Android")
-                put("osVersion", "12L")
-            },
+                name = "WEB",
+                version = "2.20251125.01.00",
+                userAgent = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+                clientNameId = "1",
+            ),
             InnerTubeClient(
-                name = "IOS",
-                version = "20.10.4",
-                userAgent = "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
-                clientNameId = "5",
-            ) {
-                put("deviceMake", "Apple")
-                put("deviceModel", "iPhone16,2")
-                put("osName", "iPhone")
-                put("osVersion", "18.3.2.22D82")
-            },
+                name = "WEB_EMBEDDED_PLAYER",
+                version = "1.20251125.01.00",
+                userAgent = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+                clientNameId = "56",
+            ),
             InnerTubeClient(
-                name = "ANDROID",
-                version = "20.10.38",
-                userAgent = "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
-                clientNameId = "3",
-            ) {
-                put("androidSdkVersion", 30)
-                put("osName", "Android")
-                put("osVersion", "11")
-            },
+                name = "TVHTML5",
+                version = "7.20251125.18.00",
+                userAgent = "Mozilla/5.0 (ChromiumStyleTv) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SmartTV",
+                clientNameId = "7",
+            ),
         )
 
         /**
@@ -104,30 +89,41 @@ class InnerTubeResolver(
                 throw OnDeviceException("$status: $reason")
             }
             val details = root.optJSONObject("videoDetails")
-            val gotId = details?.optString("videoId").orEmpty()
-            if (gotId != expectedVideoId) {
+            val gotId = details?.optString("videoId").orEmpty().trim()
+            if (gotId.isNotEmpty() && !gotId.equals(expectedVideoId, ignoreCase = true)) {
                 throw OnDeviceException("YouTube answered for a different video id ($gotId) — refusing to substitute")
             }
-            val formats = root.optJSONObject("streamingData")?.optJSONArray("adaptiveFormats") ?: return null
+            val streaming = root.optJSONObject("streamingData") ?: return null
+            val groups = listOf(streaming.optJSONArray("adaptiveFormats"), streaming.optJSONArray("formats"))
             var best: JSONObject? = null
             var bestScore = -1
-            for (i in 0 until formats.length()) {
-                val f = formats.optJSONObject(i) ?: continue
-                val mime = f.optString("mimeType")
-                if (!mime.startsWith("audio/")) continue
-                if (f.optString("url").isBlank()) continue
-                if (f.optLong("contentLength", 0L) <= 0L) continue
-                // Prefer AAC in MP4 (plays everywhere in HTML5 audio), then Opus; higher bitrate wins.
-                val base = if (mime.startsWith("audio/mp4")) 1_000_000 else 0
-                val score = base + f.optInt("averageBitrate", f.optInt("bitrate", 0)) / 1000
-                if (score > bestScore) {
-                    best = f
-                    bestScore = score
+            for (formats in groups) {
+                if (formats == null) continue
+                for (i in 0 until formats.length()) {
+                    val f = formats.optJSONObject(i) ?: continue
+                    val mime = f.optString("mimeType")
+                    val itag = f.optInt("itag", -1)
+                    val audio = mime.startsWith("audio/")
+                    val muxed = itag in WebViewStreamCapture.MUXED_ITAGS ||
+                        (mime.startsWith("video/mp4") && itag in WebViewStreamCapture.MUXED_ITAGS)
+                    if (!audio && !muxed) continue
+                    if (f.optString("url").isBlank()) continue
+                    if (f.optLong("contentLength", 0L) <= 0L) continue
+                    val base = when {
+                        mime.startsWith("audio/mp4") -> 1_000_000
+                        audio -> 500_000
+                        else -> 8_000
+                    }
+                    val score = base + f.optInt("averageBitrate", f.optInt("bitrate", 0)) / 1000
+                    if (score > bestScore) {
+                        best = f
+                        bestScore = score
+                    }
                 }
             }
             val f = best ?: return null
             val mime = f.getString("mimeType")
-            val isMp4 = mime.startsWith("audio/mp4")
+            val isMp4 = mime.startsWith("audio/mp4") || mime.startsWith("video/mp4")
             val bitrate = f.optInt("averageBitrate", f.optInt("bitrate", 0)) / 1000
             return ResolvedAudio(
                 videoId = expectedVideoId,
@@ -181,6 +177,7 @@ class InnerTubeResolver(
             .header("X-YouTube-Client-Name", c.clientNameId)
             .header("X-YouTube-Client-Version", c.version)
             .header("Origin", "https://www.youtube.com")
+            .header("Referer", "https://www.youtube.com/watch?v=$videoId")
             .post(payload.toString().toRequestBody(JSON))
         val cookie = cookieHeader.trim()
         if (cookie.isNotEmpty() && WebViewStreamCapture.isSafeHeaderValue(cookie)) {

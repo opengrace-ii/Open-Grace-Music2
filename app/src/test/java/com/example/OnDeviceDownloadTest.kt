@@ -49,6 +49,32 @@ class OnDeviceDownloadTest {
     }
 
     @Test
+    fun `parser accepts empty videoDetails id when streams exist`() {
+        val json = """{"playabilityStatus":{"status":"OK"},"videoDetails":{"title":"T"},
+            "streamingData":{"adaptiveFormats":[
+              {"itag":140,"mimeType":"audio/mp4","bitrate":130000,"averageBitrate":129000,"contentLength":"3200000","url":"https://x/m4a"}
+            ]}}"""
+        val a = InnerTubeResolver.parsePlayerResponse(json, "yYk7skapjFA", client)!!
+        assertEquals("yYk7skapjFA", a.videoId)
+        assertEquals("M4A", a.container)
+    }
+
+    @Test
+    fun `parser matches video id case-insensitively`() {
+        val a = InnerTubeResolver.parsePlayerResponse(playerJson("yyk7skapjfa"), "yYk7skapjFA", client)!!
+        assertEquals("yYk7skapjFA", a.videoId)
+    }
+
+    @Test
+    fun `innerTube last-resort clients are web family not ANDROID_VR`() {
+        val names = InnerTubeResolver.CLIENTS.map { it.name }
+        assertTrue(names.contains("WEB"))
+        assertTrue(names.contains("WEB_EMBEDDED_PLAYER"))
+        assertTrue(names.contains("TVHTML5"))
+        assertTrue(names.none { it.contains("ANDROID_VR") })
+    }
+
+    @Test
     fun `parser refuses a different video id`() {
         try {
             InnerTubeResolver.parsePlayerResponse(playerJson("AAAAAAAAAAA"), "dQw4w9WgXcQ", client)
@@ -266,10 +292,63 @@ class OnDeviceDownloadTest {
         assertTrue(msg.contains("Play the video"))
         assertTrue(!msg.contains("ANDROID_VR"))
         assertTrue(!msg.contains("LOGIN_REQUIRED"))
+        assertTrue(!msg.contains("WEB_EMBEDDED"))
         val expired = OnDeviceDownloadManager.friendlyFailure("Xc6Jlstj8GY", true, null)
         assertTrue(expired.contains("expired") || expired.contains("Play the video"))
         assertTrue(msg.length < 160)
         assertTrue(expired.length < 160)
+    }
+
+    @Test
+    fun `initplayback SABR url binds to requested watch id`() {
+        WebViewStreamCapture.clear()
+        WebViewStreamCapture.setRequested("yYk7skapjFA")
+        val url = "https://rr1---sn-abc.googlevideo.com/initplayback?source=youtube&id=o-sCPNstyleIdentifierNotWatch"
+        val parsed = WebViewStreamCapture.parseVideoPlayback(url, emptyMap(), null)!!
+        WebViewStreamCapture.remember(parsed)
+        val found = WebViewStreamCapture.findFor("yYk7skapjFA")
+        assertEquals(parsed.url, found!!.url)
+        WebViewStreamCapture.clear()
+    }
+
+    @Test
+    fun `findFor prefers requested watch id over leftover playing id`() {
+        WebViewStreamCapture.clear()
+        WebViewStreamCapture.setCurrentlyPlaying("dQw4w9WgXcQ")
+        WebViewStreamCapture.setRequested("yYk7skapjFA")
+        val parsed = WebViewStreamCapture.parseVideoPlayback(samplePlayback, emptyMap(), WebViewStreamCapture.associatedWatchId())!!
+        WebViewStreamCapture.remember(parsed)
+        assertEquals("yYk7skapjFA", parsed.playingWatchId)
+        assertEquals(parsed.url, WebViewStreamCapture.findFor("yYk7skapjFA")!!.url)
+        WebViewStreamCapture.clear()
+    }
+
+    @Test
+    fun `googlevideo POST is captured the same as GET`() {
+        WebViewStreamCapture.clear()
+        WebViewStreamCapture.setRequested("yYk7skapjFA")
+        val parsed = WebViewStreamCapture.parseVideoPlayback(
+            samplePlayback,
+            emptyMap(),
+            "yYk7skapjFA",
+            method = "POST",
+        )!!
+        assertEquals(140, parsed.itag)
+        WebViewStreamCapture.remember(parsed)
+        assertEquals(parsed.url, WebViewStreamCapture.findFor("yYk7skapjFA")!!.url)
+        WebViewStreamCapture.clear()
+    }
+
+    @Test
+    fun `friendly failure maps login and 403 without mismatch`() {
+        val login = OnDeviceDownloadManager.friendlyFailure("yYk7skapjFA", false, "WEB: LOGIN_REQUIRED: Sign in", true)
+        assertTrue(login.contains("login") || login.contains("Reconnect"))
+        assertTrue(!login.contains("did not match"))
+        assertTrue(!login.contains("ANDROID_VR"))
+        val blocked = OnDeviceDownloadManager.friendlyFailure("yYk7skapjFA", false, "WEB: HTTP 403 from YouTube player API", true)
+        assertTrue(blocked.contains("403") || blocked.contains("blocked"))
+        assertTrue(!blocked.contains("did not match"))
+        assertTrue(!blocked.contains("Connect YouTube"))
     }
 
     @Test

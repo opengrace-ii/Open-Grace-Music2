@@ -39,11 +39,31 @@ class OnDeviceDownloadManager(private val context: Context) {
 
         const val CAPTURE_HINT = "Play the video, then retry Record."
 
-        fun friendlyFailure(videoId: String, hadCapture: Boolean, innerTubeHint: String?): String {
-            return if (hadCapture) {
-                "Stream expired. $CAPTURE_HINT"
-            } else {
-                "Missed this video’s audio. $CAPTURE_HINT"
+        fun friendlyFailure(
+            videoId: String,
+            hadCapture: Boolean,
+            innerTubeHint: String?,
+            sessionConnected: Boolean = false,
+        ): String {
+            val hint = innerTubeHint.orEmpty()
+            val lower = hint.lowercase()
+            return when {
+                "login_required" in lower || "sign in" in lower ->
+                    if (sessionConnected) {
+                        "YouTube asked for a login again. Reconnect, then retry Record."
+                    } else {
+                        "YouTube asked for a login. Connect YouTube, then retry Record."
+                    }
+                "http 403" in lower || "http 401" in lower ->
+                    if (sessionConnected) {
+                        "YouTube blocked this stream (HTTP 403). $CAPTURE_HINT"
+                    } else {
+                        "YouTube blocked this stream. Connect YouTube, then retry Record."
+                    }
+                "different video" in lower || "did not match" in lower ->
+                    "YouTube answered for a different video. Retry this exact URL."
+                hadCapture -> "Stream expired. $CAPTURE_HINT"
+                else -> "Missed this video’s audio. $CAPTURE_HINT"
             }
         }
     }
@@ -94,11 +114,51 @@ class OnDeviceDownloadManager(private val context: Context) {
                 if (downloadCaptured(videoId, captured, callbackId, cancelled, events, downloader)) return
             } catch (e: Exception) {
                 if (cancelled.get()) throw OnDeviceException("Cancelled")
-                // Fall through: JS will try the server with cookies/oauth.
+                // Fall through: signed-in InnerTube, then JS server route.
             }
         }
 
-        throw OnDeviceException(friendlyFailure(videoId, captured != null, null))
+        val cookies = YouTubeSessionStore.mergedCookieHeader(context)
+        val sessionConnected = YouTubeSessionStore.hasAuthCookies(cookies)
+        val innerFailures = mutableListOf<String>()
+        if (tryInnerTube(videoId, cookies, callbackId, cancelled, events, downloader, innerFailures)) return
+
+        throw OnDeviceException(
+            friendlyFailure(videoId, captured != null, innerFailures.joinToString("; "), sessionConnected)
+        )
+    }
+
+    private fun tryInnerTube(
+        videoId: String,
+        cookies: String,
+        callbackId: String,
+        cancelled: AtomicBoolean,
+        events: DownloadEvents,
+        downloader: RangedDownloader,
+        failures: MutableList<String>,
+    ): Boolean {
+        events.onProgress(
+            callbackId,
+            JSONObject().put("stage", "resolve").put("percent", 8)
+                .put("message", "Trying signed-in YouTube session…")
+        )
+        val resolver = InnerTubeResolver(http, cookies)
+        for (audio in resolver.resolveCandidates(videoId, failures)) {
+            if (cancelled.get()) throw OnDeviceException("Cancelled")
+            try {
+                finishDownload(audio, callbackId, cancelled, events, downloader)
+                return true
+            } catch (e: Exception) {
+                if (cancelled.get()) throw OnDeviceException("Cancelled")
+                val why = e.message.orEmpty()
+                failures.add("${audio.clientName}: $why")
+                // 403 is a block, not a different-video mismatch.
+                if (why.contains("403") || why.contains("401") || why.contains("LOGIN_REQUIRED", true)) {
+                    break
+                }
+            }
+        }
+        return false
     }
 
     private fun waitForCapture(

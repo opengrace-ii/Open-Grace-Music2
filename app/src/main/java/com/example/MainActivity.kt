@@ -609,6 +609,13 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         @JavascriptInterface
         fun setPlayingYouTubeId(videoId: String?) {
             WebViewStreamCapture.setCurrentlyPlaying(videoId)
+            if (!videoId.isNullOrBlank()) WebViewStreamCapture.setRequested(videoId)
+        }
+
+        /** Bind intercept to this watch id before Record playback starts. */
+        @JavascriptInterface
+        fun setRequestedYouTubeId(videoId: String?) {
+            WebViewStreamCapture.setRequested(videoId)
         }
 
         /**
