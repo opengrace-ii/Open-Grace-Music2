@@ -23,6 +23,9 @@ object WebViewStreamCapture {
         139, 140, 141, 171, 249, 250, 251, 256, 258, 327, 338, 599, 600,
     )
 
+    /** Progressive muxed A+V itags the IFrame still requests when it skips adaptive audio. */
+    val MUXED_ITAGS: Set<Int> = setOf(18, 22, 59, 78)
+
     private const val MAX_AGE_MS = 90_000L
     private val WATCH_ID_RE = Regex("^[A-Za-z0-9_-]{11}$")
 
@@ -71,8 +74,15 @@ object WebViewStreamCapture {
     }
 
     fun remember(stream: CapturedStream) {
-        if (!isAudioCandidate(stream.itag, stream.mime)) return
-        latestAudio.set(stream)
+        if (!isDownloadCandidate(stream.itag, stream.mime)) return
+        if (isAudioCandidate(stream.itag, stream.mime) || latestAudio.get() == null) {
+            latestAudio.set(stream)
+        } else {
+            val cur = latestAudio.get()
+            if (cur != null && audioPreferenceScore(stream.itag, stream.mime) > audioPreferenceScore(cur.itag, cur.mime)) {
+                latestAudio.set(stream)
+            }
+        }
         val keys = linkedSetOf<String>()
         stream.watchIdInQuery?.let { keys.add(it) }
         stream.playingWatchId?.let { keys.add(it) }
@@ -151,8 +161,20 @@ object WebViewStreamCapture {
         return false
     }
 
+    fun isMuxedCandidate(itag: Int?, mime: String?): Boolean {
+        if (itag != null && itag in MUXED_ITAGS) return true
+        val m = mime.orEmpty().lowercase(Locale.US)
+        return m.contains("video/mp4") && itag != null && itag in MUXED_ITAGS
+    }
+
+    fun isDownloadCandidate(itag: Int?, mime: String?): Boolean =
+        isAudioCandidate(itag, mime) || isMuxedCandidate(itag, mime)
+
     /** Higher is better. Non-audio scores negative. */
     fun audioPreferenceScore(itag: Int?, mime: String?): Int {
+        if (isMuxedCandidate(itag, mime) && !isAudioCandidate(itag, mime)) {
+            return 8_000 + (itag ?: 0)
+        }
         if (!isAudioCandidate(itag, mime)) return -1
         val m = mime.orEmpty().lowercase(Locale.US)
         val mimeBonus = when {
@@ -249,10 +271,13 @@ object WebViewStreamCapture {
     fun mimeTypeOf(stream: CapturedStream): String {
         val m = stream.mime.orEmpty().lowercase(Locale.US).replace("%2f", "/")
         return when {
-            m.contains("mp4") -> "audio/mp4"
-            m.contains("webm") -> "audio/webm"
+            m.contains("audio") && m.contains("mp4") -> "audio/mp4"
+            m.contains("audio") && m.contains("webm") -> "audio/webm"
+            stream.itag in MUXED_ITAGS -> "video/mp4"
             stream.itag in setOf(139, 140, 141) -> "audio/mp4"
             stream.itag in setOf(249, 250, 251) -> "audio/webm"
+            m.contains("mp4") -> "audio/mp4"
+            m.contains("webm") -> "audio/webm"
             else -> "audio/mp4"
         }
     }
@@ -266,7 +291,7 @@ object WebViewStreamCapture {
         author: String = "",
     ): ResolvedAudio {
         val mime = mimeTypeOf(stream)
-        val isMp4 = mime.startsWith("audio/mp4")
+        val isMp4 = mime.startsWith("audio/mp4") || mime.startsWith("video/mp4")
         val ua = extraHeaders["User-Agent"]
             ?: stream.headers["User-Agent"]
             ?: DEFAULT_UA
@@ -290,5 +315,5 @@ object WebViewStreamCapture {
     const val DEFAULT_UA =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    const val WAIT_FOR_STREAM_MS = 14_000L
+    const val WAIT_FOR_STREAM_MS = 18_000L
 }

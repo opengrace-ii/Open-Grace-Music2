@@ -59,7 +59,7 @@ export const MorePage: React.FC<MorePageProps> = ({
         <p>
           <span className="text-[#e2c986]">Reinstall the APK</span> only when the native shell changes
           (background audio, permissions, Connect YouTube). Phone still looks old? Force-stop + reopen, clear app cache, or
-          uninstall and install the latest APK (1.3.2+ / versionCode 8+) from this site if you still see Compose-only UI without bottom
+          uninstall and install the latest APK (1.3.3+ / versionCode 9+) from this site if you still see Compose-only UI without bottom
           nav.
         </p>
       </div>

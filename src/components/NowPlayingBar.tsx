@@ -97,18 +97,22 @@ export const NowPlayingBar: React.FC<NowPlayingBarProps> = ({
       </div>
 
       {isYoutube && onShowVideoChange && (
-        <label className="max-w-6xl mx-auto mb-1.5 flex items-center gap-2 text-[11px] font-mono text-[#9fa396] cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={showVideo}
-            onChange={(e) => onShowVideoChange(e.target.checked)}
-            className="rounded border-[#3a4533] bg-[#0b0d0a] accent-[#b8d99e] w-3.5 h-3.5"
-          />
-          <span>
+        <div className="max-w-6xl mx-auto mb-1.5 flex items-center">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showVideo}
+            onClick={() => onShowVideoChange(!showVideo)}
+            className={`cassette-btn px-2.5 py-1 text-[11px] font-mono ${
+              showVideo ? 'cassette-btn-engaged' : 'text-[#9fa396]'
+            }`}
+            title="Show video (default off). Off = audio only, no YouTube picture."
+          >
+            <span className={`cassette-led ${showVideo ? 'cassette-led-on' : ''}`} />
             Show video
-            <span className="text-[#686b60]"> · off = audio only</span>
-          </span>
-        </label>
+            <span className="text-[#686b60] font-normal">{showVideo ? ' · on' : ' · off · audio only'}</span>
+          </button>
+        </div>
       )}
 
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">

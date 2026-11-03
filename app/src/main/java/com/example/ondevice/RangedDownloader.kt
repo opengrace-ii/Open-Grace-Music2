@@ -45,7 +45,11 @@ class RangedDownloader(private val http: OkHttpClient) {
                         throw OnDeviceException("googlevideo returned HTTP ${resp.code}")
                     }
                     val ctype = resp.header("Content-Type").orEmpty()
-                    if (!ctype.startsWith("audio/") && !ctype.startsWith("application/octet-stream")) {
+                    if (!ctype.startsWith("audio/") &&
+                        !ctype.startsWith("video/mp4") &&
+                        !ctype.startsWith("application/octet-stream") &&
+                        ctype.isNotBlank()
+                    ) {
                         throw OnDeviceException("Stream was not audio (content-type '$ctype')")
                     }
                     val body = resp.body ?: throw IOException("Empty body")

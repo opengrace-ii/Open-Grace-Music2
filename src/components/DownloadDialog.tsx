@@ -309,15 +309,13 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
 
               {previewData.isYouTube && (
                 <div
-                  className="relative w-full rounded-xl overflow-hidden border border-[#272c23] bg-[#0e0f0d] min-h-[200px]"
+                  className="relative w-full rounded-xl overflow-hidden border border-[#272c23] bg-[#0e0f0d] min-h-[120px] max-h-[160px]"
                   style={{ aspectRatio: '16 / 9' }}
                 >
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${previewData.id}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}`}
-                    title="YouTube Monitor"
-                    className="absolute inset-0 w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                    allowFullScreen
+                  <img
+                    src={`https://img.youtube.com/vi/${previewData.id}/hqdefault.jpg`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
                 </div>
               )}

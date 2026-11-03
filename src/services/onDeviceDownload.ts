@@ -11,7 +11,7 @@ export interface OnDeviceDone {
   token: string;
   videoId: string;
   /** Real container: M4A (AAC) or OPUS (WebM). Never MP3/FLAC. */
-  container: 'M4A' | 'OPUS';
+  container: 'M4A' | 'OPUS' | 'MP4';
   codec: string;
   mime: string;
   bitrateKbps: number;
@@ -25,7 +25,9 @@ export interface OnDeviceDone {
 export type OnDeviceRoute = 'on-device-capture' | 'on-device-innertube';
 
 export function onDeviceRoute(client: string | undefined): OnDeviceRoute {
-  return client === 'WEBVIEW_CAPTURE' ? 'on-device-capture' : 'on-device-innertube';
+  return client === 'WEBVIEW_CAPTURE' || client === 'APP_PLAYBACK_CAPTURE'
+    ? 'on-device-capture'
+    : 'on-device-innertube';
 }
 
 export interface OnDeviceProgress {

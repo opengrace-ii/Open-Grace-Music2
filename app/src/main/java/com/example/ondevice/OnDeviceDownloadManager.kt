@@ -20,7 +20,8 @@ interface DownloadEvents {
  * Orchestrates an on-device YouTube audio download:
  * 1. Wait for a googlevideo URL the WebView already loaded (real YouTube session).
  * 2. Ranged download of that captured URL with Cookie + UA from CookieManager / intercept.
- * 3. InnerTube is a last resort only; 403s are not dumped as ANDROID_VR/IOS walls.
+ * 3. Android 10+ AudioPlaybackCapture of THIS app's playing audio → M4A.
+ * JS then tries the server with cookies/oauth. InnerTube clients are not added here.
  */
 class OnDeviceDownloadManager(private val context: Context) {
 
@@ -38,20 +39,19 @@ class OnDeviceDownloadManager(private val context: Context) {
         }
 
         const val CAPTURE_HINT =
-            "Play the video in Open Grace Music so this phone can grab the same stream YouTube already sent, tap Play if it is paused, wait a few seconds, then retry."
-
-        const val LOGIN_HINT =
-            " If YouTube still treats this phone like a bot, tap Connect YouTube once (real Google page in this app), then retry Record."
+            "Play the video, then retry Record."
 
         fun friendlyFailure(videoId: String, hadCapture: Boolean, innerTubeHint: String?): String {
             return if (hadCapture) {
-                "On this phone: a captured YouTube stream expired or googlevideo refused the re-fetch. $CAPTURE_HINT$LOGIN_HINT"
+                "Captured stream expired. $CAPTURE_HINT"
             } else {
-                val extra = innerTubeHint?.takeIf { it.isNotBlank() }?.let { " (YouTube session fallback also failed.)" } ?: ""
-                "On this phone: capture did not see a googlevideo audio stream for $videoId yet. $CAPTURE_HINT$extra$LOGIN_HINT"
+                "Capture missed googlevideo audio for $videoId. $CAPTURE_HINT"
             }
         }
     }
+
+    /** Optional: record THIS app's playing audio (Android 10+ AudioPlaybackCapture). */
+    var playbackCapture: AppPlaybackCapture? = null
 
     private val executor = Executors.newCachedThreadPool()
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
@@ -99,33 +99,52 @@ class OnDeviceDownloadManager(private val context: Context) {
                 if (downloadCaptured(videoId, captured, callbackId, cancelled, events, downloader)) return
             } catch (e: Exception) {
                 if (cancelled.get()) throw OnDeviceException("Cancelled")
-                // Fall through to InnerTube last resort, then rewrite the error.
+                // Fall through to in-app playback capture, then the JS server route.
             }
         }
 
-        events.onProgress(
-            callbackId,
-            JSONObject().put("stage", "resolve").put("percent", 8)
-                .put("message", "No captured stream yet — trying a last-resort YouTube session…")
-        )
-        val failures = mutableListOf<String>()
-        val sessionCookies = YouTubeSessionStore.mergedCookieHeader(context)
-        val resolver = InnerTubeResolver(http, sessionCookies)
-        for (audio in resolver.resolveCandidates(videoId, failures)) {
-            if (cancelled.get()) throw OnDeviceException("Cancelled")
+        val cap = playbackCapture
+        if (cap != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            events.onProgress(
+                callbackId,
+                JSONObject().put("stage", "playback").put("percent", 12)
+                    .put("message", "Recording this app’s playing audio… allow capture if Android asks")
+            )
             try {
-                finishDownload(audio, callbackId, cancelled, events, downloader)
-                return
+                val rec = cap.recordPlayingAppAudio(videoId, cancelled) { pct, msg ->
+                    events.onProgress(
+                        callbackId,
+                        JSONObject().put("stage", "playback").put("percent", pct).put("message", msg)
+                    )
+                }
+                if (rec != null && rec.file.exists() && rec.file.length() >= 50_000L) {
+                    val token = "${videoId}-${System.currentTimeMillis().toString(36)}.m4a"
+                    val dest = File(dir, token)
+                    rec.file.copyTo(dest, overwrite = true)
+                    rec.file.delete()
+                    files[token] = dest to "audio/mp4"
+                    val done = JSONObject()
+                        .put("url", "https://$LOCAL_HOST/dl/$token")
+                        .put("token", token)
+                        .put("videoId", videoId)
+                        .put("container", "M4A")
+                        .put("codec", "AAC")
+                        .put("mime", "audio/mp4")
+                        .put("bitrateKbps", 128)
+                        .put("bytes", dest.length())
+                        .put("title", "")
+                        .put("author", "")
+                        .put("durationSec", rec.durationSec)
+                        .put("client", AppPlaybackCapture.CLIENT_NAME)
+                    events.onDone(callbackId, done)
+                    return
+                }
             } catch (e: Exception) {
                 if (cancelled.get()) throw OnDeviceException("Cancelled")
-                failures.add("${audio.clientName} download: ${e.message}")
             }
         }
-        val inner = failures.joinToString("; ")
-        val looks403 = inner.contains("403") || inner.contains("LOGIN_REQUIRED") || inner.contains("bot")
-        throw OnDeviceException(
-            friendlyFailure(videoId, captured != null, if (looks403 || inner.isNotBlank()) "session" else inner)
-        )
+
+        throw OnDeviceException(friendlyFailure(videoId, captured != null, null))
     }
 
     private fun waitForCapture(

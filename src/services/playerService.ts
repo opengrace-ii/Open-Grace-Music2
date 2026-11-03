@@ -41,6 +41,9 @@ declare global {
       pause: () => void;
       requestNext: () => void;
       requestPrev: () => void;
+      getDuration?: () => number;
+      getShowVideo?: () => boolean;
+      setShowVideo?: (show: boolean) => void;
     };
     __ogmNativeCommand?: (cmd: string) => void;
   }
@@ -61,6 +64,7 @@ type YoutubePlayerHandle = {
   destroy: () => void;
   loadVideoById: (id: string) => void;
   setVolume: (v: number) => void;
+  setSize?: (width: number, height: number) => void;
 };
 
 function isYoutubeStreamTrack(track: Track): boolean {
@@ -95,9 +99,12 @@ class AudioPlayerEngine {
   private playbackRate = 1.0;
   private ytPlayer: YoutubePlayerHandle | null = null;
   private ytHost: HTMLDivElement | null = null;
+  private ytChrome: HTMLDivElement | null = null;
   private usingYoutube = false;
   /** Music-first default: keep YouTube audio, hide the video surface. */
   private showVideo = false;
+  private extraIframeObserver: MutationObserver | null = null;
+  private showVideoListeners: Array<(show: boolean) => void> = [];
 
   constructor() {
     this.htmlAudio = new Audio();
@@ -332,20 +339,23 @@ class AudioPlayerEngine {
     }
   }
 
-  /** Dock = page nav (~3.65rem) + Now Playing bar (~5.25rem) + gap. */
+  /**
+   * Pocket sits above bottom nav (~3.65rem) + Now Playing (~5.25rem) + Close strip.
+   * z-index stays below the transport (40) and page nav (50) so video cannot cover them.
+   */
   private static readonly YT_DOCK_CLEARANCE =
-    'calc(3.65rem + 5.25rem + env(safe-area-inset-bottom, 0px) + 10px)';
+    'calc(3.65rem + 5.25rem + env(safe-area-inset-bottom, 0px) + 8px)';
 
   private applyYtHostLayout() {
+    this.destroyExtraYoutubeIframes();
     const host = this.ytHost;
     if (!host) return;
     if (!this.usingYoutube) {
-      host.style.display = 'none';
+      host.style.cssText = 'display:none;width:0;height:0;overflow:hidden';
+      this.applyYtChromeLayout();
       return;
     }
-    host.style.display = 'block';
     if (this.showVideo) {
-      // Reserved pocket above NowPlayingBar + AppPageNav — never under the transport.
       host.style.cssText = [
         'display:block',
         'position:fixed',
@@ -354,18 +364,26 @@ class AudioPlayerEngine {
         'width:min(220px,calc(100vw - 24px))',
         'height:auto',
         'aspect-ratio:16/9',
-        'z-index:30',
+        'z-index:25',
         'border-radius:12px',
         'overflow:hidden',
         'opacity:1',
-        'pointer-events:none',
+        'pointer-events:auto',
         'box-shadow:0 8px 24px rgba(0,0,0,.45)',
         'border:1px solid rgba(184,217,158,.25)',
+        'clip-path:none',
+        'visibility:visible',
       ].join(';');
-      const iframe = host.querySelector('iframe');
+      try {
+        this.ytPlayer?.setSize?.(220, 124);
+      } catch {
+        // ignore
+      }
+      const iframe = host.querySelector('iframe') as HTMLIFrameElement | null;
       if (iframe) {
         iframe.style.width = '100%';
         iframe.style.height = '100%';
+        iframe.setAttribute('allowfullscreen', 'false');
       }
       const mount = host.querySelector('#ogm-yt-player') as HTMLElement | null;
       if (mount) {
@@ -373,15 +391,107 @@ class AudioPlayerEngine {
         mount.style.height = '100%';
       }
     } else {
-      // Audio-only: keep the IFrame API alive off-viewport (do not pause).
-      host.style.cssText =
-        'display:block;position:fixed;width:1px;height:1px;left:-9999px;top:0;opacity:0;overflow:hidden;pointer-events:none;z-index:0;border:0';
+      // Audio-only: keep one IFrame alive with ZERO visible surface.
+      // Do not park it at left:-9999px — Android WebView SurfaceViews snap back on-screen.
+      host.style.cssText = [
+        'display:block',
+        'position:fixed',
+        'left:0',
+        'top:0',
+        'width:2px',
+        'height:2px',
+        'opacity:0',
+        'overflow:hidden',
+        'clip:rect(0,0,0,0)',
+        'clip-path:inset(100%)',
+        'pointer-events:none',
+        'z-index:0',
+        'border:0',
+      ].join(';');
+      try {
+        this.ytPlayer?.setSize?.(2, 2);
+      } catch {
+        // ignore
+      }
     }
+    this.applyYtChromeLayout();
+  }
+
+  private applyYtChromeLayout() {
+    const chrome = this.ytChrome;
+    if (!chrome) return;
+    const show = this.usingYoutube && this.showVideo;
+    if (!show) {
+      chrome.style.cssText = 'display:none';
+      return;
+    }
+    chrome.style.cssText = [
+      'display:flex',
+      'position:fixed',
+      'left:12px',
+      `bottom:calc(${AudioPlayerEngine.YT_DOCK_CLEARANCE} + min(124px, calc((100vw - 24px) * 9 / 16)) + 4px)`,
+      'z-index:45',
+      'pointer-events:auto',
+      'align-items:center',
+      'gap:6px',
+    ].join(';');
+  }
+
+  private ensureYtChrome() {
+    if (this.ytChrome && document.body.contains(this.ytChrome)) {
+      this.applyYtChromeLayout();
+      return;
+    }
+    const chrome = document.createElement('div');
+    chrome.id = 'ogm-yt-chrome';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Close';
+    btn.setAttribute('aria-label', 'Close video');
+    btn.style.cssText =
+      'font:600 11px/1 ui-monospace,monospace;padding:6px 10px;border-radius:10px;border:1px solid rgba(184,217,158,.35);background:#121510;color:#b8d99e;cursor:pointer';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.setShowVideo(false);
+    });
+    chrome.appendChild(btn);
+    document.body.appendChild(chrome);
+    this.ytChrome = chrome;
+    this.applyYtChromeLayout();
+  }
+
+  /** At most one YouTube iframe in the whole app — extras (tuner/preview) punch through on Android. */
+  private destroyExtraYoutubeIframes() {
+    if (typeof document === 'undefined') return;
+    const allowed = this.ytHost;
+    document.querySelectorAll('iframe').forEach((el) => {
+      const src = `${el.getAttribute('src') || ''} ${el.src || ''}`;
+      if (!/youtube|youtu\.be|ytimg/i.test(src)) return;
+      if (allowed && allowed.contains(el)) return;
+      try {
+        el.src = 'about:blank';
+      } catch {
+        // ignore
+      }
+      el.remove();
+    });
+    document.querySelectorAll('#ogm-yt-host').forEach((el) => {
+      if (el !== allowed) el.remove();
+    });
+  }
+
+  private watchExtraIframes() {
+    if (typeof document === 'undefined' || this.extraIframeObserver) return;
+    this.extraIframeObserver = new MutationObserver(() => this.destroyExtraYoutubeIframes());
+    this.extraIframeObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   private ensureYtHost(): HTMLDivElement {
+    this.watchExtraIframes();
     if (this.ytHost && document.body.contains(this.ytHost)) {
       this.applyYtHostLayout();
+      this.ensureYtChrome();
       return this.ytHost;
     }
     const host = document.createElement('div');
@@ -393,18 +503,42 @@ class AudioPlayerEngine {
     host.appendChild(mount);
     document.body.appendChild(host);
     this.ytHost = host;
+    this.ensureYtChrome();
     this.applyYtHostLayout();
     return host;
   }
 
+  public onShowVideoChange(listener: (show: boolean) => void): () => void {
+    this.showVideoListeners.push(listener);
+    return () => {
+      this.showVideoListeners = this.showVideoListeners.filter((l) => l !== listener);
+    };
+  }
+
   /** Toggle visible YouTube surface without stopping audio. Default off (music-first). */
-  public setShowVideo(show: boolean): void {
-    this.showVideo = Boolean(show);
+  public setShowVideo(show: boolean, fromUi = false): void {
+    const next = Boolean(show);
+    const changed = next !== this.showVideo;
+    this.showVideo = next;
     this.applyYtHostLayout();
+    if (changed && !fromUi) {
+      this.showVideoListeners.forEach((l) => l(this.showVideo));
+    }
   }
 
   public getShowVideo(): boolean {
     return this.showVideo;
+  }
+
+  public getDuration(): number {
+    if (this.usingYoutube && this.ytPlayer) {
+      try {
+        return this.ytPlayer.getDuration() || 0;
+      } catch {
+        return 0;
+      }
+    }
+    return this.htmlAudio.duration || 0;
   }
 
   private destroyYtPlayer() {
@@ -417,8 +551,12 @@ class AudioPlayerEngine {
     this.usingYoutube = false;
     this.notifyPlayingYouTubeId();
     if (this.ytHost) {
-      this.ytHost.style.display = 'none';
+      this.ytHost.style.cssText = 'display:none;width:0;height:0;overflow:hidden';
     }
+    if (this.ytChrome) {
+      this.ytChrome.style.display = 'none';
+    }
+    this.destroyExtraYoutubeIframes();
   }
 
   public async playTrack(track: Track): Promise<void> {
@@ -445,15 +583,17 @@ class AudioPlayerEngine {
         return;
       }
 
+      this.destroyExtraYoutubeIframes();
       this.ytPlayer = new window.YT!.Player('ogm-yt-player', {
-        width: '220',
-        height: '124',
+        width: this.showVideo ? 220 : 2,
+        height: this.showVideo ? 124 : 2,
         videoId,
         playerVars: {
           autoplay: 1,
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
+          fs: 0,
           origin: window.location.origin,
         },
         events: {
@@ -468,6 +608,7 @@ class AudioPlayerEngine {
             const state = window.YT?.PlayerState;
             if (!state) return;
             if (event.data === state.PLAYING) {
+              this.applyYtHostLayout();
               this.notifyPlayState(true);
               this.startTimePoll();
               this.updateMediaSessionState('playing');
