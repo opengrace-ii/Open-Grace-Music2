@@ -296,3 +296,14 @@ A complete, self-contained zip archive of the Android Studio project is also ava
 
 Refresh the zip after Android source changes:
 `zip -r public/OpenGraceMusic-Android.zip app build.gradle.kts settings.gradle.kts gradle.properties gradlew gradle -x '*/build/*' -x '**/.gradle/*'`
+
+
+## License & Terms of Use
+Copyright (c) 2026 Your Name / Your Project Name
+
+This project is licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0) License.
+
+You are free to download, listen, and share this music player. However:
+1. You must give appropriate credit to the original creator.
+2. You may NOT use this software or its code for commercial purposes or financial gain.
+3. If you modify the code, you may NOT distribute the modified version.
