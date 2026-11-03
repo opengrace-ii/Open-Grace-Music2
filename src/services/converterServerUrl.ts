@@ -23,12 +23,14 @@ export function setSavedConverterServerUrl(url: string): void {
   try {
     const trimmed = url.trim();
     if (trimmed) {
-      localStorage.setItem(STORAGE_KEY, trimmed);
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+      localStorage.setItem(STORAGE_KEY, parsed.origin);
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
   } catch {
-    // ignore quota / private mode
+    // ignore quota / private mode / invalid URL
   }
 }
 

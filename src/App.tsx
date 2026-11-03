@@ -41,8 +41,9 @@ import {
   deletePlaylist,
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
-import { loadSavedYoutubeCookies, saveYoutubeCookies } from './services/youtubeCookies';
+import { loadSavedYoutubeCookies, saveYoutubeCookies, sanitizeCookieHeader } from './services/youtubeCookies';
 import { loadYoutubeOauthRefreshToken } from './services/youtubeOauth';
+import { pullNativeYoutubeCookies } from './services/youtubeSession';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -766,15 +767,14 @@ export default function App() {
 
   const openDeviceFilePicker = () => {
     if (importProgress) return;
-    addToast('Opening file picker…', 'info');
     filePickerRef.current?.click();
   };
 
   const deviceFilesHint = insideApk
-    ? 'On this app, pick files (you can select many). Folder pick is for Chrome.'
+    ? 'Pick audio files on this phone.'
     : supportsFolderPick
-      ? 'Pick several songs at once. Folder import reads every audio file inside.'
-      : 'Pick several songs at once (hold a tap to multi-select). Whole-folder import is not available in this browser; select multiple files instead.';
+      ? 'Pick files or a folder.'
+      : 'Pick audio files.';
 
   /**
    * APK-only: play the in-app YouTube embed so the WebView loads a real googlevideo
@@ -795,7 +795,7 @@ export default function App() {
     let route = 'on-device-capture';
     try {
       setDownloadProgress(0.03);
-      setDownloadStatus('Capturing stream: playing this video in Open Grace Music…');
+      setDownloadStatus('Playing video…');
       try {
         window.OgmAndroid?.setPlayingYouTubeId?.(ytId);
       } catch {
@@ -824,13 +824,11 @@ export default function App() {
         const pct = Math.max(0.04, Math.min(0.85, ((p.percent || 0) / 100) * 0.85));
         setDownloadProgress(pct);
         if (stage === 'capture') {
-          setDownloadStatus(`Capturing stream: ${p.message}`);
+          setDownloadStatus(p.message || 'Waiting for audio…');
         } else if (stage === 'download') {
-          setDownloadStatus(`Downloading: ${p.message}`);
-        } else if (stage === 'playback') {
-          setDownloadStatus(`Recording playback: ${p.message}`);
+          setDownloadStatus(p.message || 'Downloading…');
         } else {
-          setDownloadStatus(`ON-DEVICE: ${p.message}`);
+          setDownloadStatus(p.message || 'Recording…');
         }
         if (p.stage && p.stage !== lastLoggedStage) {
           lastLoggedStage = p.stage;
@@ -1020,7 +1018,7 @@ export default function App() {
       }
       onDeviceFailure = r.reason;
       setDownloadProgress(0.08);
-      setDownloadStatus('On-device failed — trying the server route…');
+      setDownloadStatus('Trying server…');
       logActivity({
         action: 'record',
         label: 'Record YouTube',
@@ -1038,7 +1036,9 @@ export default function App() {
         url: trimmedUrl,
         format,
         bitrate: format === 'MP3' ? bitrateKbps : bitrateKbps,
-        cookies: (cookies || inlineCookies || loadSavedYoutubeCookies()).trim() || undefined,
+        cookies: sanitizeCookieHeader(
+          cookies || inlineCookies || pullNativeYoutubeCookies() || loadSavedYoutubeCookies()
+        ) || undefined,
         youtubeOauth: loadYoutubeOauthRefreshToken() || undefined,
         title: customTitle,
         artist: customArtist,
@@ -1240,12 +1240,9 @@ export default function App() {
       // offer the real paths to an offline file. Live listening stays a separate, explicit choice.
       const serverBlocked =
         code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
-      const display =
-        ytId && insideApk
-          ? `Couldn’t record this video. ${onDeviceFailure ? onDeviceFailure.replace(/\s+/g, ' ').trim() : 'Phone capture missed the stream.'} Server: ${message} Nothing was saved as ${format}.`
-          : ytId && serverBlocked
-            ? `Couldn’t download this video (${message}). Nothing was saved as ${format}. Connect YouTube and retry, or try MP3 on Wi-Fi.`
-            : message;
+      const display = ytId
+        ? `Couldn’t save this as ${format}. Connect YouTube and retry.`
+        : message;
       logActivity({
         action: 'record',
         label: ytId ? 'Record YouTube' : 'Record URL',
@@ -1253,12 +1250,11 @@ export default function App() {
         format,
         detail:
           ytId && serverBlocked
-            ? `route=server · not downloaded (${message})${onDeviceFailure ? ` · on-device also failed: ${onDeviceFailure}` : ''}. Could still be played online-only via the Tuner.`
+            ? `route=server · ${message}${onDeviceFailure ? ` · on-device: ${onDeviceFailure}` : ''}`
             : message,
         source: trimmedUrl,
       });
       setDownloadError(display);
-      addToast(display, 'error');
     } finally {
       setIsDownloading(false);
       setDownloadProgress(0);
@@ -1697,9 +1693,7 @@ export default function App() {
             <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="leading-snug">
-                Converter API is not reachable at {resolveConverterApiBaseUrl() || '(no server set)'}.
-                Check Render is up, your network connection, or set a self-hosted URL in Settings (
-                <code className="text-[#b8d99e]">npm start</code>).
+                Converter is unreachable. Set a URL in Settings if you need recording.
               </p>
             </div>
           )}
@@ -1737,7 +1731,7 @@ export default function App() {
             </div>
           </div>
 
-          <YouTubeConnectPanel compact onCookies={(h) => setInlineCookies(h)} />
+          <YouTubeConnectPanel compact />
 
           {/* Tape Bias / Format Selector Keys */}
           <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
@@ -1850,7 +1844,7 @@ export default function App() {
                 rows={2}
                 value={inlineCookies}
                 onChange={(e) => setInlineCookies(e.target.value)}
-                placeholder="Optional: paste youtube.com cookies (Netscape export or Cookie header). Prefer Connect YouTube above."
+                placeholder="Optional: paste youtube.com cookies"
                 className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
             </div>
@@ -1923,11 +1917,8 @@ export default function App() {
             <div className="p-3.5 rounded-xl bg-[#2a1616] border border-[#522929] flex items-start gap-2.5 text-xs text-[#fca5a5]">
               <span className="cassette-led cassette-led-rec shrink-0 mt-1" />
               <div className="min-w-0">
-                <p className="font-mono font-bold uppercase tracking-wide">Recording failed</p>
-                <p className="mt-1 leading-snug">{downloadError}</p>
-                <div className="mt-2 text-[#eeeae2]">
-                  <YouTubeConnectPanel compact onCookies={(h) => setInlineCookies(h)} />
-                </div>
+                <p className="leading-snug">{downloadError}</p>
+                <p className="mt-1 text-[11px] font-mono text-[#9fa396]">Details are in Activity log (More).</p>
               </div>
             </div>
           )}

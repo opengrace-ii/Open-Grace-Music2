@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenAI } from '@google/genai';
@@ -13,29 +14,49 @@ const execFileAsync = promisify(execFile);
 export const AI_KEYS_HINT =
   'Add GEMINI_API_KEY or NVIDIA_API_KEY in Settings / .env to transcribe here.';
 
-export function aiKeyStatus(): { gemini: boolean; nvidia: boolean } {
-  return {
-    gemini: Boolean((process.env.GEMINI_API_KEY || '').trim()),
-    nvidia: Boolean((process.env.NVIDIA_API_KEY || '').trim()),
-  };
-}
+const requestAiKeys = new AsyncLocalStorage<{ gemini?: string; nvidia?: string }>();
 
-/** Apply client-supplied keys onto process.env for this request (Settings → routes). */
-export function applyRequestAiKeys(body: unknown): void {
-  if (!body || typeof body !== 'object') return;
+export function parseRequestAiKeys(body: unknown): { gemini?: string; nvidia?: string } {
+  if (!body || typeof body !== 'object') return {};
   const b = body as { geminiApiKey?: unknown; nvidiaApiKey?: unknown };
   const gemini = String(b.geminiApiKey || '').trim();
   const nvidia = String(b.nvidiaApiKey || '').trim();
-  if (gemini) process.env.GEMINI_API_KEY = gemini;
-  if (nvidia) process.env.NVIDIA_API_KEY = nvidia;
+  return {
+    ...(gemini ? { gemini } : {}),
+    ...(nvidia ? { nvidia } : {}),
+  };
+}
+
+export function aiKeyStatus(override?: { gemini?: string; nvidia?: string }): { gemini: boolean; nvidia: boolean } {
+  const store = override || requestAiKeys.getStore();
+  return {
+    gemini: Boolean(store?.gemini || (process.env.GEMINI_API_KEY || '').trim()),
+    nvidia: Boolean(store?.nvidia || (process.env.NVIDIA_API_KEY || '').trim()),
+  };
+}
+
+/** Run AI work with request-scoped keys. Never writes process.env. */
+export function withRequestAiKeys<T>(body: unknown, fn: () => T): T {
+  return requestAiKeys.run(parseRequestAiKeys(body), fn);
+}
+
+/** @deprecated Use withRequestAiKeys. Kept so callers compile during the cutover. */
+export function applyRequestAiKeys(body: unknown): void {
+  const parsed = parseRequestAiKeys(body);
+  if (parsed.gemini || parsed.nvidia) {
+    requestAiKeys.enterWith({
+      ...requestAiKeys.getStore(),
+      ...parsed,
+    });
+  }
 }
 
 function geminiKey(): string {
-  return (process.env.GEMINI_API_KEY || '').trim();
+  return (requestAiKeys.getStore()?.gemini || process.env.GEMINI_API_KEY || '').trim();
 }
 
 function nvidiaKey(): string {
-  return (process.env.NVIDIA_API_KEY || '').trim();
+  return (requestAiKeys.getStore()?.nvidia || process.env.NVIDIA_API_KEY || '').trim();
 }
 
 function isLoginRequired(text: string): boolean {
@@ -104,7 +125,7 @@ async function extractShortMp3(
           ok: false,
           loginRequired: true,
           error:
-            'YouTube asked for a login to fetch audio. Title and description are not a transcript — we need the audio clip. Tap Connect YouTube (web TV code or APK), then retry Transcript.',
+            'YouTube asked for a login. Connect YouTube, then retry Transcript.',
         };
       }
       return {

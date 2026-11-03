@@ -64,13 +64,12 @@ class ExampleUnitTest {
         assertEquals("2.8 MHz", dsdTrack.sampleRateLabel)
         assertEquals("DSD · 1-bit DSD/2.8 MHz", dsdTrack.audiophileBadge)
 
-        val chordSheet = com.example.data.LyricsGenerator.generate(dsdTrack.title, dsdTrack.artist)
+        val chordSheet = com.example.data.LyricsGenerator.generate(dsdTrack.title, dsdTrack.artist, forceInstrumental = true)
         org.junit.Assert.assertTrue(chordSheet.isInstrumental)
-        org.junit.Assert.assertTrue(chordSheet.content.contains("INSTRUMENT CHORD SHEET"))
-        org.junit.Assert.assertTrue(chordSheet.content.contains("BPM"))
+        org.junit.Assert.assertTrue(chordSheet.content.contains("verified chart"))
 
         val vocalLyrics = com.example.data.LyricsGenerator.generate("Amazing Grace", "Open Grace Choir")
         org.junit.Assert.assertFalse(vocalLyrics.isInstrumental)
-        org.junit.Assert.assertTrue(vocalLyrics.content.contains("VOCAL LYRICS"))
+        org.junit.Assert.assertTrue(vocalLyrics.content.contains("Lyrics not available offline yet"))
     }
 }

@@ -12,7 +12,6 @@ import {
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
 import { loadSavedYoutubeCookies, saveYoutubeCookies } from '../services/youtubeCookies';
-import { YouTubeConnectPanel } from './YouTubeConnectPanel';
 import {
   apiUrl,
   fetchWithTimeout,
@@ -347,15 +346,13 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             </button>
           </div>
 
-          <YouTubeConnectPanel compact onCookies={(h) => setCookies(h)} />
-
           {showCookieBox && (
             <div className="cassette-window p-2.5 rounded-xl">
               <textarea
                 rows={2}
                 value={cookies}
                 onChange={(e) => setCookies(e.target.value)}
-                placeholder="Paste YouTube cookies if needed for private streams..."
+                placeholder="Optional: paste youtube.com cookies"
                 className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
             </div>
@@ -384,8 +381,8 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             <div className="p-3.5 rounded-xl bg-[#2a1616] border border-[#522929] flex items-start gap-2.5 text-xs text-[#fca5a5]">
               <span className="cassette-led cassette-led-rec shrink-0 mt-1" />
               <div className="min-w-0">
-                <p className="font-mono font-bold uppercase tracking-wide">Recording failed</p>
-                <p className="mt-1 leading-snug">{downloadError}</p>
+                <p className="leading-snug">{downloadError}</p>
+                <p className="mt-1 text-[11px] font-mono text-[#9fa396]">Details are in Activity log (More).</p>
               </div>
             </div>
           )}

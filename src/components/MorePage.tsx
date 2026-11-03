@@ -4,9 +4,6 @@ import {
   Settings,
   Smartphone,
   AlertCircle,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
   ScrollText,
 } from 'lucide-react';
 import { getActivityLog, subscribeActivityLog } from '../services/activityLog';
@@ -37,7 +34,6 @@ export const MorePage: React.FC<MorePageProps> = ({
   onOpenActivityLog,
   onPwaInstall,
 }) => {
-  const [studioHelpOpen, setStudioHelpOpen] = useState(false);
   const [logCount, setLogCount] = useState(() => getActivityLog().length);
 
   useEffect(() => subscribeActivityLog((entries) => setLogCount(entries.length)), []);
@@ -49,58 +45,12 @@ export const MorePage: React.FC<MorePageProps> = ({
         <p className="text-xs font-mono text-[#9fa396] mt-0.5">Install, converter, and Android project</p>
       </div>
 
-      <div className="cassette-window rounded-2xl p-3.5 space-y-1.5 text-[11px] font-mono text-[#9fa396] leading-relaxed">
-        <p className="text-[#e2c986] font-semibold uppercase tracking-wider text-[10px]">APK updates</p>
-        <p>
-          <span className="text-[#b8d99e]">UI / music features</span> load from the live site after Render
-          redeploys — <span className="text-[#f0ece1]">no APK reinstall</span> if you already have WebView
-          shell 1.1+ (bottom Listen / Library / Tuner / Schedule / More).
-        </p>
-        <p>
-          <span className="text-[#e2c986]">Reinstall the APK</span> only when the native shell changes
-          (background audio, permissions, Connect YouTube). Phone still looks old? Force-stop + reopen, clear app cache, or
-          uninstall and install the latest APK (1.3.3+ / versionCode 9+) from this site if you still see Compose-only UI without bottom
-          nav.
-        </p>
-      </div>
-
       {converterApiOnline === false && (
         <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <p className="leading-snug">
-            Converter API is not reachable at {converterUrlLabel || '(no server set)'}. Home still works — set a URL in
-            Settings if you need recording.
+            Converter is unreachable at {converterUrlLabel || '(no server set)'}. Set a URL in Settings if you need recording.
           </p>
-        </div>
-      )}
-
-      <p className="text-[11px] font-mono text-[#686b60] leading-relaxed px-0.5">
-        Studio AI is not a chat bot on this screen. Open a playing tape → full player STUDIO AI or NOTES → Transcript /
-        Listen notes.
-      </p>
-
-      <button
-        type="button"
-        onClick={() => setStudioHelpOpen((v) => !v)}
-        className="cassette-btn w-full justify-between px-4 py-3 text-sm font-mono"
-      >
-        <span className="inline-flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-[#e2c986]" />
-          Studio AI help
-        </span>
-        {studioHelpOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {studioHelpOpen && (
-        <div className="cassette-window rounded-2xl p-4 space-y-2 text-[11px] font-mono text-[#9fa396] leading-relaxed">
-          <p>
-            Keys in Settings are sent to this app&apos;s server for Transcript / Listen notes / Related — they do not
-            spawn a floating agent on Listen.
-          </p>
-          <p>
-            1. Play a tape (YouTube devotion or library). 2. Open the full player (expand / TURNTABLE). 3. Tap STUDIO AI,
-            then Transcript or NOTES.
-          </p>
-          <p>Until you open Transcript, a saved Gemini/NVIDIA key sits idle — that is expected.</p>
         </div>
       )}
 
@@ -117,14 +67,12 @@ export const MorePage: React.FC<MorePageProps> = ({
           {logCount > 0 ? `${logCount} event${logCount === 1 ? '' : 's'}` : 'empty'}
         </span>
       </button>
-      <p className="text-[11px] font-mono text-[#686b60] leading-relaxed px-0.5">
-        Activity log shows every record / import / conversion with its chosen format and whether it was
-        <span className="text-[#b8d99e]"> Saved</span> (offline file),
-        <span className="text-[#f0a1a1]"> Failed</span>, or kept
-        <span className="text-[#e2c986]"> Online-only</span> (live YouTube). Times shown in IST.
-      </p>
 
       <YouTubeConnectPanel />
+
+      <p className="text-[11px] font-mono text-[#686b60] leading-relaxed px-0.5">
+        About: YouTube downloads may be blocked by Google and may conflict with YouTube’s terms. We never collect your password.
+      </p>
 
       <button type="button" onClick={onOpenSettings} className="cassette-btn w-full justify-start px-4 py-3 text-sm font-mono">
         <Settings className="w-4 h-4 text-[#e2c986]" />

@@ -1,5 +1,5 @@
 import { apiUrl, fetchWithTimeout } from './converterApi';
-import { loadSavedYoutubeCookies, saveYoutubeCookies } from './youtubeCookies';
+import { loadSavedYoutubeCookies, saveYoutubeCookies, sanitizeCookieHeader } from './youtubeCookies';
 import {
   loadSavedYoutubeOauth,
   loadYoutubeOauthRefreshToken,
@@ -12,6 +12,7 @@ export type YoutubeSessionStatus = 'connected' | 'not_connected' | 'expired';
 declare global {
   interface Window {
     __ogmYouTubeSession?: (payload: { status?: string }) => void;
+    __ogmYtCookieHeader?: string;
   }
 }
 
@@ -48,12 +49,14 @@ export function youtubeSessionStatus(): YoutubeSessionStatus {
   return 'not_connected';
 }
 
-/** Pull HttpOnly cookies the APK harvested; never logs the value. */
+/** Pull cookies the APK injected into the main frame only. Never logs the value. */
 export function pullNativeYoutubeCookies(): string {
   try {
-    const h = window.OgmAndroid?.getYouTubeCookieHeader?.() || '';
-    if (h.trim()) saveYoutubeCookies(h);
-    return h.trim();
+    const fromWindow =
+      typeof window !== 'undefined' ? String((window as { __ogmYtCookieHeader?: string }).__ogmYtCookieHeader || '') : '';
+    const fromBridge = window.OgmAndroid?.getYouTubeCookieHeader?.() || '';
+    const h = sanitizeCookieHeader(fromWindow || fromBridge);
+    return h;
   } catch {
     return '';
   }
@@ -173,6 +176,20 @@ export async function pollWebYouTubeDeviceLogin(deviceCode: string): Promise<{
 
 export function openYouTubeActivateTab(verificationUrl: string, userCode?: string): void {
   let url = (verificationUrl || 'https://www.google.com/device').trim();
+  if (!/^https:\/\//i.test(url)) url = 'https://www.google.com/device';
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (
+      host !== 'google.com' &&
+      !host.endsWith('.google.com') &&
+      host !== 'youtube.com' &&
+      !host.endsWith('.youtube.com')
+    ) {
+      url = 'https://www.google.com/device';
+    }
+  } catch {
+    url = 'https://www.google.com/device';
+  }
   const code = (userCode || '').replace(/\s/g, '');
   if (code && /google\.com\/device/i.test(url) && !/[?&]user_code=/.test(url)) {
     url += `${url.includes('?') ? '&' : '?'}user_code=${encodeURIComponent(code)}`;

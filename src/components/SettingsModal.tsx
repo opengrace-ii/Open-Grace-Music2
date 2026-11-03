@@ -2,14 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { X, Server, Loader2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 import { DEFAULT_OGM_PUBLIC_BASE_URL } from '../constants/ogmPublicBase';
 import {
-  CONVERTER_SERVER_URL_HELPER,
   getSavedConverterServerUrl,
   resolveConverterApiBaseUrl,
   setSavedConverterServerUrl,
 } from '../services/converterServerUrl';
 import { checkConverterApiAvailable } from '../services/converterApi';
 import { fetchAiStatus, loadLocalAiKeys, saveAiKeys, saveLocalAiKeys } from '../services/ogmAiService';
-import { YouTubeConnectPanel } from './YouTubeConnectPanel';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -94,11 +92,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             }
             className="w-full px-3 py-2.5 rounded-xl bg-[#11120f] border border-[#3a4433] text-sm text-[#eeeae2] placeholder:text-[#6b675e] focus:outline-none focus:border-[#b8d99e]"
           />
-          <p className="text-[11px] text-[#a3a198] leading-relaxed">{CONVERTER_SERVER_URL_HELPER}</p>
           <p className="text-[11px] text-[#8a877f] leading-relaxed">
-            Leave blank to use <strong className="text-[#eeeae2] font-medium">Render</strong> (
-            {DEFAULT_OGM_PUBLIC_BASE_URL}) or this page&apos;s address ({effective || 'none'}). Override only if
-            you self-host with <code className="text-[#b8d99e]">npm start</code> on another machine.
+            Leave blank for this site ({effective || DEFAULT_OGM_PUBLIC_BASE_URL}).
           </p>
 
           {healthOk === true && (
@@ -109,20 +104,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           {healthOk === false && (
             <p className="flex items-start gap-2 text-xs text-[#fcd34d]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              Could not reach /api/health on that URL. Check the server is running and your phone is on the same Wi‑Fi
-              (or use a public HTTPS tunnel).
+              Could not reach /api/health on that URL.
             </p>
           )}
-        </div>
-
-        <div className="mt-6 pt-4 border-t border-[#292a24] space-y-2">
-          <h4 className="font-serif-display text-sm font-bold text-[#eeeae2]">YouTube</h4>
-          <YouTubeConnectPanel />
-          <p className="text-[11px] text-[#8a877f] leading-relaxed">
-            Web Connect YouTube uses a TV device code (new Google/YouTube tab). The APK uses Google’s pages in the
-            WebView. Tokens/cookies stay in this browser and are sent with Record. Optional: paste Netscape cookies via
-            the recorder key icon. Google may still block.
-          </p>
         </div>
 
         <div className="mt-6 pt-4 border-t border-[#292a24] space-y-3">
@@ -131,10 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             <h4 className="font-serif-display text-sm font-bold text-[#eeeae2]">Studio AI keys</h4>
           </div>
           <p className="text-[11px] text-[#a3a198] leading-relaxed">
-            Studio AI is on the full player (STUDIO AI / NOTES → Transcript, Listen notes, Related) — not a chat bot on
-            Home. Keys are saved to the converter server and kept locally so each AI request can reach{' '}
-            <code className="text-[#b8d99e]">/api/ai/transcribe</code> and notes. Prefer{' '}
-            <code className="text-[#b8d99e]">.env</code>. We never log or show the secret back.
+            Keys stay on this device and go with each Studio AI request. Prefer <code className="text-[#b8d99e]">.env</code>.
           </p>
           <p className="text-[11px] font-mono text-[#9fa396]">
             Gemini: {aiStatus.gemini ? 'configured' : 'missing'} · NVIDIA: {aiStatus.nvidia ? 'configured' : 'missing'}
@@ -178,9 +159,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                   setAiStatus(next);
                   setGeminiKey('');
                   setNvidiaKey('');
-                  setAiMessage(
-                    'Keys saved for Studio AI. Open a playing tape → full player STUDIO AI → Transcript. Not used until then.'
-                  );
+                  setAiMessage('Keys saved.');
                 } catch {
                   saveLocalAiKeys(payload);
                   const local = loadLocalAiKeys();
@@ -190,9 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
                   });
                   setGeminiKey('');
                   setNvidiaKey('');
-                  setAiMessage(
-                    'Saved locally; server unreachable. Keys still go with each AI request when the API is back, or use .env.'
-                  );
+                  setAiMessage('Saved on this device.');
                 } finally {
                   setAiSaving(false);
                 }

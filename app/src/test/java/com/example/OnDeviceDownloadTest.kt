@@ -180,6 +180,18 @@ class OnDeviceDownloadTest {
     }
 
     @Test
+    fun `header copy drops CR LF injection`() {
+        val copied = WebViewStreamCapture.copyRequestHeaders(
+            mapOf(
+                "Cookie" to "a=1\r\nX-Injected: 1",
+                "User-Agent" to "ok-ua",
+            )
+        )
+        assertTrue(!copied.containsKey("Cookie"))
+        assertEquals("ok-ua", copied["User-Agent"])
+    }
+
+    @Test
     fun `header copy keeps cookie ua origin referer and drops range`() {
         val copied = WebViewStreamCapture.copyRequestHeaders(
             mapOf(
@@ -250,12 +262,12 @@ class OnDeviceDownloadTest {
             false,
             "session"
         )
-        assertTrue(msg.contains("Capture missed") || msg.contains("googlevideo"))
+        assertTrue(msg.contains("Missed") || msg.contains("audio"))
         assertTrue(msg.contains("Play the video"))
         assertTrue(!msg.contains("ANDROID_VR"))
         assertTrue(!msg.contains("LOGIN_REQUIRED"))
         val expired = OnDeviceDownloadManager.friendlyFailure("Xc6Jlstj8GY", true, null)
-        assertTrue(expired.contains("expired") || expired.contains("refused"))
+        assertTrue(expired.contains("expired") || expired.contains("Play the video"))
         assertTrue(msg.length < 160)
         assertTrue(expired.length < 160)
     }

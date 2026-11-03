@@ -116,6 +116,7 @@ object YouTubeSessionStore {
         val pairs = header.split(';').map { it.trim() }.filter { it.contains('=') }
         for (url in COOKIE_URLS) {
             for (nv in pairs) {
+                if (!WebViewStreamCapture.isSafeHeaderValue(nv)) continue
                 cm.setCookie(url, "$nv; Path=/")
             }
         }
