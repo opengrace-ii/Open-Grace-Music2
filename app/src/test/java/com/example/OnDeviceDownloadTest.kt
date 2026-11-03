@@ -1,10 +1,12 @@
 package com.example
 
+import com.example.YouTubeLoginActivity
 import com.example.ondevice.InnerTubeResolver
 import com.example.ondevice.OnDeviceDownloadManager
 import com.example.ondevice.OnDeviceException
 import com.example.ondevice.RangedDownloader
 import com.example.ondevice.WebViewStreamCapture
+import com.example.ondevice.YouTubeSessionStore
 import com.sun.net.httpserver.HttpServer
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertArrayEquals
@@ -295,6 +297,36 @@ class OnDeviceDownloadTest {
         } finally {
             server.stop(0)
         }
+    }
+
+    @Test
+    fun `youtube session status uses auth cookies not visitor id`() {
+        assertEquals(
+            YouTubeSessionStore.STATUS_CONNECTED,
+            YouTubeSessionStore.statusOf("VISITOR_INFO1_LIVE=x; LOGIN_INFO=abc", false),
+        )
+        assertEquals(
+            YouTubeSessionStore.STATUS_CONNECTED,
+            YouTubeSessionStore.statusOf("SID=1; HSID=2; SSID=3", false),
+        )
+        assertEquals(
+            YouTubeSessionStore.STATUS_NOT_CONNECTED,
+            YouTubeSessionStore.statusOf("VISITOR_INFO1_LIVE=x; YSC=1", false),
+        )
+        assertEquals(
+            YouTubeSessionStore.STATUS_EXPIRED,
+            YouTubeSessionStore.statusOf("VISITOR_INFO1_LIVE=x", true),
+        )
+        assertTrue(!YouTubeSessionStore.hasAuthCookies("PREF=f1"))
+    }
+
+    @Test
+    fun `login webview only allows google youtube hosts`() {
+        assertTrue(YouTubeLoginActivity.isAllowedLoginHost("https://accounts.google.com/ServiceLogin"))
+        assertTrue(YouTubeLoginActivity.isAllowedLoginHost("https://m.youtube.com/"))
+        assertTrue(!YouTubeLoginActivity.isAllowedLoginHost("https://evil.example/login"))
+        assertTrue(!YouTubeLoginActivity.urlLooksLikeYoutubeHome("https://accounts.google.com/v3/signin"))
+        assertTrue(YouTubeLoginActivity.urlLooksLikeYoutubeHome("https://m.youtube.com/"))
     }
 
     /** Opt-in live check: OGM_LIVE_YT=<videoId> ./gradlew testDebugUnitTest. Needs a non-datacenter IP. */

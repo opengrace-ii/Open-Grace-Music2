@@ -224,18 +224,10 @@ object WebViewStreamCapture {
             parts.add(it)
         }
         runCatching {
+            val session = YouTubeSessionStore.collectFromCookieManager()
+            if (session.isNotBlank()) parts.add(session)
             val cm = CookieManager.getInstance()
-            listOf(
-                "https://www.youtube.com",
-                "https://youtube.com",
-                "https://m.youtube.com",
-                "https://music.youtube.com",
-                "https://www.youtube-nocookie.com",
-                "https://googlevideo.com",
-                captured.url,
-            ).forEach { host ->
-                cm.getCookie(host)?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
-            }
+            cm.getCookie(captured.url)?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
         }
         return mergeCookieHeader(parts)
     }

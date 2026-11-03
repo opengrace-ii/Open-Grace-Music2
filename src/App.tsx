@@ -93,6 +93,7 @@ import {
   onDeviceRoute,
   transcodeOnServer,
 } from './services/onDeviceDownload';
+import { YouTubeConnectPanel } from './components/YouTubeConnectPanel';
 
 export default function App() {
   const { isInstallable, install, isAndroid, isInstalled } = usePWAInstall();
@@ -1228,13 +1229,13 @@ export default function App() {
         display =
           `Couldn’t record this video. ${onDeviceFailure ?? 'The phone did not capture a YouTube audio stream yet.'} ` +
           `Play the video in Open Grace Music so the phone can grab the same stream YouTube already sent, then retry. ` +
+          `Tap Connect YouTube once if YouTube still treats this phone like a bot (real Google page — we never collect your password). ` +
           `Cookies in Settings still help the server fallback. On the server: ${message}. Nothing was saved as ${format}.`;
       } else if (ytId && serverBlocked) {
         display =
           `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
-          `Paste youtube.com cookies via the key icon and retry, install the Android APK (play the video in the app so the phone can grab YouTube’s stream), ` +
-          `or import an audio file. To only listen live (streams when online, not an offline file), ` +
-          `open the YouTube Tuner and tap Listen.`;
+          `On the Android APK tap Connect YouTube (once) then retry Record. In Chrome, paste youtube.com cookies via the key icon — a Google login iframe here cannot read HttpOnly cookies. ` +
+          `OGM never substitutes a different song. Or import an audio file. To only listen live (not an offline file), open the YouTube Tuner and tap Listen.`;
       } else {
         display = message;
       }
@@ -1729,6 +1730,8 @@ export default function App() {
             </div>
           </div>
 
+          <YouTubeConnectPanel compact onCookies={(h) => setInlineCookies(h)} />
+
           {/* Tape Bias / Format Selector Keys */}
           <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
             {AUDIOPHILE_FORMATS.map((fmt) => {
@@ -1917,6 +1920,9 @@ export default function App() {
               <div className="min-w-0">
                 <p className="font-mono font-bold uppercase tracking-wide">Recording failed</p>
                 <p className="mt-1 leading-snug">{downloadError}</p>
+                <div className="mt-2 text-[#eeeae2]">
+                  <YouTubeConnectPanel compact onCookies={(h) => setInlineCookies(h)} />
+                </div>
               </div>
             </div>
           )}

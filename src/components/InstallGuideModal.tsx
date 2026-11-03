@@ -87,7 +87,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             <strong className="text-[#eeeae2] font-medium">Do you need to reinstall the APK every time?</strong>{' '}
             <strong className="text-[#b8d99e] font-medium">No</strong> — once you have WebView shell{' '}
             <code className="text-[#b8d99e]">1.1+</code> / <code className="text-[#b8d99e]">versionCode 2+</code>{' '}
-            (ideally <code className="text-[#b8d99e]">1.3.1+</code> / <code className="text-[#b8d99e]">7+</code>),
+            (ideally <code className="text-[#b8d99e]">1.3.2+</code> / <code className="text-[#b8d99e]">8+</code>),
             UI and music features come from the <strong className="text-[#eeeae2] font-medium">live website</strong>{' '}
             after Render redeploys. Reopen the app (or tap Reload on the update toast). Reinstall the APK{' '}
             <strong className="text-[#eeeae2] font-medium">only</strong> when the native shell changes
@@ -178,8 +178,8 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Compose without the live PWA; 1–2 stop music when minimized).
             </li>
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.3.1+ (reinstall once — WebView YouTube stream capture) /
-              versionCode 7+) below or from the mobile download page — one install covers later site updates.
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.3.2+ (reinstall once — Connect YouTube + stream capture) /
+              versionCode 8+) below or from the mobile download page — one install covers later site updates.
             </li>
             <li>
               Settings → Security → <strong>Install unknown apps</strong> → allow{' '}
@@ -195,11 +195,12 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Protect notice — tap <strong>Install anyway</strong> only if you trust this source.
             </li>
             <li>
-              <strong>Recording YouTube (1.3.1+):</strong> play the video in Open Grace Music so YouTube
-              issues a real stream, then RECORD grabs that same audio on the phone. Tap Play if the
-              embed is paused, wait a few seconds, then retry. Cookies in Settings still help the{' '}
-              <em>server</em> fallback. You get a real <strong>M4A (AAC)</strong> file — or MP3/FLAC converted from
-              it; YouTube audio is already lossy. Reinstall the 1.3.1 APK once.
+              <strong>Recording YouTube (1.3.2+):</strong> tap <strong>Connect YouTube</strong> once (real Google
+              page in the app — we never collect your password), play the video so YouTube issues a real stream,
+              then RECORD grabs that same audio. Tap Play if the embed is paused, wait a few seconds, then retry.
+              Chrome cannot read HttpOnly cookies — paste via the key icon, or use the APK. You get a real{' '}
+              <strong>M4A (AAC)</strong> file — or MP3/FLAC converted from it; YouTube audio is already lossy.
+              Reinstall the 1.3.2 APK once.
             </li>
             <li>
               Allow <strong>Notifications</strong> (Android 13+) so background play can show

@@ -10,6 +10,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { getActivityLog, subscribeActivityLog } from '../services/activityLog';
+import { YouTubeConnectPanel } from './YouTubeConnectPanel';
 
 interface MorePageProps {
   converterApiOnline: boolean | null;
@@ -57,8 +58,8 @@ export const MorePage: React.FC<MorePageProps> = ({
         </p>
         <p>
           <span className="text-[#e2c986]">Reinstall the APK</span> only when the native shell changes
-          (background audio, permissions). Phone still looks old? Force-stop + reopen, clear app cache, or
-          uninstall and install the latest APK from this site if you still see Compose-only UI without bottom
+          (background audio, permissions, Connect YouTube). Phone still looks old? Force-stop + reopen, clear app cache, or
+          uninstall and install the latest APK (1.3.2+ / versionCode 8+) from this site if you still see Compose-only UI without bottom
           nav.
         </p>
       </div>
@@ -122,6 +123,8 @@ export const MorePage: React.FC<MorePageProps> = ({
         <span className="text-[#f0a1a1]"> Failed</span>, or kept
         <span className="text-[#e2c986]"> Online-only</span> (live YouTube). Times shown in IST.
       </p>
+
+      <YouTubeConnectPanel />
 
       <button type="button" onClick={onOpenSettings} className="cassette-btn w-full justify-start px-4 py-3 text-sm font-mono">
         <Settings className="w-4 h-4 text-[#e2c986]" />

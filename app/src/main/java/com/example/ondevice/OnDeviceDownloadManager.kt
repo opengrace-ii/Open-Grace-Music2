@@ -40,12 +40,15 @@ class OnDeviceDownloadManager(private val context: Context) {
         const val CAPTURE_HINT =
             "Play the video in Open Grace Music so this phone can grab the same stream YouTube already sent, tap Play if it is paused, wait a few seconds, then retry."
 
+        const val LOGIN_HINT =
+            " If YouTube still treats this phone like a bot, tap Connect YouTube once (real Google page in this app), then retry Record."
+
         fun friendlyFailure(videoId: String, hadCapture: Boolean, innerTubeHint: String?): String {
             return if (hadCapture) {
-                "On this phone: a captured YouTube stream expired or googlevideo refused the re-fetch. $CAPTURE_HINT"
+                "On this phone: a captured YouTube stream expired or googlevideo refused the re-fetch. $CAPTURE_HINT$LOGIN_HINT"
             } else {
                 val extra = innerTubeHint?.takeIf { it.isNotBlank() }?.let { " (YouTube session fallback also failed.)" } ?: ""
-                "On this phone: capture did not see a googlevideo audio stream for $videoId yet. $CAPTURE_HINT$extra"
+                "On this phone: capture did not see a googlevideo audio stream for $videoId yet. $CAPTURE_HINT$extra$LOGIN_HINT"
             }
         }
     }
@@ -79,6 +82,10 @@ class OnDeviceDownloadManager(private val context: Context) {
 
     private fun run(videoId: String, callbackId: String, cancelled: AtomicBoolean, events: DownloadEvents) {
         WebViewStreamCapture.setRequested(videoId)
+        runCatching {
+            val stored = YouTubeSessionStore.loadPersisted(context)
+            if (stored.isNotBlank()) YouTubeSessionStore.applyHeaderToCookieManager(stored)
+        }
         val downloader = RangedDownloader(http)
 
         events.onProgress(
@@ -102,7 +109,8 @@ class OnDeviceDownloadManager(private val context: Context) {
                 .put("message", "No captured stream yet — trying a last-resort YouTube session…")
         )
         val failures = mutableListOf<String>()
-        val resolver = InnerTubeResolver(http)
+        val sessionCookies = YouTubeSessionStore.mergedCookieHeader(context)
+        val resolver = InnerTubeResolver(http, sessionCookies)
         for (audio in resolver.resolveCandidates(videoId, failures)) {
             if (cancelled.get()) throw OnDeviceException("Cancelled")
             try {

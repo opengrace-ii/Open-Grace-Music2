@@ -179,7 +179,7 @@ export function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked download for this exact video. OGM never substitutes a different song — tap the key icon, paste youtube.com cookies from your browser, and record again.',
+        'YouTube blocked download for this exact video. OGM never substitutes a different song. On the Android APK tap Connect YouTube once (real Google page). On web, paste youtube.com cookies via the key icon — a login iframe cannot read HttpOnly cookies.',
     };
   }
   if (phase === 'ffmpeg') {

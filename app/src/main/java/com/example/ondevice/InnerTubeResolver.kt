@@ -41,7 +41,10 @@ data class InnerTubeClient(
  * Runs on the phone, so requests come from the phone's residential/mobile IP, not a datacenter.
  * The returned videoId is verified against the requested id; a different video is never accepted.
  */
-class InnerTubeResolver(private val http: OkHttpClient) {
+class InnerTubeResolver(
+    private val http: OkHttpClient,
+    private val cookieHeader: String = "",
+) {
 
     companion object {
         private const val ENDPOINT = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
@@ -172,18 +175,25 @@ class InnerTubeResolver(private val http: OkHttpClient) {
             put("contentCheckOk", true)
             put("racyCheckOk", true)
         }
-        val req = Request.Builder()
+        val reqBuilder = Request.Builder()
             .url(ENDPOINT)
             .header("User-Agent", c.userAgent)
             .header("X-YouTube-Client-Name", c.clientNameId)
             .header("X-YouTube-Client-Version", c.version)
             .header("Origin", "https://www.youtube.com")
             .post(payload.toString().toRequestBody(JSON))
-            .build()
+        val cookie = cookieHeader.trim()
+        if (cookie.isNotEmpty()) reqBuilder.header("Cookie", cookie)
+        val req = reqBuilder.build()
         http.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) throw OnDeviceException("HTTP ${resp.code} from YouTube player API")
-            return parsePlayerResponse(text, videoId, c)
+            val audio = parsePlayerResponse(text, videoId, c) ?: return null
+            return if (cookie.isNotEmpty()) {
+                audio.copy(extraHeaders = audio.extraHeaders + ("Cookie" to cookie))
+            } else {
+                audio
+            }
         }
     }
 }

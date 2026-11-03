@@ -12,6 +12,7 @@ import {
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
 import { loadSavedYoutubeCookies, saveYoutubeCookies } from '../services/youtubeCookies';
+import { YouTubeConnectPanel } from './YouTubeConnectPanel';
 import {
   apiUrl,
   fetchWithTimeout,
@@ -347,6 +348,8 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
               <span>STUDIO KEY</span>
             </button>
           </div>
+
+          <YouTubeConnectPanel compact onCookies={(h) => setCookies(h)} />
 
           {showCookieBox && (
             <div className="cassette-window p-2.5 rounded-xl">

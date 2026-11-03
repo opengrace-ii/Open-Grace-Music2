@@ -9,6 +9,7 @@ import {
 } from '../services/converterServerUrl';
 import { checkConverterApiAvailable } from '../services/converterApi';
 import { fetchAiStatus, loadLocalAiKeys, saveAiKeys, saveLocalAiKeys } from '../services/ogmAiService';
+import { YouTubeConnectPanel } from './YouTubeConnectPanel';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -112,6 +113,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               (or use a public HTTPS tunnel).
             </p>
           )}
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-[#292a24] space-y-2">
+          <h4 className="font-serif-display text-sm font-bold text-[#eeeae2]">YouTube</h4>
+          <YouTubeConnectPanel />
+          <p className="text-[11px] text-[#8a877f] leading-relaxed">
+            Server fallback still accepts cookies from the recorder key icon (Netscape export or Cookie header). The APK
+            Connect flow fills that same store after you sign in on Google’s page.
+          </p>
         </div>
 
         <div className="mt-6 pt-4 border-t border-[#292a24] space-y-3">

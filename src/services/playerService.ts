@@ -29,6 +29,11 @@ declare global {
       cancelDownload?: (callbackId: string) => void;
       releaseDownload?: (token: string) => void;
       setPlayingYouTubeId?: (videoId: string) => void;
+      startYouTubeLogin?: () => void;
+      hasYouTubeSession?: () => boolean;
+      youtubeSessionStatus?: () => string;
+      getYouTubeCookieHeader?: () => string;
+      clearYouTubeSession?: () => void;
     };
     __ogmNativeDownload?: (callbackId: string, event: string, payloadJson: string) => void;
     __ogmPlayerEngine?: {

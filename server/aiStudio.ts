@@ -91,7 +91,7 @@ async function extractShortMp3(videoId: string): Promise<
           ok: false,
           loginRequired: true,
           error:
-            'YouTube asked for a login to fetch audio. Title and description are not a transcript — we need the audio clip. Paste youtube.com cookies in Settings / the recorder key, or try again on Wi‑Fi.',
+            'YouTube asked for a login to fetch audio. Title and description are not a transcript — we need the audio clip. On the APK tap Connect YouTube; on web paste cookies via the key icon.',
         };
       }
       return {

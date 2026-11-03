@@ -32,6 +32,7 @@ import com.example.data.OgmPublicBase
 import com.example.ondevice.DownloadEvents
 import com.example.ondevice.OnDeviceDownloadManager
 import com.example.ondevice.WebViewStreamCapture
+import com.example.ondevice.YouTubeSessionStore
 import com.example.player.OgmPlaybackService
 import org.json.JSONObject
 import android.webkit.WebResourceResponse
@@ -121,6 +122,12 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
             cb.onReceiveValue(uris)
         }
 
+    private val youtubeLoginLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            runCatching { YouTubeSessionStore.harvestAndPersist(this) }
+            emitYouTubeSessionToWeb()
+        }
+
     private val mediaPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* picker works without it */ }
 
@@ -169,6 +176,10 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         enableEdgeToEdge()
         OgmPlaybackService.webBridge = this
         maybeRequestNotificationPermission()
+        runCatching {
+            val stored = YouTubeSessionStore.loadPersisted(this)
+            if (stored.isNotBlank()) YouTubeSessionStore.applyHeaderToCookieManager(stored)
+        }
         Thread { runCatching { downloadManager.purgeStale() } }.start()
 
         webView = WebView(this).apply {
@@ -234,6 +245,7 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                     super.onPageFinished(view, url)
                     injectBackgroundAudioBridge()
                     injectServiceWorkerRefresh()
+                    emitYouTubeSessionToWeb()
                 }
             }
 
@@ -441,6 +453,15 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         runCatching { webView.evaluateJavascript(script, null) }
     }
 
+    /** Notify the PWA of session status only — cookie values stay on the JS bridge getter. */
+    private fun emitYouTubeSessionToWeb() {
+        if (!::webView.isInitialized) return
+        val status = YouTubeSessionStore.status(this)
+        val js = "window.__ogmYouTubeSession && window.__ogmYouTubeSession(" +
+            JSONObject().put("status", status).toString() + ");"
+        runOnUiThread { runCatching { webView.evaluateJavascript(js, null) } }
+    }
+
     private fun injectBackgroundAudioBridge() {
         val script = """
             (function(){
@@ -529,6 +550,33 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
 
         @JavascriptInterface
         fun shellVersion(): String = BuildConfig.VERSION_NAME
+
+        /**
+         * Opens real Google / YouTube pages in a WebView. We never collect passwords
+         * on our own form.
+         */
+        @JavascriptInterface
+        fun startYouTubeLogin() {
+            runOnUiThread {
+                youtubeLoginLauncher.launch(Intent(this@MainActivity, YouTubeLoginActivity::class.java))
+            }
+        }
+
+        @JavascriptInterface
+        fun hasYouTubeSession(): Boolean =
+            YouTubeSessionStore.status(this@MainActivity) == YouTubeSessionStore.STATUS_CONNECTED
+
+        @JavascriptInterface
+        fun youtubeSessionStatus(): String = YouTubeSessionStore.status(this@MainActivity)
+
+        @JavascriptInterface
+        fun getYouTubeCookieHeader(): String = YouTubeSessionStore.mergedCookieHeader(this@MainActivity)
+
+        @JavascriptInterface
+        fun clearYouTubeSession() {
+            YouTubeSessionStore.clearSession(this@MainActivity)
+            runOnUiThread { emitYouTubeSessionToWeb() }
+        }
 
         /** Watch id currently playing in the PWA IFrame — used to bind googlevideo intercepts. */
         @JavascriptInterface
