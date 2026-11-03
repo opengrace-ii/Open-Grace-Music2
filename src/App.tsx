@@ -67,6 +67,8 @@ import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 import { AppPageNav } from './components/AppPageNav';
 import { HomeListenDashboard } from './components/HomeListenDashboard';
 import { MorePage } from './components/MorePage';
+import { ActivityLogModal } from './components/ActivityLogModal';
+import { logActivity } from './services/activityLog';
 import {
   apiUrl,
   checkConverterApiAvailable,
@@ -155,6 +157,7 @@ export default function App() {
   const [showAndroidProject, setShowAndroidProject] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showActivityLog, setShowActivityLog] = useState(false);
   const swUpdateToastShown = useRef(false);
   const [selectedTrackForLyrics, setSelectedTrackForLyrics] = useState<Track | null>(null);
   const [prefilledUrl, setPrefilledUrl] = useState<string | null>(null);
@@ -675,8 +678,24 @@ export default function App() {
 
         const saved = await saveTrackToDB(newTrack, file);
         setTracks((prev) => [saved, ...prev]);
+        logActivity({
+          action: 'import',
+          label: `Imported "${cleanTitle}"`,
+          result: 'saved',
+          format: ext,
+          sizeBytes: file.size,
+          detail: 'Device file stored offline in Library',
+          source: file.name,
+        });
         addToast(`♪ Loaded "${cleanTitle}" (${ext})`, 'success');
       } catch (err: any) {
+        logActivity({
+          action: 'import',
+          label: `Import failed`,
+          result: 'failed',
+          detail: err?.message || 'Could not import file',
+          source: file.name,
+        });
         addToast(`Failed to import "${file.name}": ${err.message}`, 'error');
       }
     }
@@ -709,6 +728,17 @@ export default function App() {
 
     const ytId = extractYouTubeId(trimmedUrl);
 
+    logActivity({
+      action: 'record',
+      label: ytId ? 'Record YouTube' : 'Record URL',
+      result: 'started',
+      format,
+      detail: `Requested an offline ${format} file`,
+      source: trimmedUrl,
+    });
+
+    let loggedStage = '';
+
     try {
       const { jobId } = await startConvertJob({
         url: trimmedUrl,
@@ -734,6 +764,17 @@ export default function App() {
                     ? 'SAVING'
                     : 'PROCESSING';
           setDownloadStatus(`${stageLabel}: ${status.message}`);
+          if (status.stage && status.stage !== loggedStage && status.stage !== 'done') {
+            loggedStage = status.stage;
+            logActivity({
+              action: 'record',
+              label: ytId ? 'Record YouTube' : 'Record URL',
+              result: 'progress',
+              format,
+              detail: `${stageLabel} · ${status.message}`,
+              source: trimmedUrl,
+            });
+          }
         },
         180_000
       );
@@ -885,42 +926,43 @@ export default function App() {
         ytId && (headerFormat === 'FLAC' || headerFormat === 'ALAC' || headerFormat === 'WAV')
           ? ` · real .${extensionForFormat(headerFormat)} from lossy YouTube source`
           : '';
+      logActivity({
+        action: 'record',
+        label: `Saved "${headerTitle}"`,
+        result: 'saved',
+        format: headerFormat,
+        sizeBytes: audioBlob.size,
+        detail: `Offline .${extensionForFormat(headerFormat)} file stored in Library · plays with internet off`,
+        source: trimmedUrl,
+      });
       addToast(`♪ Recorded "${headerTitle}" (${headerFormat}${honesty})`, 'success');
       playTrack(saved);
     } catch (err: unknown) {
       const { message, code } = humanizeConverterError(err);
-      if (ytId && (code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT')) {
-        const streamTrack: Track = {
-          id: `yt_live_${ytId}`,
-          title: customTitle || inlinePreview?.title || 'YouTube tape',
-          artist: customArtist || inlinePreview?.author || 'YouTube',
-          album: `Open Grace · Live YouTube (not ${format})`,
-          duration: 0,
-          sizeBytes: 0,
-          format: 'YouTube',
-          mimeType: 'video/youtube',
-          source: 'YOUTUBE',
-          storageStatus: 'DEVICE_LOCAL',
-          addedAt: Date.now(),
-          thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-          bitrateKbps: 0,
-          isFavorite: false,
-          originalUrl: `https://www.youtube.com/watch?v=${ytId}`,
-          ytVideoId: ytId,
-        };
-        const saved = await saveMetadataTrackToDB(streamTrack);
-        setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
-        setDownloadError(null);
-        setShowDownloadDialog(false);
-        setActivePage('home');
-        addToast(
-          `♪ Live YouTube only — ${format} file was not saved. Library badge shows Live YouTube, not ${format}.`,
-          'info'
-        );
-        await playTrack(saved);
-        return;
-      }
-      const display = message;
+      // Honest failure: we NEVER silently save a live-stream tape and call it a download.
+      // A genuine offline tape must carry real audio bytes. If the server could not produce
+      // them (YouTube login/bot-check on a free host, extraction/timeout), say so clearly and
+      // offer the real paths to an offline file. Live listening stays a separate, explicit choice.
+      const serverBlocked =
+        code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
+      const display =
+        ytId && serverBlocked
+          ? `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
+            `Paste youtube.com cookies via the key icon and retry, use the Android APK’s on-device capture, ` +
+            `or import an audio file. To only listen live (streams when online, not an offline file), ` +
+            `open the YouTube Tuner and tap Listen.`
+          : message;
+      logActivity({
+        action: 'record',
+        label: ytId ? 'Record YouTube' : 'Record URL',
+        result: 'failed',
+        format,
+        detail:
+          ytId && serverBlocked
+            ? `Not downloaded (${message}). Could still be played online-only via the Tuner.`
+            : message,
+        source: trimmedUrl,
+      });
       setDownloadError(display);
       addToast(`Recorder error: ${display}`, 'error');
     } finally {
@@ -934,6 +976,14 @@ export default function App() {
   const handleConvertToMp3 = async (track: Track) => {
     setConvertingTrackId(track.id);
     setConvertingProgress(0.1);
+
+    logActivity({
+      action: 'convert',
+      label: `Convert "${track.title}" → MP3`,
+      result: 'started',
+      format: 'MP3',
+      detail: `Re-encoding ${track.format} to MP3 320K offline`,
+    });
 
     try {
       let sourceBlob = track.blob;
@@ -959,8 +1009,23 @@ export default function App() {
 
       const saved = await saveTrackToDB(updatedTrack, mp3Blob);
       setTracks((prev) => prev.map((t) => (t.id === track.id ? saved : t)));
+      logActivity({
+        action: 'convert',
+        label: `Dubbed "${track.title}" to MP3`,
+        result: 'saved',
+        format: 'MP3',
+        sizeBytes: mp3Blob.size,
+        detail: 'Offline MP3 320K stored in Library',
+      });
       addToast(`♪ Dubbed "${track.title}" to MP3 320K`, 'success');
     } catch (err: any) {
+      logActivity({
+        action: 'convert',
+        label: `Convert "${track.title}" → MP3 failed`,
+        result: 'failed',
+        format: 'MP3',
+        detail: err?.message || 'Conversion failed',
+      });
       addToast(`Conversion failed: ${err.message}`, 'error');
     } finally {
       setConvertingTrackId(null);
@@ -1021,7 +1086,14 @@ export default function App() {
       return;
     }
 
-    addToast('No offline audio file found.', 'error');
+    if (track.ytVideoId && track.format === 'YouTube') {
+      addToast(
+        'This is a live YouTube tape (online-only) — there is no offline file to save. Record it as MP3/FLAC to get an offline copy.',
+        'error'
+      );
+      return;
+    }
+    addToast('No offline audio file found for this tape.', 'error');
   };
 
   // Load Built-in Studio Acoustic Tracks
@@ -1098,7 +1170,9 @@ export default function App() {
         id: `yt_live_${item.ytVideoId}`,
         title: item.title || item.scheduleName,
         artist: item.scheduleName || 'YouTube',
-        album: item.query ? `Fresh listen · ${item.query}` : 'Open Grace · Live YouTube',
+        album: item.query
+          ? `Online only · Fresh listen · ${item.query}`
+          : 'Online only · Live YouTube (not downloaded)',
         duration: 0,
         sizeBytes: 0,
         format: 'YouTube',
@@ -1114,6 +1188,14 @@ export default function App() {
       };
       const saved = await saveMetadataTrackToDB(streamTrack);
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
+      logActivity({
+        action: 'listen-live',
+        label: `Listening live: "${saved.title}"`,
+        result: 'online-only',
+        format: 'YouTube',
+        detail: 'Live YouTube stream — plays only with internet; no offline file, no background play',
+        source: saved.originalUrl,
+      });
       await playTrack(saved);
       return;
     }
@@ -1139,7 +1221,7 @@ export default function App() {
       id: `yt_live_${ytId}`,
       title: meta?.title || `YouTube Track (${ytId})`,
       artist: meta?.author || 'YouTube',
-      album: 'Open Grace · Live YouTube',
+      album: 'Online only · Live YouTube (not downloaded)',
       duration: 0,
       sizeBytes: 0,
       format: 'YouTube',
@@ -1155,8 +1237,16 @@ export default function App() {
     };
     const saved = await saveMetadataTrackToDB(streamTrack);
     setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
+    logActivity({
+      action: 'listen-live',
+      label: `Listening live: "${saved.title}"`,
+      result: 'online-only',
+      format: 'YouTube',
+      detail: 'Live YouTube stream — plays only with internet; no offline file, no background play',
+      source: saved.originalUrl,
+    });
     await playTrack(saved);
-    addToast(`♪ Playing "${saved.title}"`, 'success');
+    addToast(`♪ Playing "${saved.title}" (live · online only)`, 'info');
   };
 
   return (
@@ -1277,6 +1367,7 @@ export default function App() {
             onOpenSettings={() => setShowSettings(true)}
             onOpenInstall={() => setShowInstallGuide(true)}
             onOpenAndroidProject={() => setShowAndroidProject(true)}
+            onOpenActivityLog={() => setShowActivityLog(true)}
             onPwaInstall={() => void install()}
           />
         )}
@@ -1862,6 +1953,8 @@ export default function App() {
         isInstallable={isInstallable}
         onPwaInstall={install}
       />
+
+      <ActivityLogModal isOpen={showActivityLog} onClose={() => setShowActivityLog(false)} />
 
       <PlaylistPickerModal
         isOpen={showPlaylistPicker}

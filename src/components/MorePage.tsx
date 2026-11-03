@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { Download, Settings, Smartphone, AlertCircle, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  Download,
+  Settings,
+  Smartphone,
+  AlertCircle,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  ScrollText,
+} from 'lucide-react';
+import { getActivityLog, subscribeActivityLog } from '../services/activityLog';
 
 interface MorePageProps {
   converterApiOnline: boolean | null;
@@ -10,6 +20,7 @@ interface MorePageProps {
   onOpenSettings: () => void;
   onOpenInstall: () => void;
   onOpenAndroidProject: () => void;
+  onOpenActivityLog: () => void;
   onPwaInstall: () => void;
 }
 
@@ -22,9 +33,13 @@ export const MorePage: React.FC<MorePageProps> = ({
   onOpenSettings,
   onOpenInstall,
   onOpenAndroidProject,
+  onOpenActivityLog,
   onPwaInstall,
 }) => {
   const [studioHelpOpen, setStudioHelpOpen] = useState(false);
+  const [logCount, setLogCount] = useState(() => getActivityLog().length);
+
+  useEffect(() => subscribeActivityLog((entries) => setLogCount(entries.length)), []);
 
   return (
     <section className="space-y-3">
@@ -87,6 +102,26 @@ export const MorePage: React.FC<MorePageProps> = ({
           <p>Until you open Transcript, a saved Gemini/NVIDIA key sits idle — that is expected.</p>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={onOpenActivityLog}
+        className="cassette-btn w-full justify-between px-4 py-3 text-sm font-mono"
+      >
+        <span className="inline-flex items-center gap-2">
+          <ScrollText className="w-4 h-4 text-[#b8d99e]" />
+          Activity log
+        </span>
+        <span className="text-[11px] font-mono text-[#9fa396]">
+          {logCount > 0 ? `${logCount} event${logCount === 1 ? '' : 's'}` : 'empty'}
+        </span>
+      </button>
+      <p className="text-[11px] font-mono text-[#686b60] leading-relaxed px-0.5">
+        Activity log shows every record / import / conversion with its chosen format and whether it was
+        <span className="text-[#b8d99e]"> Saved</span> (offline file),
+        <span className="text-[#f0a1a1]"> Failed</span>, or kept
+        <span className="text-[#e2c986]"> Online-only</span> (live YouTube). Times shown in IST.
+      </p>
 
       <button type="button" onClick={onOpenSettings} className="cassette-btn w-full justify-start px-4 py-3 text-sm font-mono">
         <Settings className="w-4 h-4 text-[#e2c986]" />

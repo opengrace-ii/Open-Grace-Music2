@@ -73,11 +73,33 @@ Keys: set `GEMINI_API_KEY` and/or `NVIDIA_API_KEY` in `.env`, or paste them in *
 ### YouTube conversion speed vs TubeMate
 Apps like **TubeMate** use dedicated on-device YouTube parsers tuned for fast MP4/MP3 grabs. **Open Grace Music** routes YouTube through a **server-side yt-dlp + FFmpeg audiophile pipeline** (true MP3 320, FLAC, ALAC, and more). For a TubeMate-like wait time, choose **MP3 320** (typically ~20–60 seconds); studio **FLAC/ALAC** masters may take **2–5 minutes**. OGM does not bundle or ship TubeMate.
 
-### True FLAC vs YouTube source limits
+### What “download” means (offline file vs online-only live tape)
+
+OGM is honest about the difference between a **real offline file** and a **live YouTube stream**. There are only two possible outcomes when you record a link, and the app never blurs them:
+
+| Outcome | What is stored | Badge / album | Plays with internet OFF? | Background play? |
+| --- | --- | --- | --- | --- |
+| **Saved (offline)** | A real audio **blob** in IndexedDB (`Track.blob`) with the probed format/MIME | `TYPE … · FLAC/MP3 …` | **Yes** (object URL → HTML5 `<audio>`) | **Yes** (foreground media service + MediaSession on the audio element) |
+| **Online-only (live)** | **No blob** — only the YouTube video id | `LIVE STREAM · YOUTUBE`, album `Online only · Live YouTube (not downloaded)` | **No** (plays via the YouTube IFrame; needs a connection) | **No** (an iframe pauses when minimized/offline) |
+
+- **A successful record is a genuine offline file.** The server (`server/convertPipeline.ts` + the `/api/convert-audio` job in `server.ts`) fetches the exact video with yt-dlp, transcodes with FFmpeg, probes the codec, and streams the bytes back. The client reads the whole response as a **blob**, verifies it is non-empty and matches the requested family (never labels MPEG as FLAC), and saves it with `saveTrackToDB(track, blob)`. `playerService` then plays that blob from an object URL on a plain HTML5 `<audio>` element — so pause / seek / next and background playback all work, even offline.
+- **OGM never fakes a download.** If the server cannot produce bytes (YouTube `LOGIN_REQUIRED` / bot-check, extraction failure, or timeout — common on the Render free host), **nothing is saved**. You get a clear failure explaining the real fixes (paste youtube.com cookies via the key icon, use the Android APK’s on-device capture, or import a file). A live tape is **never** silently saved and relabeled as MP3/FLAC.
+- **Listening live is a separate, explicit choice.** Open the YouTube **Tuner** and tap **Listen** to play a video as a live stream. That tape is labeled `LIVE STREAM · YOUTUBE` / `Online only · Live YouTube (not downloaded)` and is honest that it streams only while online and will not play in the background. The “stuck, cannot pause/forward” symptom is exactly a live tape with no connection — recording it as MP3/FLAC (a real offline file) fixes it.
 - **FFmpeg does emit real `.flac`** (ffprobe `codec_name=flac`) when a FLAC job succeeds. Library badges and IndexedDB `format` / `mimeType` / extension come from the job response (`Content-Type`, `X-Audio-Format`, `X-Audio-Extension`, probed codec) — not a hardcoded “MP3 320”.
 - **YouTube audio is already lossy** (AAC/Opus). A FLAC of that stream is a **lossless container of a lossy source**, not a studio master of the original recording. The recorder UI states this when you pick FLAC/ALAC/WAV.
-- If conversion fails (bot check / extract / timeout), OGM may keep a **Live YouTube** tape for listening. That tape is labeled **LIVE STREAM · YOUTUBE**, never FLAC and never MP3 320.
 - **Verify a real FLAC tape:** export from the library (`.flac`), then `ffprobe -show_entries stream=codec_name -of csv=p=0 yourfile.flac` → `flac`. Or check the cassette badge reads **TYPE IV METAL · FLAC 24-BIT** and album notes mention the YouTube lossy-source caveat.
+
+### Activity log (every record / import / conversion)
+
+Every recording, device-file import, conversion, and live listen is written to a persisted **Activity log** so you can tell, after the fact, exactly what happened.
+
+- **Where:** **More → Activity log** (cassette-styled panel; the row shows the event count).
+- **What each event records:** timestamp (shown in **IST** plus your device clock), the action (Record / Import / Convert / Listen live), the chosen format (MP3 / FLAC / …), and the result:
+  - **SAVED** — a real offline file landed in the Library (with its final size).
+  - **FAILED** — nothing was saved, with the short reason (login required / network / codec mismatch / empty stream / timeout).
+  - **ONLINE-ONLY** — kept as a live YouTube tape (plays only while online, no background).
+  - **STARTED / PROGRESS** — the job kicked off and its server stages (validate → extract → ffmpeg → save).
+- **Storage & cap:** persisted in `localStorage` (`ogm_activity_log_v1`), newest first, capped at the most recent **200** events (metadata only — never audio bytes). Tap **Clear log** to wipe it.
 
 ---
 
