@@ -84,14 +84,24 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             <code className="text-[#b8d99e]">npm start</code>. Offline library and local import need no server.
           </p>
           <p>
-            <strong className="text-[#fbbf24] font-medium">Updating from an older APK?</strong> Uninstall the
-            previous Open Grace Music install first, then install{' '}
-            <code className="text-[#b8d99e]">versionCode 3+</code> / <code className="text-[#b8d99e]">1.2.0+</code>{' '}
-            for background playback with a media notification. On Android 13+, allow{' '}
-            <strong className="text-[#eeeae2] font-medium">Notifications</strong>. Clear Chrome/WebView cache if
-            the UI still looks old. Until a fresh APK is on your phone,{' '}
-            <strong className="text-[#b8d99e] font-medium">Add to Home screen</strong> from the live site always
-            has the latest UI.
+            <strong className="text-[#eeeae2] font-medium">Do you need to reinstall the APK every time?</strong>{' '}
+            <strong className="text-[#b8d99e] font-medium">No</strong> — once you have WebView shell{' '}
+            <code className="text-[#b8d99e]">1.1+</code> / <code className="text-[#b8d99e]">versionCode 2+</code>{' '}
+            (ideally <code className="text-[#b8d99e]">1.2.1+</code> / <code className="text-[#b8d99e]">4+</code>),
+            UI and music features come from the <strong className="text-[#eeeae2] font-medium">live website</strong>{' '}
+            after Render redeploys. Reopen the app (or tap Reload on the update toast). Reinstall the APK{' '}
+            <strong className="text-[#eeeae2] font-medium">only</strong> when the native shell changes
+            (background audio service, permissions, baked start URL).
+          </p>
+          <p>
+            <strong className="text-[#fbbf24] font-medium">Phone looks old?</strong> (1) Confirm Render redeployed
+            latest <code className="text-[#b8d99e]">main</code>. (2) Force stop the app and reopen, or clear{' '}
+            <strong className="text-[#eeeae2] font-medium">App info → Storage → Clear cache</strong>. (3) If you
+            still see native Compose UI with <em>no</em> bottom Listen/Library/Tuner nav, uninstall and install the
+            latest APK from this site. Until then,{' '}
+            <strong className="text-[#b8d99e] font-medium">Add to Home screen</strong> always has the latest UI.
+            On Android 13+, allow <strong className="text-[#eeeae2] font-medium">Notifications</strong> for
+            background play.
           </p>
           <a
             href={REPO_URL}
@@ -164,12 +174,12 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
           </p>
           <ol className="list-decimal list-inside space-y-2 text-xs text-[#eeeae2] leading-relaxed pl-1">
             <li>
-              <strong>Uninstall</strong> any older Open Grace Music APK first (versionCode 1–2 stop
-              music when minimized).
+              <strong>Uninstall</strong> any older Open Grace Music APK first (versionCode 1 is native
+              Compose without the live PWA; 1–2 stop music when minimized).
             </li>
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.2.0+)
-              below or from the mobile download page.
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.2.1+ /
+              versionCode 4+) below or from the mobile download page — one install covers later site updates.
             </li>
             <li>
               Settings → Security → <strong>Install unknown apps</strong> → allow{' '}

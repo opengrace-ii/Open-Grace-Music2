@@ -56,7 +56,7 @@ curl -sS -i "$BASE/api/health"
 
 Expect **HTTP 200** and JSON like `{"ok":true,"service":"ogm-converter"}`.
 
-**Clients:** Download the APK from Render (`/download` or `/OpenGraceMusic.apk`). The APK is a **WebView shell** of the Render PWA (`versionCode` 3+ / `1.2.0+` with background playback); uninstall older APKs first and allow notifications on Android 13+. The PWA on the same origin needs no converter URL in Settings; after `./gradlew :app:assembleDebug` (or release), commit `public/OpenGraceMusic.apk` so the hosted file matches the new shell / start URL. UI changes ship via Render redeploy without a new APK once the WebView shell is installed.
+**Clients:** Download the APK from Render (`/download` or `/OpenGraceMusic.apk`). The APK is a **WebView shell** of the Render PWA (`versionCode` 4+ / `1.2.1+` with background playback); uninstall older APKs first and allow notifications on Android 13+. The PWA on the same origin needs no converter URL in Settings; after `./gradlew :app:assembleDebug` (or release), commit `public/OpenGraceMusic.apk` so the hosted file matches the new shell / start URL. UI changes ship via Render redeploy without a new APK once the WebView shell is installed — reinstall only when the native shell (service, permissions, baked URL) changes.
 
 From the repo (after `npm ci`):
 

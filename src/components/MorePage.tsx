@@ -33,6 +33,21 @@ export const MorePage: React.FC<MorePageProps> = ({
         <p className="text-xs font-mono text-[#9fa396] mt-0.5">Install, converter, and Android project</p>
       </div>
 
+      <div className="cassette-window rounded-2xl p-3.5 space-y-1.5 text-[11px] font-mono text-[#9fa396] leading-relaxed">
+        <p className="text-[#e2c986] font-semibold uppercase tracking-wider text-[10px]">APK updates</p>
+        <p>
+          <span className="text-[#b8d99e]">UI / music features</span> load from the live site after Render
+          redeploys — <span className="text-[#f0ece1]">no APK reinstall</span> if you already have WebView
+          shell 1.1+ (bottom Listen / Library / Tuner / Schedule / More).
+        </p>
+        <p>
+          <span className="text-[#e2c986]">Reinstall the APK</span> only when the native shell changes
+          (background audio, permissions). Phone still looks old? Force-stop + reopen, clear app cache, or
+          uninstall and install the latest APK from this site if you still see Compose-only UI without bottom
+          nav.
+        </p>
+      </div>
+
       {converterApiOnline === false && (
         <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />

@@ -181,7 +181,7 @@ Clients talk to the converter API at **`/api/*`** on some **HTTPS origin**. Defa
 
 ### Android APK
 
-- **Ship model:** `MainActivity` is a **WebView shell** loading the live PWA (`versionCode` 3+ / `1.2.0+` with background media service). Uninstall older APKs first.
+- **Ship model:** `MainActivity` is a **WebView shell** loading the live PWA (`versionCode` 4+ / `1.2.1+` with background media service + one-time WebView cache clear on shell upgrade). Uninstall older APKs first. UI updates ship via Render redeploy without reinstalling the APK.
 - **Baked default:** `BuildConfig.CONVERTER_BASE_URL` from `app/build.gradle.kts` (defaults to `https://open-grace-music2.onrender.com`). Rebuild with Gradle property **`OGM_CONVERTER_BASE_URL=https://your-host`** to change the start URL in new APKs.
 - **Per-device override:** Settings → **Converter server URL** → `ConverterServerPrefs` (`converter_server_url`). **Clear the field** to use the baked-in default again.
 - **Helper copy:** `OgmPublicBase.DEFAULT_PUBLIC_BASE_URL` in UI placeholder text.

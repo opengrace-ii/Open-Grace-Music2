@@ -2,6 +2,7 @@ package com.example
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -35,12 +36,17 @@ import com.example.player.OgmPlaybackService
  * Background audio: do **not** call [WebView.onPause] while media is active — that pauses
  * HTML5 / iframe playback. A sticky [OgmPlaybackService] foreground notification keeps the
  * process eligible for media playback when the Activity is minimized.
+ *
+ * UI / music features come from the live site after Render redeploys — no APK reinstall needed
+ * once this WebView shell is installed. On [BuildConfig.VERSION_CODE] change we clear the
+ * WebView HTTP cache once so a single shell upgrade is enough for subsequent site deploys.
  */
 class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
 
     private lateinit var webView: WebView
     @Volatile
     private var mediaPlaying: Boolean = false
+    private var clearedCacheForShellUpgrade = false
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* optional */ }
@@ -96,6 +102,7 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     injectBackgroundAudioBridge()
+                    injectServiceWorkerRefresh()
                 }
             }
 
@@ -137,7 +144,8 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
             }
         )
 
-        val startUrl = resolveStartUrl(intent)
+        clearedCacheForShellUpgrade = maybeClearWebViewCacheForShellUpgrade()
+        val startUrl = resolveStartUrl(intent, bustCache = clearedCacheForShellUpgrade)
         webView.loadUrl(startUrl)
     }
 
@@ -154,6 +162,10 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
+        // Soft SW refresh on every open so Render redeploys appear without APK reinstall.
+        if (::webView.isInitialized) {
+            injectServiceWorkerRefresh()
+        }
     }
 
     /**
@@ -241,6 +253,61 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         if (!granted) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    /**
+     * When the native shell versionCode changes (one reinstall), wipe WebView HTTP cache
+     * once so a stuck SW / disk cache cannot keep an old JS bundle. Subsequent site-only
+     * deploys rely on SW network-first + [injectServiceWorkerRefresh] instead.
+     */
+    private fun maybeClearWebViewCacheForShellUpgrade(): Boolean {
+        val prefs = getSharedPreferences(PREFS_SHELL, Context.MODE_PRIVATE)
+        val lastCode = prefs.getInt(KEY_LAST_VERSION_CODE, -1)
+        val current = BuildConfig.VERSION_CODE
+        if (lastCode == current) return false
+        runCatching {
+            webView.clearCache(false)
+            android.util.Log.i(
+                "OgmWebShell",
+                "cleared WebView cache after shell upgrade $lastCode → $current"
+            )
+        }
+        prefs.edit().putInt(KEY_LAST_VERSION_CODE, current).apply()
+        return true
+    }
+
+    /** Ask the PWA service worker to update and activate; reload once if a waiting worker takes over. */
+    private fun injectServiceWorkerRefresh() {
+        val script = """
+            (function(){
+              if (!('serviceWorker' in navigator)) return;
+              try {
+                if (!window.__ogmSwControllerHooked) {
+                  window.__ogmSwControllerHooked = true;
+                  navigator.serviceWorker.addEventListener('controllerchange', function(){
+                    if (window.__ogmSwReloading) return;
+                    window.__ogmSwReloading = true;
+                    window.location.reload();
+                  });
+                }
+                navigator.serviceWorker.getRegistration().then(function(reg){
+                  if (!reg) return;
+                  try { reg.update(); } catch (e) {}
+                  if (reg.waiting) {
+                    try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
+                  }
+                  if (reg.installing) {
+                    reg.installing.addEventListener('statechange', function(){
+                      if (reg.waiting) {
+                        try { reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (e) {}
+                      }
+                    });
+                  }
+                });
+              } catch (e) {}
+            })();
+        """.trimIndent()
+        runCatching { webView.evaluateJavascript(script, null) }
     }
 
     private fun injectBackgroundAudioBridge() {
@@ -332,12 +399,15 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         }
     }
 
-    private fun resolveStartUrl(intent: Intent?): String {
+    private fun resolveStartUrl(intent: Intent?, bustCache: Boolean = false): String {
         val shared = extractSharedText(intent)
         if (!shared.isNullOrBlank()) {
             return buildShareDeepLink(shared)
         }
-        return publicBaseUrl()
+        val base = publicBaseUrl()
+        if (!bustCache) return base
+        val sep = if (base.contains('?')) '&' else '?'
+        return base + sep + "_ogmShell=" + BuildConfig.VERSION_CODE
     }
 
     private fun publicBaseUrl(): String {
@@ -356,6 +426,11 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         val base = publicBaseUrl()
         val encoded = Uri.encode(sharedText.trim())
         return "$base/?sharedUrl=$encoded"
+    }
+
+    companion object {
+        private const val PREFS_SHELL = "ogm_webview_shell"
+        private const val KEY_LAST_VERSION_CODE = "last_version_code"
     }
 
     private fun extractSharedText(intent: Intent?): String? {

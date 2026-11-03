@@ -99,7 +99,7 @@
     <div class="wrap">
       <h1>Open Grace Music</h1>
       <p class="sub">
-        Android WebView shell (~25 MB, version 1.2.0+) that loads the live PWA (Listen / Library / Tuner /
+        Android WebView shell (~25 MB, version 1.2.1+) that loads the live PWA (Listen / Library / Tuner /
         Schedule / More) and keeps music playing in the background. Open this page in <strong>Chrome</strong> on your phone.
       </p>
 
@@ -125,20 +125,21 @@
       </div>
 
       <div class="card note">
-        <h2>Updating from an old APK?</h2>
+        <h2>Do you need to reinstall every time?</h2>
         <p>
-          <strong>Uninstall</strong> the previous Open Grace Music app first (versionCode 1–2 stop
-          music when minimized). Install <strong>1.2.0+</strong>, allow <strong>Notifications</strong>
-          on Android 13+, then play a track and minimize — a media notification keeps playback alive.
-          Prefer <strong>Add to Home screen</strong> from the live site if you need the newest UI
-          before a rebuild finishes — the PWA is always current.
+          <strong>No.</strong> After WebView shell <strong>1.2.1+</strong> / versionCode <strong>4+</strong>,
+          UI and music features come from the <strong>live website</strong> when Render redeploys —
+          just reopen the app. Reinstall the APK <strong>only</strong> when the native shell changes
+          (background audio, permissions). Phone looks old? Force-stop + reopen or clear app cache.
+          Still native Compose with no bottom nav? Uninstall and install the latest APK from this page.
+          Prefer <strong>Add to Home screen</strong> for the newest UI without sideloading.
         </p>
       </div>
 
       <div class="card">
         <h2>Samsung Galaxy S25 — install steps</h2>
         <ol>
-          <li>Uninstall any older Open Grace Music APK (use versionCode 3+ / 1.2.0 for background play).</li>
+          <li>Uninstall any older Open Grace Music APK (use versionCode 4+ / 1.2.1 for background play + fresh cache).</li>
           <li>After download, open the APK from <strong>My Files → Downloads</strong>.</li>
           <li>
             <strong>Settings → Security → Install unknown apps</strong> — allow
