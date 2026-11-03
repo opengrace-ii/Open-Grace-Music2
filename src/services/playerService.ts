@@ -544,6 +544,45 @@ class AudioPlayerEngine {
     return this.htmlAudio.duration || 0;
   }
 
+  public getCurrentTime(): number {
+    if (this.usingYoutube && this.ytPlayer) {
+      try {
+        return this.ytPlayer.getCurrentTime() || 0;
+      } catch {
+        return 0;
+      }
+    }
+    return this.htmlAudio.currentTime || 0;
+  }
+
+  public getPlayingYouTubeId(): string {
+    return this.usingYoutube ? this.currentTrack?.ytVideoId || '' : '';
+  }
+
+  public play(): void {
+    if (this.usingYoutube && this.ytPlayer) {
+      try {
+        this.ytPlayer.playVideo();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    this.htmlAudio.play().catch(() => {});
+  }
+
+  /** Poll until the in-app player is actually playing [expectVideoId], or timeout. */
+  public async waitUntilPlaying(timeoutMs = 18_000, expectVideoId?: string): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const idOk = !expectVideoId || this.getPlayingYouTubeId() === expectVideoId;
+      if (idOk && this.isPlaying()) return true;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    const idOk = !expectVideoId || this.getPlayingYouTubeId() === expectVideoId;
+    return idOk && this.isPlaying();
+  }
+
   private destroyYtPlayer() {
     try {
       this.ytPlayer?.destroy();
