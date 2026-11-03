@@ -189,7 +189,10 @@ export default function App() {
 
   const addToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
-    setToasts((prev) => [...prev, { id, text, type }]);
+    setToasts((prev) => {
+      const next = type === 'error' ? prev.filter((t) => t.type !== 'error') : prev;
+      return [...next, { id, text, type }];
+    });
     const ttl = type === 'error' ? 10_000 : 4_000;
     setTimeout(() => {
       setToasts((prev) => {
@@ -342,13 +345,17 @@ export default function App() {
   }, [inlineCookies]);
 
   useEffect(() => {
-    playerEngine.setShowVideo(showVideo);
+    playerEngine.setShowVideo(showVideo, true);
     try {
       localStorage.setItem('ogm_show_video', showVideo ? '1' : '0');
     } catch {
       // ignore quota / private mode
     }
   }, [showVideo]);
+
+  useEffect(() => {
+    return playerEngine.onShowVideoChange((show) => setShowVideo(show));
+  }, []);
 
   const refreshConverterHealth = () => {
     checkConverterApiAvailable().then((ok) => setConverterApiOnline(ok));
@@ -789,13 +796,18 @@ export default function App() {
     try {
       setDownloadProgress(0.03);
       setDownloadStatus('Capturing stream: playing this video in Open Grace Music…');
-      setShowVideo(true);
       try {
         window.OgmAndroid?.setPlayingYouTubeId?.(ytId);
       } catch {
         // older shells
       }
       await playerEngine.playYouTubeId(ytId, { title: customTitle, artist: customArtist });
+      const playing = playerEngine.getCurrentTrack();
+      if (playing) {
+        setCurrentTrack(playing);
+        setCurrentTime(0);
+        setDuration(playerEngine.getDuration() || playing.duration || 0);
+      }
       logActivity({
         action: 'record',
         label,
@@ -815,6 +827,8 @@ export default function App() {
           setDownloadStatus(`Capturing stream: ${p.message}`);
         } else if (stage === 'download') {
           setDownloadStatus(`Downloading: ${p.message}`);
+        } else if (stage === 'playback') {
+          setDownloadStatus(`Recording playback: ${p.message}`);
         } else {
           setDownloadStatus(`ON-DEVICE: ${p.message}`);
         }
@@ -1226,21 +1240,12 @@ export default function App() {
       // offer the real paths to an offline file. Live listening stays a separate, explicit choice.
       const serverBlocked =
         code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
-      let display: string;
-      if (ytId && insideApk) {
-        display =
-          `Couldn’t record this video. ${onDeviceFailure ?? 'The phone did not capture a YouTube audio stream yet.'} ` +
-          `Play the video in Open Grace Music so the phone can grab the same stream YouTube already sent, then retry. ` +
-          `Tap Connect YouTube once if YouTube still treats this phone like a bot (real Google page — we never collect your password). ` +
-          `Cookies in Settings still help the server fallback. On the server: ${message}. Nothing was saved as ${format}.`;
-      } else if (ytId && serverBlocked) {
-        display =
-          `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
-          `Tap Connect YouTube once (on the website: TV device code in a new Google/YouTube tab; on the APK: Google’s real pages in the app). Google may still block — this is not an unlimited bypass. Exact video only. Optional: paste youtube.com cookies via the key icon. ` +
-          `OGM never substitutes a different song. Or import an audio file. To only listen live (not an offline file), open the YouTube Tuner and tap Listen.`;
-      } else {
-        display = message;
-      }
+      const display =
+        ytId && insideApk
+          ? `Couldn’t record this video. ${onDeviceFailure ? onDeviceFailure.replace(/\s+/g, ' ').trim() : 'Phone capture missed the stream.'} Server: ${message} Nothing was saved as ${format}.`
+          : ytId && serverBlocked
+            ? `Couldn’t download this video (${message}). Nothing was saved as ${format}. Connect YouTube and retry, or try MP3 on Wi-Fi.`
+            : message;
       logActivity({
         action: 'record',
         label: ytId ? 'Record YouTube' : 'Record URL',
@@ -1253,7 +1258,7 @@ export default function App() {
         source: trimmedUrl,
       });
       setDownloadError(display);
-      addToast(`Recorder error: ${display}`, 'error');
+      addToast(display, 'error');
     } finally {
       setIsDownloading(false);
       setDownloadProgress(0);
@@ -1883,15 +1888,13 @@ export default function App() {
 
               {inlinePreview.isYouTube && (
                 <div
-                  className="relative w-full rounded-xl overflow-hidden border border-[#272c23] bg-[#0e0f0d] min-h-[200px]"
+                  className="relative w-full rounded-xl overflow-hidden border border-[#272c23] bg-[#0e0f0d] min-h-[120px] max-h-[160px]"
                   style={{ aspectRatio: '16 / 9' }}
                 >
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${inlinePreview.id}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}`}
-                    title="YouTube Monitor"
-                    className="absolute inset-0 w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                    allowFullScreen
+                  <img
+                    src={`https://img.youtube.com/vi/${inlinePreview.id}/hqdefault.jpg`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
                 </div>
               )}

@@ -33,11 +33,6 @@ interface CatalogVideo {
   thumbnailUrl: string;
 }
 
-const embedUrl = (videoId: string) =>
-  `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&autoplay=1&enablejsapi=1&origin=${encodeURIComponent(
-    typeof window !== 'undefined' ? window.location.origin : ''
-  )}`;
-
 export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   isOpen,
   initialUrl,
@@ -52,7 +47,6 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   const [searchInput, setSearchInput] = useState(initialUrl || '');
   const [selectedYtId, setSelectedYtId] = useState<string | null>(initialId);
   const [previewInfo, setPreviewInfo] = useState<{ title: string; author: string } | null>(null);
-  const [embedReady, setEmbedReady] = useState(false);
   const [catalog, setCatalog] = useState<CatalogVideo[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -101,7 +95,6 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     setSearchInput(id ? initialUrl || '' : q || initialUrl || '');
     setSelectedYtId(id);
     setMode(id ? 'watch' : 'browse');
-    setEmbedReady(false);
     if (id) fetchInfo(id);
     void loadCatalog(id ? '' : q);
   }, [isOpen, initialUrl, initialQuery, fetchInfo, loadCatalog]);
@@ -122,7 +115,6 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
     setSelectedYtId(id);
     setSearchInput(`https://www.youtube.com/watch?v=${id}`);
     setMode('watch');
-    setEmbedReady(false);
     if (meta?.title && meta?.author) {
       setPreviewInfo({ title: meta.title, author: meta.author });
       void loadCatalog(`${meta.title} ${meta.author}`);
@@ -157,23 +149,17 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
 
   const videoPlayer = selectedYtId ? (
     <div
-      className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg flex-1 min-h-[220px] max-h-[min(52vh,560px)]"
+      className="relative w-full rounded-2xl overflow-hidden border border-[#2b3326] bg-[#0e0f0d] shadow-lg min-h-[120px] max-h-[180px]"
       style={{ aspectRatio: '16 / 9' }}
     >
-      {!embedReady && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#141812] z-10">
-          <div className="w-8 h-8 border-2 border-[#b8d99e] border-t-transparent rounded-full animate-spin mx-auto" />
-        </div>
-      )}
-      <iframe
-        key={selectedYtId}
-        src={embedUrl(selectedYtId)}
-        title="YouTube"
-        className="absolute inset-0 w-full h-full border-0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-        allowFullScreen
-        onLoad={() => setEmbedReady(true)}
+      <img
+        src={`https://img.youtube.com/vi/${selectedYtId}/hqdefault.jpg`}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
       />
+      <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+        <Play className="w-8 h-8 text-white fill-white" />
+      </div>
     </div>
   ) : null;
 

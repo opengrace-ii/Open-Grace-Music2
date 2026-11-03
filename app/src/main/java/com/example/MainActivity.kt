@@ -2,13 +2,16 @@ package com.example
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
@@ -29,8 +32,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.example.data.ConverterServerPrefs
 import com.example.data.OgmPublicBase
+import com.example.ondevice.AppPlaybackCapture
 import com.example.ondevice.DownloadEvents
 import com.example.ondevice.OnDeviceDownloadManager
+import com.example.ondevice.PlaybackAudioRecorder
+import com.example.ondevice.PlaybackCaptureService
 import com.example.ondevice.WebViewStreamCapture
 import com.example.ondevice.YouTubeSessionStore
 import com.example.player.OgmPlaybackService
@@ -59,6 +65,7 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     private val downloadManager by lazy { OnDeviceDownloadManager(applicationContext) }
+    private val projectionResults = java.util.concurrent.LinkedBlockingQueue<Intent?>(1)
 
     private val downloadEvents = object : DownloadEvents {
         override fun onProgress(callbackId: String, json: JSONObject) = emitDownloadEvent(callbackId, "progress", json.toString())
@@ -128,6 +135,11 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
             emitYouTubeSessionToWeb()
         }
 
+    private val playbackCaptureLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            projectionResults.offer(if (result.resultCode == Activity.RESULT_OK) result.data else null)
+        }
+
     private val mediaPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* picker works without it */ }
 
@@ -181,6 +193,7 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
             if (stored.isNotBlank()) YouTubeSessionStore.applyHeaderToCookieManager(stored)
         }
         Thread { runCatching { downloadManager.purgeStale() } }.start()
+        downloadManager.playbackCapture = ShellPlaybackCapture()
 
         webView = WebView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -211,6 +224,13 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                     if (filePathCallback == null) return false
                     return launchFileChooser(fileChooserParams, filePathCallback)
                 }
+
+                override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                    // Never let YouTube take over the WebView with a second fullscreen surface.
+                    runCatching { callback?.onCustomViewHidden() }
+                }
+
+                override fun onHideCustomView() {}
             }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
@@ -235,6 +255,11 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                     // Side-effect only: remember googlevideo audio URLs the IFrame already loaded.
                     runCatching { WebViewStreamCapture.observe(request) }
                     return serveLocalDownload(request) ?: super.shouldInterceptRequest(view, request)
+                }
+
+                override fun onLoadResource(view: WebView?, url: String?) {
+                    super.onLoadResource(view, url)
+                    runCatching { WebViewStreamCapture.observeUrl(url, emptyMap()) }
                 }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -620,6 +645,80 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                     OgmPlaybackService.updateNotification(this@MainActivity, t, a, false)
                 }
             }
+        }
+    }
+
+    private inner class ShellPlaybackCapture : AppPlaybackCapture {
+        override fun recordPlayingAppAudio(
+            videoId: String,
+            cancelled: java.util.concurrent.atomic.AtomicBoolean,
+            onProgress: (percent: Int, message: String) -> Unit,
+        ): AppPlaybackCapture.Result? {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+            projectionResults.clear()
+            val mpm = getSystemService(MediaProjectionManager::class.java) ?: return null
+            runOnUiThread {
+                runCatching { playbackCaptureLauncher.launch(mpm.createScreenCaptureIntent()) }
+            }
+            val data = try {
+                projectionResults.poll(60, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {
+                null
+            } ?: return null
+            if (cancelled.get()) return null
+            if (!PlaybackCaptureService.startAndAwait(this@MainActivity)) return null
+            val projection = runCatching { mpm.getMediaProjection(Activity.RESULT_OK, data) }.getOrNull()
+                ?: return null
+            val dest = java.io.File(downloadManager.dir, "cap-${System.currentTimeMillis().toString(36)}.m4a")
+            val durationHint = queryPlayerDurationMs().coerceAtLeast(0L)
+            val started = System.currentTimeMillis()
+            return try {
+                onProgress(14, "Recording this app’s playing audio…")
+                PlaybackAudioRecorder.recordToM4a(
+                    projection,
+                    dest,
+                    cancelled,
+                    {
+                        cancelled.get() ||
+                            (durationHint > 8_000L && System.currentTimeMillis() - started > durationHint + 2_000L)
+                    },
+                ) { elapsed ->
+                    val pct = if (durationHint > 0) {
+                        (14 + (elapsed * 70 / durationHint)).toInt().coerceIn(14, 86)
+                    } else {
+                        20
+                    }
+                    onProgress(pct, "Recording this app’s audio… ${elapsed / 1000}s")
+                }
+                if (!dest.exists() || dest.length() < 50_000L) return null
+                AppPlaybackCapture.Result(dest, ((System.currentTimeMillis() - started) / 1000).toInt())
+            } catch (_: Exception) {
+                dest.delete()
+                null
+            } finally {
+                runCatching { projection.stop() }
+                PlaybackCaptureService.stop(this@MainActivity)
+            }
+        }
+
+        private fun queryPlayerDurationMs(): Long {
+            val latch = java.util.concurrent.CountDownLatch(1)
+            val box = java.util.concurrent.atomic.AtomicLong(0)
+            runOnUiThread {
+                if (!::webView.isInitialized) {
+                    latch.countDown()
+                    return@runOnUiThread
+                }
+                webView.evaluateJavascript(
+                    "(function(){try{var e=window.__ogmPlayerEngine;var d=e&&e.getDuration?e.getDuration():0;return Math.round(d||0);}catch(e){return 0;}})()",
+                ) { raw ->
+                    val sec = raw?.trim()?.removeSurrounding("\"")?.toDoubleOrNull() ?: 0.0
+                    box.set((sec * 1000.0).toLong())
+                    latch.countDown()
+                }
+            }
+            latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+            return box.get()
         }
     }
 

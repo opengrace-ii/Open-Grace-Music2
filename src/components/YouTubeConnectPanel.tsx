@@ -186,8 +186,8 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ onCook
         </p>
       ) : insideApk ? (
         <p className="text-[11px] text-[#a3a198] leading-relaxed">
-          This installed APK is too old for native Connect YouTube. Reinstall <strong className="text-[#eeeae2]">1.3.2+</strong>{' '}
-          (versionCode 8+) for the in-app Google page, or use the TV code below in Chrome.
+          This installed APK is too old for native Connect YouTube. Reinstall <strong className="text-[#eeeae2]">1.3.3+</strong>{' '}
+          (versionCode 9+) for the in-app Google page, or use the TV code below in Chrome.
         </p>
       ) : (
         <p className="text-[11px] text-[#a3a198] leading-relaxed">

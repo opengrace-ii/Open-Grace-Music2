@@ -250,12 +250,27 @@ class OnDeviceDownloadTest {
             false,
             "session"
         )
-        assertTrue(msg.contains("capture did not see"))
+        assertTrue(msg.contains("Capture missed") || msg.contains("googlevideo"))
         assertTrue(msg.contains("Play the video"))
         assertTrue(!msg.contains("ANDROID_VR"))
         assertTrue(!msg.contains("LOGIN_REQUIRED"))
         val expired = OnDeviceDownloadManager.friendlyFailure("Xc6Jlstj8GY", true, null)
         assertTrue(expired.contains("expired") || expired.contains("refused"))
+        assertTrue(msg.length < 160)
+        assertTrue(expired.length < 160)
+    }
+
+    @Test
+    fun `muxed progressive itag is a download candidate`() {
+        WebViewStreamCapture.clear()
+        val muxed = samplePlayback.replace("itag=140", "itag=18").replace("mime=audio%2Fmp4", "mime=video%2Fmp4")
+        val parsed = WebViewStreamCapture.parseVideoPlayback(muxed, emptyMap(), "Xc6Jlstj8GY")!!
+        assertTrue(WebViewStreamCapture.isDownloadCandidate(parsed.itag, parsed.mime))
+        WebViewStreamCapture.setCurrentlyPlaying("Xc6Jlstj8GY")
+        WebViewStreamCapture.remember(parsed)
+        val found = WebViewStreamCapture.findFor("Xc6Jlstj8GY")
+        assertEquals(parsed.url, found!!.url)
+        WebViewStreamCapture.clear()
     }
 
     @Test
