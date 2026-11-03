@@ -706,6 +706,62 @@ app.get('/api/convert-audio', handleConvertAudio);
 app.post('/api/convert-mp3', handleConvertAudio);
 app.get('/api/convert-mp3', handleConvertAudio);
 
+// API: Transcode already-downloaded audio bytes (no YouTube access, so no bot-check).
+// Used by the Android APK after its on-device download to produce FLAC/ALAC/WAV/MP3.
+const TRANSCODE_SPECS: Record<string, { ext: string; mime: string; args: string[] }> = {
+  FLAC: { ext: 'flac', mime: 'audio/flac', args: ['-vn', '-c:a', 'flac', '-compression_level', '8'] },
+  ALAC: { ext: 'm4a', mime: 'audio/mp4', args: ['-vn', '-c:a', 'alac'] },
+  WAV: { ext: 'wav', mime: 'audio/wav', args: ['-vn', '-c:a', 'pcm_s16le'] },
+  MP3: { ext: 'mp3', mime: 'audio/mpeg', args: ['-vn', '-c:a', 'libmp3lame', '-b:a', '320k'] },
+};
+
+app.post(
+  '/api/transcode',
+  express.raw({ type: () => true, limit: '80mb' }),
+  async (req, res) => {
+    const fmt = String(req.query.format || '').toUpperCase();
+    const spec = TRANSCODE_SPECS[fmt];
+    if (!spec) {
+      return res.status(400).json({ error: `Unsupported transcode format: ${fmt || '(none)'}` });
+    }
+    const body = req.body as Buffer;
+    if (!Buffer.isBuffer(body) || body.length < 20_000) {
+      return res.status(400).json({ error: 'Audio upload was empty or too small.' });
+    }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-transcode-'));
+    const inPath = path.join(dir, 'input.bin');
+    const outPath = path.join(dir, `output.${spec.ext}`);
+    const cleanup = () => {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+    };
+    try {
+      fs.writeFileSync(inPath, body);
+      await execFileAsync('/usr/bin/ffmpeg', ['-y', '-i', inPath, ...spec.args, outPath], {
+        timeout: 4 * 60_000,
+        maxBuffer: 8 * 1024 * 1024,
+      });
+      const stat = fs.statSync(outPath);
+      if (stat.size < 1000) throw new Error('FFmpeg produced an empty file.');
+      res.setHeader('Content-Type', spec.mime);
+      res.setHeader('Content-Length', stat.size.toString());
+      res.setHeader('X-Audio-Format', fmt);
+      res.setHeader('X-Audio-Extension', spec.ext);
+      const stream = fs.createReadStream(outPath);
+      stream.on('close', cleanup);
+      stream.on('error', cleanup);
+      return stream.pipe(res);
+    } catch (err) {
+      cleanup();
+      console.error('[transcode] failed:', err instanceof Error ? err.message : err);
+      return res.status(500).json({ error: 'Server could not transcode the uploaded audio.' });
+    }
+  }
+);
+
 app.get('/api/ai/status', (_req, res) => {
   res.json({ ok: true, ...aiKeyStatus() });
 });

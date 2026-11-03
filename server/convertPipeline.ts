@@ -17,6 +17,7 @@ const execFileAsync = promisify(execFile);
 
 /** yt-dlp player clients — same video ID only (phone-style clients first). */
 const YOUTUBE_PLAYER_CLIENTS: (string | null)[] = [
+  'android,ios,tv_embedded,mweb',
   'android,ios,web',
   'android_vr,web_safari',
   'web_embedded,tv_embedded',
@@ -355,6 +356,7 @@ export async function runConvertPipeline(
               extractionMethod = playerClient
                 ? `youtube-direct (${playerClient})`
                 : 'youtube-direct';
+              console.log(`[convert-audio] yt-dlp succeeded for ${ytId} with player_client=${playerClient ?? 'default'}`);
               break;
             }
             if (picked) {

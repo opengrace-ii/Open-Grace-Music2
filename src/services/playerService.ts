@@ -22,7 +22,14 @@ declare global {
     /** Injected by the Open Grace Music Android WebView shell. */
     OgmAndroid?: {
       onPlaybackState: (playing: boolean, title: string, artist: string) => void;
+      /** APK 1.3.0+: on-device YouTube audio download. */
+      supportsOnDeviceDownload?: () => boolean;
+      shellVersion?: () => string;
+      downloadYouTubeAudio?: (videoId: string, format: string, callbackId: string) => void;
+      cancelDownload?: (callbackId: string) => void;
+      releaseDownload?: (token: string) => void;
     };
+    __ogmNativeDownload?: (callbackId: string, event: string, payloadJson: string) => void;
     __ogmPlayerEngine?: {
       togglePlayPause: () => void;
       pause: () => void;

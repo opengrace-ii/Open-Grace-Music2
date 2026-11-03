@@ -29,7 +29,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.example.data.ConverterServerPrefs
 import com.example.data.OgmPublicBase
+import com.example.ondevice.DownloadEvents
+import com.example.ondevice.OnDeviceDownloadManager
 import com.example.player.OgmPlaybackService
+import org.json.JSONObject
+import android.webkit.WebResourceResponse
+import java.io.FileInputStream
 
 /**
  * Thin WebView shell that loads the live Open Grace Music PWA (Render by default).
@@ -50,6 +55,46 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
     private var clearedCacheForShellUpgrade = false
 
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    private val downloadManager by lazy { OnDeviceDownloadManager(applicationContext) }
+
+    private val downloadEvents = object : DownloadEvents {
+        override fun onProgress(callbackId: String, json: JSONObject) = emitDownloadEvent(callbackId, "progress", json.toString())
+        override fun onDone(callbackId: String, json: JSONObject) = emitDownloadEvent(callbackId, "done", json.toString())
+        override fun onError(callbackId: String, message: String) =
+            emitDownloadEvent(callbackId, "error", JSONObject().put("message", message).toString())
+    }
+
+    private fun emitDownloadEvent(callbackId: String, event: String, payloadJson: String) {
+        val js = "window.__ogmNativeDownload && window.__ogmNativeDownload(" +
+            JSONObject.quote(callbackId) + "," + JSONObject.quote(event) + "," + JSONObject.quote(payloadJson) + ");"
+        runOnUiThread { runCatching { webView.evaluateJavascript(js, null) } }
+    }
+
+    private fun serveLocalDownload(request: WebResourceRequest?): WebResourceResponse? {
+        val uri = request?.url ?: return null
+        if (!uri.host.equals(OnDeviceDownloadManager.LOCAL_HOST, ignoreCase = true)) return null
+        val cors = mapOf(
+            "Access-Control-Allow-Origin" to "*",
+            "Access-Control-Allow-Methods" to "GET, OPTIONS",
+            "Access-Control-Allow-Headers" to "*",
+            "Cache-Control" to "no-store",
+        )
+        if (request.method.equals("OPTIONS", ignoreCase = true)) {
+            return WebResourceResponse("text/plain", "utf-8", 204, "No Content", cors, java.io.ByteArrayInputStream(ByteArray(0)))
+        }
+        val segs = uri.pathSegments
+        val found = if (segs.size == 2 && segs[0] == "dl") downloadManager.lookup(segs[1]) else null
+        if (found == null) {
+            return WebResourceResponse("text/plain", "utf-8", 404, "Not Found", cors, java.io.ByteArrayInputStream(ByteArray(0)))
+        }
+        val (file, mime) = found
+        return WebResourceResponse(
+            mime, null, 200, "OK",
+            cors + ("Content-Length" to file.length().toString()),
+            FileInputStream(file),
+        )
+    }
 
     private val fileChooserLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -123,6 +168,7 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         enableEdgeToEdge()
         OgmPlaybackService.webBridge = this
         maybeRequestNotificationPermission()
+        Thread { runCatching { downloadManager.purgeStale() } }.start()
 
         webView = WebView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -169,6 +215,12 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
                     }
                     return true
                 }
+
+                override fun shouldInterceptRequest(
+                    view: WebView?,
+                    request: WebResourceRequest?
+                ): android.webkit.WebResourceResponse? =
+                    serveLocalDownload(request) ?: super.shouldInterceptRequest(view, request)
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
@@ -466,6 +518,36 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
 
         @JavascriptInterface
         fun supportsFilePicker(): Boolean = true
+
+        /** Web layer feature-detects this; true means downloadYouTubeAudio is usable. */
+        @JavascriptInterface
+        fun supportsOnDeviceDownload(): Boolean = true
+
+        @JavascriptInterface
+        fun shellVersion(): String = BuildConfig.VERSION_NAME
+
+        /**
+         * Resolve + download the exact video's audio on this phone. Results arrive via
+         * window.__ogmNativeDownload(callbackId, 'progress'|'done'|'error', jsonString).
+         * [format] is the user's requested format; the file delivered is always the real
+         * downloaded container (M4A/AAC or OPUS) and the web layer decides any transcoding.
+         */
+        @JavascriptInterface
+        fun downloadYouTubeAudio(videoId: String?, format: String?, callbackId: String?) {
+            val cb = callbackId?.takeIf { it.isNotBlank() } ?: return
+            downloadManager.start(videoId.orEmpty().trim(), cb, downloadEvents)
+        }
+
+        @JavascriptInterface
+        fun cancelDownload(callbackId: String?) {
+            callbackId?.let { downloadManager.cancel(it) }
+        }
+
+        /** Delete the cached file once the web layer has stored its blob. */
+        @JavascriptInterface
+        fun releaseDownload(token: String?) {
+            token?.let { downloadManager.release(it) }
+        }
 
         @JavascriptInterface
         fun onPlaybackState(playing: Boolean, title: String?, artist: String?) {

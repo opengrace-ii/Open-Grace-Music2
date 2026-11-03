@@ -107,7 +107,7 @@ Every recording, device-file import, conversion, and live listen is written to a
 
 The downloadable **`public/OpenGraceMusic.apk`** is a **WebView shell** (`MainActivity`) that loads the live PWA at
 **`https://open-grace-music2.onrender.com`** (Listen / Library / Tuner / Schedule / More). Baked default:
-`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 5 / versionName 1.2.2** (adds the native file picker — `onShowFileChooser` — so LOAD DEVICE FILES works) (background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change).
+`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 6 / versionName 1.3.0** (adds on-device YouTube audio download — see below; 1.2.2 added the native file picker so LOAD DEVICE FILES works) (background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change).
 
 Compose screens under `ui/` remain in-tree for optional native tooling, but they are **not** the launcher UI in
 shipped APKs — that is why an old binary looked “stuck” on the gramophone-only layout.
@@ -149,6 +149,20 @@ app/src/main/java/com/example/
 ```
 
 ---
+
+### On-device YouTube recording (APK 1.3.0+)
+
+Render's datacenter IP is bot-checked by YouTube, so server-side downloads often fail with "Sign in to confirm you're not a bot". Inside the APK, **RECORD now downloads on the phone first** (the phone's own IP), then falls back to the server:
+
+1. **APK:** `OgmAndroid.downloadYouTubeAudio(videoId, format, callbackId)` → native InnerTube `youtubei/v1/player` call (clients ANDROID_VR, IOS, ANDROID; hand-rolled, no extra dependency) → the resolved `videoId` must equal the requested id → ranged (1 MiB) download of the best audio stream to app cache under a short foreground notification → served to the PWA at `https://ogm.local/dl/<token>` (intercepted in `shouldInterceptRequest`, streamed from disk) → the PWA `fetch()`es it as a Blob and stores it in IndexedDB.
+2. **Not in the APK, or on-device failed:** the existing server pipeline (yt-dlp with rotating player clients + optional pasted cookies).
+3. **Everything failed:** an accurate error says what failed on the phone and on the server; nothing is saved and a live placeholder is never stored as a download.
+
+**What file you get:** YouTube audio is already lossy, so the real container is kept and labelled honestly — **M4A (AAC)** (or **OPUS/WebM** if no AAC stream exists). If you picked **MP3**, the downloaded audio is converted on the phone (lamejs) from the lossy source. If you picked **FLAC / ALAC / WAV**, the already-downloaded bytes are POSTed to `POST /api/transcode?format=…` (server FFmpeg, no YouTube access, so no bot-check); if that is unreachable the real M4A is saved instead and the toast says so. DSD is not produced on-device. FLAC/WAV from YouTube is a lossless container around a lossy source — no quality is gained.
+
+Each attempt is written to the **Activity log** (`started` / `progress` / `saved` / `failed`, with `route=on-device` or `route=server`).
+
+If YouTube changes its player API, on-device resolution fails loudly with YouTube's real reason; it never substitutes another song.
 
 ## Primary host: Render
 
@@ -197,7 +211,7 @@ Use the in-app **INSTALL / Samsung Install** button for step-by-step help.
 
 ### Load device files / import folder
 
-- **APK 1.2.2 (versionCode 5) is required for LOAD DEVICE FILES.** Older shells had no WebView file chooser, so the button did nothing. This is a native shell change: **reinstall the APK once**. The PWA / Chrome works after a normal reload.
+- **APK 1.3.0 (versionCode 6) is required for on-device YouTube recording** (1.2.2 / versionCode 5 is required for LOAD DEVICE FILES). Older shells lack the native file chooser and/or the on-device downloader. These are native shell changes: **reinstall the APK once** (ordinary UI updates still come from the site). The PWA / Chrome works after a normal reload.
 - LOAD DEVICE FILES opens the system picker (multi-select audio). Imports run one at a time with an `Importing 12/80` counter, skip non-audio, skip duplicates (same name + size), store real blobs in IndexedDB (offline / background playback), and log each file as SAVED/FAILED in the Activity log.
 - **IMPORT FOLDER** (`webkitdirectory`) appears only in browsers that support it (desktop Chrome/Edge, some Android Chrome). The APK WebView cannot pick folders, and there is no native MediaStore scan: use multi-select there.
 

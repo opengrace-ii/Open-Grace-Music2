@@ -86,6 +86,12 @@ import {
   formatFromMimeOrExt,
   mimeForFormat,
 } from './utils/audioFormatLabel';
+import {
+  downloadYouTubeAudioOnDevice,
+  isInsideApk,
+  isOnDeviceDownloadAvailable,
+  transcodeOnServer,
+} from './services/onDeviceDownload';
 
 export default function App() {
   const { isInstallable, install, isAndroid, isInstalled } = usePWAInstall();
@@ -747,6 +753,167 @@ export default function App() {
     await importFiles(files);
   };
 
+  /**
+   * APK-only: resolve + download the exact video's audio on the phone (phone IP, not the
+   * bot-checked server). Saves a real offline blob with its TRUE container. Returns null on
+   * success, or the real failure reason so the caller can fall back to the server route.
+   */
+  const recordOnDevice = async (
+    ytId: string,
+    trimmedUrl: string,
+    format: AudiophileFormatId,
+    bitrateKbps: number,
+    saveToDeviceFolder: boolean,
+    customTitle?: string,
+    customArtist?: string
+  ): Promise<{ ok: true } | { ok: false; reason: string }> => {
+    const label = 'Record YouTube';
+    let lastLoggedStage = '';
+    try {
+      setDownloadProgress(0.04);
+      setDownloadStatus('ON-DEVICE: asking YouTube from this phone…');
+      logActivity({
+        action: 'record',
+        label,
+        result: 'started',
+        format,
+        detail: `route=on-device · downloading ${ytId} on the phone (not the server)`,
+        source: trimmedUrl,
+      });
+
+      const { blob: rawBlob, info } = await downloadYouTubeAudioOnDevice(ytId, format, (p) => {
+        setDownloadProgress(Math.max(0.04, Math.min(0.85, (p.percent || 0) / 100 * 0.85)));
+        setDownloadStatus(`ON-DEVICE: ${p.message}`);
+        if (p.stage && p.stage !== lastLoggedStage) {
+          lastLoggedStage = p.stage;
+          logActivity({
+            action: 'record',
+            label,
+            result: 'progress',
+            format,
+            detail: `route=on-device · ${p.stage} · ${p.message}`,
+            source: trimmedUrl,
+          });
+        }
+      });
+
+      const title = customTitle || info.title || `YouTube ${ytId}`;
+      const artist = customArtist || info.author || 'Open Grace Music';
+      let finalBlob: Blob = rawBlob;
+      let finalFormat: string = info.container; // real container unless transcoded below
+      let finalMime = info.mime;
+      let finalBitrate = info.bitrateKbps;
+      let note = '';
+
+      const wantsTranscode = format === 'MP3' || format === 'FLAC' || format === 'ALAC' || format === 'WAV';
+      if (format === 'DSD') {
+        note = ' · DSD is not produced on-device; saved the real ' + info.container;
+      } else if (wantsTranscode) {
+        setDownloadProgress(0.88);
+        setDownloadStatus(`Converting downloaded ${info.container} → ${format}…`);
+        try {
+          if (format === 'MP3') {
+            finalBlob = await convertBlobToMp3(rawBlob, bitrateKbps, (pr) =>
+              setDownloadProgress(0.88 + pr * 0.08)
+            );
+            finalMime = 'audio/mpeg';
+            finalBitrate = bitrateKbpsForFormat('MP3', bitrateKbps);
+            note = ` · converted on-device from lossy ${info.codec}`;
+          } else {
+            finalBlob = await transcodeOnServer(rawBlob, format, apiUrl);
+            finalMime = mimeForFormat(format);
+            finalBitrate = bitrateKbpsForFormat(format, bitrateKbps);
+            note = ` · transcoded by server from the already-downloaded lossy ${info.codec} (no quality gained)`;
+          }
+          finalFormat = format;
+        } catch (convErr) {
+          finalBlob = rawBlob;
+          finalFormat = info.container;
+          finalMime = info.mime;
+          finalBitrate = info.bitrateKbps;
+          const why = convErr instanceof Error ? convErr.message : 'conversion failed';
+          note = ` · could not convert to ${format} (${why}); saved the real ${info.container} instead`;
+        }
+      }
+
+      const ext = extensionForFormat(finalFormat);
+      const fmtOpt = AUDIOPHILE_FORMATS.find((f) => f.id === finalFormat);
+      const lossyNote =
+        finalFormat === 'FLAC' || finalFormat === 'ALAC' || finalFormat === 'WAV'
+          ? ` (YouTube source is lossy ${info.codec})`
+          : '';
+      const track: Track = {
+        id: `yt_${ytId}_${finalFormat.toLowerCase()}`,
+        title,
+        artist,
+        album: `Open Grace · ${finalFormat}${lossyNote || (finalFormat === info.container ? ` ${info.codec} (as downloaded)` : '')}`,
+        duration: info.durationSec || 0,
+        sizeBytes: finalBlob.size,
+        format: finalFormat,
+        mimeType: finalMime,
+        source: 'YOUTUBE',
+        storageStatus: 'PERSISTENT',
+        addedAt: Date.now(),
+        thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+        bitrateKbps: finalBitrate,
+        sampleRateHz: fmtOpt?.sampleRateHz,
+        bitDepth: fmtOpt?.bitDepth,
+        isFavorite: false,
+        originalUrl: trimmedUrl,
+        ytVideoId: ytId,
+      };
+      if (!track.duration) {
+        track.duration = await new Promise<number>((resolve) => {
+          const u = URL.createObjectURL(finalBlob);
+          const probe = new Audio();
+          probe.onloadedmetadata = () => {
+            URL.revokeObjectURL(u);
+            resolve(probe.duration || 0);
+          };
+          probe.onerror = () => {
+            URL.revokeObjectURL(u);
+            resolve(0);
+          };
+          probe.src = u;
+        });
+      }
+
+      setDownloadProgress(0.97);
+      const saved = await saveTrackToDB(track, finalBlob);
+      setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
+      if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, ext);
+
+      setShowDownloadDialog(false);
+      setActivePage('library');
+      setInlineUrl('');
+      setInlinePreview(null);
+
+      logActivity({
+        action: 'record',
+        label: `Saved "${title}"`,
+        result: 'saved',
+        format: finalFormat,
+        sizeBytes: finalBlob.size,
+        detail: `route=on-device (${info.client}) · real .${ext} stored in Library · plays offline${note}`,
+        source: trimmedUrl,
+      });
+      addToast(`♪ Recorded "${title}" on this phone (${finalFormat}${note})`, 'success');
+      playTrack(saved);
+      return { ok: true };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'On-device download failed';
+      logActivity({
+        action: 'record',
+        label,
+        result: 'failed',
+        format,
+        detail: `route=on-device · ${reason}`,
+        source: trimmedUrl,
+      });
+      return { ok: false, reason };
+    }
+  };
+
   // Real Audiophile Lossless & Hi-Res Download & Conversion Handler
   const handleStartDownload = async (
     url: string,
@@ -782,6 +949,39 @@ export default function App() {
     });
 
     let loggedStage = '';
+
+    const insideApk = isInsideApk();
+    let onDeviceFailure: string | null = null;
+    if (ytId && isOnDeviceDownloadAvailable()) {
+      const r = await recordOnDevice(
+        ytId,
+        trimmedUrl,
+        format,
+        bitrateKbps,
+        saveToDeviceFolder,
+        customTitle,
+        customArtist
+      );
+      if (r.ok) {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadStatus('');
+        return;
+      }
+      onDeviceFailure = r.reason;
+      setDownloadProgress(0.08);
+      setDownloadStatus('On-device failed — trying the server route…');
+      logActivity({
+        action: 'record',
+        label: 'Record YouTube',
+        result: 'progress',
+        format,
+        detail: `route=server · falling back after on-device failure`,
+        source: trimmedUrl,
+      });
+    } else if (ytId && insideApk) {
+      onDeviceFailure = 'this installed APK is too old to download on the phone (reinstall the latest APK)';
+    }
 
     try {
       const { jobId } = await startConvertJob({
@@ -989,13 +1189,23 @@ export default function App() {
       // offer the real paths to an offline file. Live listening stays a separate, explicit choice.
       const serverBlocked =
         code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
-      const display =
-        ytId && serverBlocked
-          ? `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
-            `Paste youtube.com cookies via the key icon and retry, use the Android APK’s on-device capture, ` +
-            `or import an audio file. To only listen live (streams when online, not an offline file), ` +
-            `open the YouTube Tuner and tap Listen.`
-          : message;
+      let display: string;
+      if (ytId && insideApk) {
+        display =
+          `Couldn’t record this video. On this phone: ${onDeviceFailure ?? 'not attempted'}. ` +
+          `On the server: ${message}. Nothing was saved as ${format}. ` +
+          `Try again (check your connection or switch Wi‑Fi/mobile data), paste youtube.com cookies via the key icon ` +
+          `so the server can try, or import an audio file. To only listen live (not an offline file), ` +
+          `open the YouTube Tuner and tap Listen.`;
+      } else if (ytId && serverBlocked) {
+        display =
+          `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
+          `Paste youtube.com cookies via the key icon and retry, install the Android APK (it downloads on your phone), ` +
+          `or import an audio file. To only listen live (streams when online, not an offline file), ` +
+          `open the YouTube Tuner and tap Listen.`;
+      } else {
+        display = message;
+      }
       logActivity({
         action: 'record',
         label: ytId ? 'Record YouTube' : 'Record URL',
@@ -1003,7 +1213,7 @@ export default function App() {
         format,
         detail:
           ytId && serverBlocked
-            ? `Not downloaded (${message}). Could still be played online-only via the Tuner.`
+            ? `route=server · not downloaded (${message})${onDeviceFailure ? ` · on-device also failed: ${onDeviceFailure}` : ''}. Could still be played online-only via the Tuner.`
             : message,
         source: trimmedUrl,
       });
@@ -1111,6 +1321,8 @@ export default function App() {
         DSD: 'wav',
         WAV: 'wav',
         MP3: 'mp3',
+        M4A: 'm4a',
+        OPUS: 'webm',
       };
       const ext = extMap[track.format.toUpperCase()] || track.format.toLowerCase() || 'flac';
       triggerBrowserDownload(track.blob, track.title, ext);

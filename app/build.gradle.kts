@@ -17,8 +17,8 @@ android {
     minSdk = 24
     targetSdk = 36
     // Bump on every downloadable APK refresh so phones do not silently keep an old install.
-    versionCode = 5
-    versionName = "1.2.2"
+    versionCode = 6
+    versionName = "1.3.0"
 
     // WebView start URL + converter default (same origin as the live PWA).
     val defaultConverterBaseUrl = "https://open-grace-music2.onrender.com"
@@ -70,6 +70,10 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+  lint {
+    // False positive: MainActivity is a ComponentActivity (no Fragment dependency).
+    disable += "InvalidFragmentVersionForActivityResult"
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
