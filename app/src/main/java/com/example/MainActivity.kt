@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -48,6 +49,71 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
     private var mediaPlaying: Boolean = false
     private var clearedCacheForShellUpgrade = false
 
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    private val fileChooserLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val cb = filePathCallback
+            filePathCallback = null
+            if (cb == null) return@registerForActivityResult
+            val data = result.data
+            val uris: Array<Uri>? = if (result.resultCode != RESULT_OK || data == null) {
+                null
+            } else {
+                val list = mutableListOf<Uri>()
+                data.clipData?.let { clip ->
+                    for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let { list.add(it) }
+                }
+                data.data?.let { if (!list.contains(it)) list.add(it) }
+                list.toTypedArray().takeIf { it.isNotEmpty() }
+            }
+            uris?.forEach { uri ->
+                runCatching {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+            cb.onReceiveValue(uris)
+        }
+
+    private val mediaPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* picker works without it */ }
+
+    private fun launchFileChooser(params: WebChromeClient.FileChooserParams?, cb: ValueCallback<Array<Uri>>): Boolean {
+        filePathCallback?.onReceiveValue(null)
+        filePathCallback = cb
+        val multiple = params?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+        val wantsAudio = params?.acceptTypes.orEmpty().any { it.isBlank() || it.startsWith("audio") || it.startsWith(".") } ||
+            params?.acceptTypes.isNullOrEmpty()
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = if (wantsAudio) "audio/*" else "*/*"
+            if (wantsAudio) {
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf("audio/*", "application/ogg", "application/octet-stream")
+                )
+                type = "*/*"
+            }
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
+        }
+        return try {
+            fileChooserLauncher.launch(Intent.createChooser(intent, "Select music"))
+            true
+        } catch (e: Exception) {
+            filePathCallback = null
+            cb.onReceiveValue(null)
+            false
+        }
+    }
+
+    private fun maybeRequestMediaPermission() {
+        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+            mediaPermissionLauncher.launch(perm)
+        }
+    }
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* optional */ }
 
@@ -78,7 +144,16 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
 
             addJavascriptInterface(OgmJsBridge(), "OgmAndroid")
 
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowFileChooser(
+                    webView: WebView?,
+                    filePathCallback: ValueCallback<Array<Uri>>?,
+                    fileChooserParams: FileChooserParams?
+                ): Boolean {
+                    if (filePathCallback == null) return false
+                    return launchFileChooser(fileChooserParams, filePathCallback)
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
@@ -384,6 +459,14 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
     }
 
     private inner class OgmJsBridge {
+        @JavascriptInterface
+        fun requestMediaPermission() {
+            runOnUiThread { maybeRequestMediaPermission() }
+        }
+
+        @JavascriptInterface
+        fun supportsFilePicker(): Boolean = true
+
         @JavascriptInterface
         fun onPlaybackState(playing: Boolean, title: String?, artist: String?) {
             runOnUiThread {

@@ -87,7 +87,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             <strong className="text-[#eeeae2] font-medium">Do you need to reinstall the APK every time?</strong>{' '}
             <strong className="text-[#b8d99e] font-medium">No</strong> — once you have WebView shell{' '}
             <code className="text-[#b8d99e]">1.1+</code> / <code className="text-[#b8d99e]">versionCode 2+</code>{' '}
-            (ideally <code className="text-[#b8d99e]">1.2.1+</code> / <code className="text-[#b8d99e]">4+</code>),
+            (ideally <code className="text-[#b8d99e]">1.2.2+</code> / <code className="text-[#b8d99e]">5+</code>),
             UI and music features come from the <strong className="text-[#eeeae2] font-medium">live website</strong>{' '}
             after Render redeploys. Reopen the app (or tap Reload on the update toast). Reinstall the APK{' '}
             <strong className="text-[#eeeae2] font-medium">only</strong> when the native shell changes
@@ -178,7 +178,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Compose without the live PWA; 1–2 stop music when minimized).
             </li>
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.2.1+ /
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, version 1.2.2+ (reinstall once for the file-picker fix) /
               versionCode 4+) below or from the mobile download page — one install covers later site updates.
             </li>
             <li>

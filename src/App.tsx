@@ -159,6 +159,14 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showActivityLog, setShowActivityLog] = useState(false);
   const swUpdateToastShown = useRef(false);
+  const importingRef = useRef(false);
+  const filePickerRef = useRef<HTMLInputElement>(null);
+  const folderPickerRef = useRef<HTMLInputElement>(null);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; name: string } | null>(null);
+  const supportsFolderPick =
+    typeof document !== 'undefined' &&
+    'webkitdirectory' in document.createElement('input') &&
+    !/OpenGraceMusicAPK/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   const [selectedTrackForLyrics, setSelectedTrackForLyrics] = useState<Track | null>(null);
   const [prefilledUrl, setPrefilledUrl] = useState<string | null>(null);
 
@@ -632,32 +640,57 @@ export default function App() {
   };
 
   // Import Local Audio Files
-  const handleLocalFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || !files.length) return;
+  const AUDIO_EXT = /\.(mp3|flac|m4a|alac|aac|wav|ogg|oga|opus|webm|mp4|dsf|dff|wma|aif|aiff|amr|mka)$/i;
+  const isAudioFile = (f: File) => f.type.startsWith('audio/') || AUDIO_EXT.test(f.name);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+  const importFiles = async (all: File[]) => {
+    if (importingRef.current) {
+      addToast('An import is already running…', 'info');
+      return;
+    }
+    if (!all.length) {
+      addToast('No files selected.', 'info');
+      return;
+    }
+    const audio = all.filter(isAudioFile);
+    const skipped = all.length - audio.length;
+    if (!audio.length) {
+      addToast(`No audio files found (${all.length} skipped).`, 'error');
+      return;
+    }
+    importingRef.current = true;
+    const seen = new Set(tracks.map((t) => `${t.title}|${t.sizeBytes}`));
+    let saved = 0;
+    let failed = 0;
+    let dupes = 0;
+    addToast(`Importing ${audio.length} audio file${audio.length === 1 ? '' : 's'}…`, 'info');
+
+    for (let i = 0; i < audio.length; i++) {
+      const file = audio[i];
+      setImportProgress({ done: i, total: audio.length, name: file.name });
+      await new Promise((r) => setTimeout(r, 0));
+      const ext = file.name.split('.').pop()?.toUpperCase() || 'MP3';
+      const cleanTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
       try {
+        if (seen.has(`${cleanTitle}|${file.size}`)) {
+          dupes++;
+          continue;
+        }
         const durationSec = await new Promise<number>((resolve) => {
           const tempUrl = URL.createObjectURL(file);
           const probe = new Audio();
-          probe.onloadedmetadata = () => {
-            const d = probe.duration || 0;
+          const done = (d: number) => {
+            clearTimeout(timer);
             URL.revokeObjectURL(tempUrl);
-            resolve(d);
+            resolve(Number.isFinite(d) ? d : 0);
           };
-          probe.onerror = () => {
-            URL.revokeObjectURL(tempUrl);
-            resolve(0);
-          };
+          const timer = setTimeout(() => done(0), 4000);
+          probe.preload = 'metadata';
+          probe.onloadedmetadata = () => done(probe.duration || 0);
+          probe.onerror = () => done(0);
           probe.src = tempUrl;
         });
-
-        const ext = file.name.split('.').pop()?.toUpperCase() || 'FLAC';
-        const isLossless = ['FLAC', 'ALAC', 'DSD', 'DSF', 'WAV'].includes(ext);
-        const cleanTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
-
+        const isLossless = ['FLAC', 'ALAC', 'DSD', 'DSF', 'DFF', 'WAV', 'AIFF', 'AIF'].includes(ext);
         const newTrack: Track = {
           id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           title: cleanTitle,
@@ -675,9 +708,10 @@ export default function App() {
           bitDepth: isLossless ? '24-bit' : '16-bit',
           isFavorite: false,
         };
-
-        const saved = await saveTrackToDB(newTrack, file);
-        setTracks((prev) => [saved, ...prev]);
+        const savedTrack = await saveTrackToDB(newTrack, file);
+        seen.add(`${cleanTitle}|${file.size}`);
+        setTracks((prev) => [savedTrack, ...prev]);
+        saved++;
         logActivity({
           action: 'import',
           label: `Imported "${cleanTitle}"`,
@@ -687,20 +721,30 @@ export default function App() {
           detail: 'Device file stored offline in Library',
           source: file.name,
         });
-        addToast(`♪ Loaded "${cleanTitle}" (${ext})`, 'success');
       } catch (err: any) {
+        failed++;
         logActivity({
           action: 'import',
-          label: `Import failed`,
+          label: 'Import failed',
           result: 'failed',
           detail: err?.message || 'Could not import file',
           source: file.name,
         });
-        addToast(`Failed to import "${file.name}": ${err.message}`, 'error');
       }
     }
+    setImportProgress(null);
+    importingRef.current = false;
+    const parts = [`${saved} imported`];
+    if (dupes) parts.push(`${dupes} duplicate${dupes === 1 ? '' : 's'} skipped`);
+    if (skipped) parts.push(`${skipped} non-audio skipped`);
+    if (failed) parts.push(`${failed} failed`);
+    addToast(parts.join(' · '), failed && !saved ? 'error' : 'success');
+  };
 
+  const handleLocalFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
+    await importFiles(files);
   };
 
   // Real Audiophile Lossless & Hi-Res Download & Conversion Handler
@@ -1799,17 +1843,63 @@ export default function App() {
                   <span>▶ PLAY STUDIO SAMPLES</span>
                 </button>
 
-                <label className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1] cursor-pointer">
+<button
+                  type="button"
+                  disabled={!!importProgress}
+                  onClick={() => {
+                    addToast('Opening file picker…', 'info');
+                    filePickerRef.current?.click();
+                  }}
+                  className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1]"
+                >
                   <FolderOpen className="w-3.5 h-3.5 text-[#b8d99e]" />
-                  <span>⏏ LOAD DEVICE FILES</span>
-                  <input
-                    type="file"
-                    multiple
-                    accept="audio/*,.flac,.m4a,.alac,.dsf,.dff,.wav,.mp3,.aac,.ogg,.opus,.webm,.mp4"
-                    onChange={handleLocalFiles}
-                    className="hidden"
-                  />
-                </label>
+                  <span>
+                    {importProgress
+                      ? `Importing ${importProgress.done + 1}/${importProgress.total}`
+                      : '⏏ LOAD DEVICE FILES'}
+                  </span>
+                </button>
+                {supportsFolderPick && (
+                  <button
+                    type="button"
+                    disabled={!!importProgress}
+                    onClick={() => folderPickerRef.current?.click()}
+                    className="cassette-btn px-4 py-2.5 text-xs font-mono text-[#f0ece1]"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-[#b8d99e]" />
+                    <span>IMPORT FOLDER</span>
+                  </button>
+                )}
+                <input
+                  ref={filePickerRef}
+                  type="file"
+                  multiple
+                  accept="audio/*"
+                  onChange={handleLocalFiles}
+                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+                <input
+                  ref={folderPickerRef}
+                  type="file"
+                  multiple
+                  // @ts-expect-error non-standard attribute
+                  webkitdirectory=""
+                  onChange={handleLocalFiles}
+                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+                {importProgress && (
+                  <p className="w-full text-center text-[10px] font-mono text-[#9fa396] truncate">
+                    {importProgress.name}
+                  </p>
+                )}
+                <p className="w-full text-center text-[10px] font-mono text-[#7d8174]">
+                  Pick several songs at once (hold a tap to multi-select).
+                  {supportsFolderPick ? ' Folder import reads every audio file inside.' : ' Whole-folder import is not available in this app; select multiple files instead.'}
+                </p>
               </div>
               ) : (
                 <button

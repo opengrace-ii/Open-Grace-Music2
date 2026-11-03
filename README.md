@@ -107,7 +107,7 @@ Every recording, device-file import, conversion, and live listen is written to a
 
 The downloadable **`public/OpenGraceMusic.apk`** is a **WebView shell** (`MainActivity`) that loads the live PWA at
 **`https://open-grace-music2.onrender.com`** (Listen / Library / Tuner / Schedule / More). Baked default:
-`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 4 / versionName 1.2.1** (background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change).
+`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 5 / versionName 1.2.2** (adds the native file picker — `onShowFileChooser` — so LOAD DEVICE FILES works) (background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change).
 
 Compose screens under `ui/` remain in-tree for optional native tooling, but they are **not** the launcher UI in
 shipped APKs — that is why an old binary looked “stuck” on the gramophone-only layout.
@@ -194,6 +194,12 @@ Google **Advanced Protection** blocks sideloaded APKs that are not from Google P
 3. Launch from your home screen — same gramophone UI, offline library, and converter (when the backend is available).
 
 Use the in-app **INSTALL / Samsung Install** button for step-by-step help.
+
+### Load device files / import folder
+
+- **APK 1.2.2 (versionCode 5) is required for LOAD DEVICE FILES.** Older shells had no WebView file chooser, so the button did nothing. This is a native shell change: **reinstall the APK once**. The PWA / Chrome works after a normal reload.
+- LOAD DEVICE FILES opens the system picker (multi-select audio). Imports run one at a time with an `Importing 12/80` counter, skip non-audio, skip duplicates (same name + size), store real blobs in IndexedDB (offline / background playback), and log each file as SAVED/FAILED in the Activity log.
+- **IMPORT FOLDER** (`webkitdirectory`) appears only in browsers that support it (desktop Chrome/Edge, some Android Chrome). The APK WebView cannot pick folders, and there is no native MediaStore scan: use multi-select there.
 
 ### Download APK on your phone
 
