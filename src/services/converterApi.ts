@@ -172,10 +172,7 @@ export function isStudioLosslessFormat(format: string): boolean {
 
 export function studioFormatWarning(format: string): string | null {
   if (!isStudioLosslessFormat(format)) return null;
-  return (
-    `${format} is a lossless container from FFmpeg — but YouTube’s source is already lossy AAC/Opus, ` +
-    `so this is not a studio-master FLAC of the original recording. May take 2–5 min. MP3 320 is fastest (~20–60s).`
-  );
+  return `${format} is a lossless wrap of YouTube’s lossy audio — not a studio master.`;
 }
 
 /** Poll job progress until done/error or timeout (default 3 min). */

@@ -181,7 +181,7 @@ export function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked download for this exact video. OGM never substitutes a different song. Tap Connect YouTube (web: TV device code in a new Google/YouTube tab; APK: Google pages in the app). Google may still block. Not an unlimited bypass. Optional: paste cookies via the key icon.',
+        'YouTube blocked this video. Connect YouTube and retry.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -196,7 +196,7 @@ export function classifyPipelineError(
     return {
       code: 'EXTRACTION_FAILED',
       error:
-        'Could not fetch audio for this track. Try MP3 first, tap Connect YouTube, or retry in a few minutes.',
+        'Could not fetch this track. Connect YouTube and retry.',
     };
   }
   return {
@@ -357,7 +357,7 @@ export async function runConvertPipeline(
               clearRawSourceArtifacts(workDir);
               lastExtractFailure = {
                 code: 'EXTRACTION_FAILED',
-                error: 'Downloaded stream did not match the YouTube video ID. Tap Connect YouTube and retry.',
+                error: 'Stream did not match this video. Connect YouTube and retry.',
               };
             }
           } catch (directErr) {
@@ -376,7 +376,7 @@ export async function runConvertPipeline(
         const failure = lastExtractFailure || {
           code: 'YOUTUBE_BOT_CHECK' as ConvertErrorCode,
           error:
-            'Could not download this exact YouTube video. Tap Connect YouTube (web TV code or APK login), then try again. Google may still block this exact video.',
+            'Could not download this video. Connect YouTube and retry.',
         };
         return { ok: false, ...failure, workDir };
       }

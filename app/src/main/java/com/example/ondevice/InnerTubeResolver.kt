@@ -183,7 +183,9 @@ class InnerTubeResolver(
             .header("Origin", "https://www.youtube.com")
             .post(payload.toString().toRequestBody(JSON))
         val cookie = cookieHeader.trim()
-        if (cookie.isNotEmpty()) reqBuilder.header("Cookie", cookie)
+        if (cookie.isNotEmpty() && WebViewStreamCapture.isSafeHeaderValue(cookie)) {
+            reqBuilder.header("Cookie", cookie)
+        }
         val req = reqBuilder.build()
         http.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()

@@ -203,6 +203,9 @@ object WebViewStreamCapture {
         return out
     }
 
+    fun isSafeHeaderValue(value: String): Boolean =
+        value.isNotEmpty() && value.none { it == '\r' || it == '\n' || it == '\u0000' }
+
     fun copyRequestHeaders(raw: Map<String, String>): Map<String, String> {
         val keep = setOf(
             "cookie", "user-agent", "origin", "referer", "accept", "accept-language",
@@ -211,7 +214,7 @@ object WebViewStreamCapture {
         val out = LinkedHashMap<String, String>()
         for ((k, v) in raw) {
             val key = k.trim()
-            if (key.isEmpty() || v.isBlank()) continue
+            if (key.isEmpty() || v.isBlank() || !isSafeHeaderValue(v)) continue
             if (key.equals("Range", true) || key.equals("Host", true) ||
                 key.equals("Content-Length", true)
             ) {

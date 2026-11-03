@@ -17,10 +17,11 @@ import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.t
 import { fetchYoutubeTranscript } from './server/youtubeTranscript.ts';
 import {
   aiKeyStatus,
-  applyRequestAiKeys,
   listenNotesFromTranscript,
+  parseRequestAiKeys,
   relatedNextQueries,
   transcribeForOgm,
+  withRequestAiKeys,
 } from './server/aiStudio.ts';
 
 dotenv.config();
@@ -104,7 +105,7 @@ function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked download for this exact video. OGM never substitutes a different song. Tap Connect YouTube (web: TV device code in a new Google/YouTube tab; APK: Google pages in the app). Google may still block. Not an unlimited bypass. Optional: paste cookies via the key icon.',
+        'YouTube blocked this video. Connect YouTube and retry.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -493,7 +494,7 @@ function parseConvertRequest(req: express.Request) {
     (req.query.format as string) ||
     (req.path.includes('convert-mp3') ? 'MP3' : 'MP3');
   const requestedBitrate = Number((req.body && req.body.bitrate) || req.query.bitrate || 320);
-  const userCookies = ((req.body && req.body.cookies) || (req.query.cookies as string) || '').trim();
+  const userCookies = String((req.body && req.body.cookies) || '').replace(/[\r\n\0]/g, '').trim();
   const youtubeOauthRefresh = String(
     (req.body && (req.body.youtubeOauth || req.body.youtubeOauthRefresh)) || ''
   ).trim();
@@ -809,53 +810,56 @@ app.get('/api/ai/status', (_req, res) => {
 });
 
 app.post('/api/ai/config', (req, res) => {
-  applyRequestAiKeys(req.body);
-  res.json({ ok: true, ...aiKeyStatus() });
+  const parsed = parseRequestAiKeys(req.body);
+  res.json({ ok: true, ...aiKeyStatus(parsed) });
 });
 
 app.post('/api/ai/transcribe', async (req, res) => {
-  applyRequestAiKeys(req.body);
-  const videoId = String(req.body?.videoId || req.body?.ytVideoId || '').trim();
-  const audioUrl = String(req.body?.audioUrl || '').trim();
-  const title = String(req.body?.title || '').trim();
-  const cookies = String(req.body?.cookies || '').trim();
-  const youtubeOauthRefresh = String(req.body?.youtubeOauth || req.body?.youtubeOauthRefresh || '').trim();
-  try {
-    const result = await transcribeForOgm({ videoId, audioUrl, title, cookies, youtubeOauthRefresh });
-    const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
-    return res.status(status).json(result);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Transcription failed';
-    return res.status(500).json({ ok: false, error: message });
-  }
+  return withRequestAiKeys(req.body, async () => {
+    const videoId = String(req.body?.videoId || req.body?.ytVideoId || '').trim();
+    const audioUrl = String(req.body?.audioUrl || '').trim();
+    const title = String(req.body?.title || '').trim();
+    const cookies = String(req.body?.cookies || '').replace(/[\r\n\0]/g, '').trim();
+    const youtubeOauthRefresh = String(req.body?.youtubeOauth || req.body?.youtubeOauthRefresh || '').trim();
+    try {
+      const result = await transcribeForOgm({ videoId, audioUrl, title, cookies, youtubeOauthRefresh });
+      const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
+      return res.status(status).json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Transcription failed';
+      return res.status(500).json({ ok: false, error: message });
+    }
+  });
 });
 
 app.post('/api/ai/listen-notes', async (req, res) => {
-  applyRequestAiKeys(req.body);
-  const transcript = String(req.body?.transcript || '').trim();
-  const title = String(req.body?.title || '').trim();
-  try {
-    const result = await listenNotesFromTranscript(transcript, title);
-    const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
-    return res.status(status).json(result);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Listen notes failed';
-    return res.status(500).json({ ok: false, error: message });
-  }
+  return withRequestAiKeys(req.body, async () => {
+    const transcript = String(req.body?.transcript || '').trim();
+    const title = String(req.body?.title || '').trim();
+    try {
+      const result = await listenNotesFromTranscript(transcript, title);
+      const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
+      return res.status(status).json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Listen notes failed';
+      return res.status(500).json({ ok: false, error: message });
+    }
+  });
 });
 
 app.post('/api/ai/related-next', async (req, res) => {
-  applyRequestAiKeys(req.body);
-  const query = String(req.body?.query || '').trim();
-  const title = String(req.body?.title || '').trim();
-  const transcript = String(req.body?.transcript || '').trim();
-  try {
-    const result = await relatedNextQueries({ query, title, transcript });
-    return res.json(result);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Related next failed';
-    return res.status(500).json({ ok: false, queries: [], error: message });
-  }
+  return withRequestAiKeys(req.body, async () => {
+    const query = String(req.body?.query || '').trim();
+    const title = String(req.body?.title || '').trim();
+    const transcript = String(req.body?.transcript || '').trim();
+    try {
+      const result = await relatedNextQueries({ query, title, transcript });
+      return res.json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Related next failed';
+      return res.status(500).json({ ok: false, queries: [], error: message });
+    }
+  });
 });
 
 app.get('/api/transcript', async (req, res) => {
@@ -1029,19 +1033,19 @@ app.get('/api/proxy-audio', async (req, res) => {
 
 // API: Generate Lyrics & Chord Sheet with Gemini API
 app.post('/api/generate-lyrics', async (req, res) => {
-  applyRequestAiKeys(req.body);
+  return withRequestAiKeys(req.body, async () => {
   const { title, artist } = req.body;
   if (!title) {
     return res.status(400).json({ error: 'title is required' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = parseRequestAiKeys(req.body).gemini || (process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) {
     return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
   }
 
   try {
-    const ai = new GoogleGenAI();
+    const ai = new GoogleGenAI({ apiKey });
     const prompt = `You are the lead musical transcriber for Open Grace Music.
 Generate a structured musical guide for the track: "${title}" by artist: "${artist || 'Open Grace Music'}".
 
@@ -1070,6 +1074,7 @@ Make it warm, uplifting, poetic, and musically authentic.`;
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Gemini lyric generation failed' });
   }
+  });
 });
 
 // Dev server with Vite middleware or static production serve

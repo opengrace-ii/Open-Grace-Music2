@@ -36,6 +36,7 @@ class YouTubeLoginActivity : ComponentActivity() {
     private var finishedOk = false
 
     @SuppressLint("SetJavaScriptEnabled")
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -87,6 +88,10 @@ class YouTubeLoginActivity : ComponentActivity() {
             settings.javaScriptCanOpenWindowsAutomatically = true
             settings.setSupportMultipleWindows(true)
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            settings.allowFileAccessFromFileURLs = false
+            settings.allowUniversalAccessFromFileURLs = false
             settings.userAgentString = LOGIN_UA
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
@@ -116,7 +121,8 @@ class YouTubeLoginActivity : ComponentActivity() {
                     request: WebResourceRequest?
                 ): Boolean {
                     val url = request?.url?.toString().orEmpty()
-                    if (url.isBlank()) return false
+                    if (url.isBlank()) return true
+                    if (!url.startsWith("https://") && !url.startsWith("http://")) return true
                     if (isAllowedLoginHost(url)) return false
                     return true
                 }

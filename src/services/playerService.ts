@@ -32,9 +32,11 @@ declare global {
       startYouTubeLogin?: () => void;
       hasYouTubeSession?: () => boolean;
       youtubeSessionStatus?: () => string;
+      /** Removed in 1.3.4 — cookies are injected on window.__ogmYtCookieHeader (main frame). */
       getYouTubeCookieHeader?: () => string;
       clearYouTubeSession?: () => void;
     };
+    __ogmYtCookieHeader?: string;
     __ogmNativeDownload?: (callbackId: string, event: string, payloadJson: string) => void;
     __ogmPlayerEngine?: {
       togglePlayPause: () => void;

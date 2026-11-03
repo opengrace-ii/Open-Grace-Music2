@@ -25,9 +25,7 @@ export interface OnDeviceDone {
 export type OnDeviceRoute = 'on-device-capture' | 'on-device-innertube';
 
 export function onDeviceRoute(client: string | undefined): OnDeviceRoute {
-  return client === 'WEBVIEW_CAPTURE' || client === 'APP_PLAYBACK_CAPTURE'
-    ? 'on-device-capture'
-    : 'on-device-innertube';
+  return client === 'WEBVIEW_CAPTURE' ? 'on-device-capture' : 'on-device-innertube';
 }
 
 export interface OnDeviceProgress {

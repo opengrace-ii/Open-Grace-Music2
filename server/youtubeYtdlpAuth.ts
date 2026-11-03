@@ -8,7 +8,7 @@ export function youtubeYtdlpAuthArgs(
   accessToken: string
 ): string[] {
   const args: string[] = [];
-  const cookies = userCookies.trim();
+  const cookies = userCookies.replace(/[\r\n\0]/g, '').trim();
   if (cookies) {
     const cookieFilePath = path.join(workDir, 'cookies.txt');
     if (cookies.includes('# Netscape HTTP Cookie File') || cookies.includes('\t')) {
@@ -18,8 +18,10 @@ export function youtubeYtdlpAuthArgs(
       for (const pair of cookies.split(';')) {
         const [k, ...vParts] = pair.trim().split('=');
         const v = vParts.join('=');
-        if (k && v) {
-          netscapeLines.push(`.youtube.com\tTRUE\t/\tTRUE\t2147483647\t${k.trim()}\t${v.trim()}`);
+        const name = k?.trim() || '';
+        const value = v?.trim() || '';
+        if (name && value && /^[\w.*$-]+$/.test(name) && !/[\r\n\t]/.test(value)) {
+          netscapeLines.push(`.youtube.com\tTRUE\t/\tTRUE\t2147483647\t${name}\t${value}`);
         }
       }
       fs.writeFileSync(cookieFilePath, netscapeLines.join('\n') + '\n', {
@@ -30,8 +32,8 @@ export function youtubeYtdlpAuthArgs(
     args.push('--cookies', cookieFilePath);
   }
 
-  const bearer = accessToken.trim();
-  if (bearer) {
+  const bearer = accessToken.replace(/[\r\n\0]/g, '').trim();
+  if (bearer && /^[\w./+=-]+$/.test(bearer)) {
     const confPath = path.join(workDir, 'ytdlp-oauth.conf');
     fs.writeFileSync(confPath, `--add-header Authorization:Bearer ${bearer}\n`, {
       encoding: 'utf8',

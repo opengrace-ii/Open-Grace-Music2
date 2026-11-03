@@ -103,11 +103,12 @@ class RangedDownloader(private val http: OkHttpClient) {
     private fun applyCapturedHeaders(builder: Request.Builder, audio: ResolvedAudio): Request.Builder {
         for ((k, v) in audio.extraHeaders) {
             if (k.equals("Range", true) || k.equals("Host", true) || k.equals("Content-Length", true)) continue
+            if (!WebViewStreamCapture.isSafeHeaderValue(k) || !WebViewStreamCapture.isSafeHeaderValue(v)) continue
             builder.header(k, v)
         }
         val ua = audio.extraHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
             ?: audio.userAgent
-        builder.header("User-Agent", ua)
+        if (WebViewStreamCapture.isSafeHeaderValue(ua)) builder.header("User-Agent", ua)
         return builder
     }
 
