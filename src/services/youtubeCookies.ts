@@ -5,6 +5,11 @@ export function sanitizeCookieHeader(value: string): string {
   return value.replace(/[\r\n\0]/g, '').trim();
 }
 
+/** Key-icon paste only. TV Connected / oauth is not cookies. */
+export function hasPastedYoutubeCookies(raw?: string | null): boolean {
+  return sanitizeCookieHeader(raw || '').length > 0;
+}
+
 export function loadSavedYoutubeCookies(): string {
   try {
     return sanitizeCookieHeader(localStorage.getItem(STORAGE_KEY) || '');

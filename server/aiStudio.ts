@@ -6,7 +6,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenAI } from '@google/genai';
 import { fetchYoutubeTranscript } from './youtubeTranscript.ts';
-import { youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
+import { ytDlpJsRuntimeArgs, youtubePlayerExtractorArgs, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -64,11 +64,6 @@ function isLoginRequired(text: string): boolean {
   );
 }
 
-function ytDlpJsRuntimeArgs(): string[] {
-  const nodeBin = process.execPath || 'node';
-  return ['--js-runtimes', `node:${nodeBin}`, '--remote-components', 'ejs:github'];
-}
-
 async function extractShortMp3(
   videoId: string,
   auth?: { cookies?: string; youtubeOauthRefresh?: string }
@@ -101,6 +96,7 @@ async function extractShortMp3(
           '--audio-quality',
           '7',
           ...ytDlpJsRuntimeArgs(),
+          ...youtubePlayerExtractorArgs('android'),
           ...authArgs,
           '-o',
           outTemplate,
@@ -118,7 +114,7 @@ async function extractShortMp3(
           ok: false,
           loginRequired: true,
           error:
-            'YouTube asked for a login. Converter host is blocked — Chrome cookies (key) or APK 1.3.5.',
+            'YouTube asked for a login (LOGIN_REQUIRED). Converter host is blocked.',
         };
       }
       return {

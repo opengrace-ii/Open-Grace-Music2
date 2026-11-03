@@ -20,7 +20,11 @@ import {
   matchExtractedYoutubeId,
   youtubeIdsEqual,
 } from '../server/youtubeIdMatch.ts';
-import { youtubeYtdlpAuthArgs } from '../server/youtubeYtdlpAuth.ts';
+import {
+  mergeYoutubeCookieSources,
+  youtubePlayerExtractorArgs,
+  youtubeYtdlpAuthArgs,
+} from '../server/youtubeYtdlpAuth.ts';
 import { recordFailureSentence } from '../src/services/recordFailureSentence.ts';
 
 const TARGET = 'yYk7skapjFA';
@@ -83,7 +87,7 @@ assert.equal(login.code, 'YOUTUBE_BOT_CHECK');
 assert.equal(login.error, YOUTUBE_LOGIN_REQUIRED_ERROR);
 assert.match(login.error, /LOGIN_REQUIRED/i);
 assert.match(login.error, /converter host is blocked/i);
-assert.doesNotMatch(login.error, /Reconnect|Connect YouTube and retry/i);
+assert.doesNotMatch(login.error, /Reconnect|Connect YouTube and retry|APK|share this tab/i);
 assert.doesNotMatch(login.error, /did not match/i);
 pass('LOGIN_REQUIRED maps to short converter-host error');
 
@@ -133,13 +137,19 @@ const connectedLogin = recordFailureSentence(
   null,
   true
 );
-assert.match(connectedLogin, /TV Connected is not a download session/i);
-assert.match(connectedLogin, /share this tab/i);
+assert.match(connectedLogin, /Couldn’t save this as MP3/);
+assert.doesNotMatch(connectedLogin, /share this tab|getDisplayMedia|screen share/i);
 assert.doesNotMatch(connectedLogin, /reconnect/i);
 assert.doesNotMatch(connectedLogin, /Connect YouTube and retry/i);
 assert.doesNotMatch(connectedLogin, /APK 1\.3\.5/);
 pass('Connected + LOGIN_REQUIRED does not say reconnect');
 
+const prevCookies = process.env.OGM_YT_COOKIES;
+const prevPo = process.env.OGM_YT_PO_TOKEN;
+const prevVisitor = process.env.OGM_YT_VISITOR_DATA;
+delete process.env.OGM_YT_COOKIES;
+delete process.env.OGM_YT_PO_TOKEN;
+delete process.env.OGM_YT_VISITOR_DATA;
 const authDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-auth-'));
 const bearerOnly = youtubeYtdlpAuthArgs(authDir, '', 'ya29.a0AfB_byExampleToken-123');
 assert.equal(bearerOnly.includes('--add-header'), false);
@@ -148,8 +158,29 @@ assert.equal(bearerOnly.includes('--username'), false);
 const cookieArgs = youtubeYtdlpAuthArgs(authDir, 'SID=abc; HSID=def', 'ya29.ignored');
 assert.ok(cookieArgs.includes('--cookies'));
 assert.equal(cookieArgs.includes('--add-header'), false);
+process.env.OGM_YT_COOKIES = 'HSID=from-env; SSID=env-only';
+const merged = mergeYoutubeCookieSources('SID=from-user; HSID=from-user', process.env.OGM_YT_COOKIES);
+assert.match(merged, /SID\tfrom-user/);
+assert.match(merged, /HSID\tfrom-user/);
+assert.match(merged, /SSID\tenv-only/);
+assert.doesNotMatch(merged, /HSID\tfrom-env/);
+const mergedArgs = youtubeYtdlpAuthArgs(authDir, 'SID=from-user');
+assert.ok(mergedArgs.includes('--cookies'));
+process.env.OGM_YT_PO_TOKEN = 'tok123';
+process.env.OGM_YT_VISITOR_DATA = 'vis456';
+const extractor = youtubePlayerExtractorArgs('android');
+assert.equal(extractor[0], '--extractor-args');
+assert.match(extractor[1], /player_client=android/);
+assert.match(extractor[1], /po_token=android\.gvs\+tok123/);
+assert.match(extractor[1], /visitor_data=vis456/);
+if (prevCookies === undefined) delete process.env.OGM_YT_COOKIES;
+else process.env.OGM_YT_COOKIES = prevCookies;
+if (prevPo === undefined) delete process.env.OGM_YT_PO_TOKEN;
+else process.env.OGM_YT_PO_TOKEN = prevPo;
+if (prevVisitor === undefined) delete process.env.OGM_YT_VISITOR_DATA;
+else process.env.OGM_YT_VISITOR_DATA = prevVisitor;
 fs.rmSync(authDir, { recursive: true, force: true });
-pass('TV bearer is not passed as yt-dlp auth; cookies still are');
+pass('TV bearer is not passed as yt-dlp auth; cookies merge; PO token is optional extractor-args');
 
 function mockSpawnStall(): (cmd: string, args: string[]) => EventEmitter {
   return () => {
