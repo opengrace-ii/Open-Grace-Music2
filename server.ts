@@ -8,6 +8,11 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { runConvertPipeline } from './server/convertPipeline.ts';
+import {
+  pollYoutubeDeviceLogin,
+  publicDeviceStart,
+  startYoutubeDeviceLogin,
+} from './server/youtubeTvOauth.ts';
 import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.ts';
 import { fetchYoutubeTranscript } from './server/youtubeTranscript.ts';
 import {
@@ -99,7 +104,7 @@ function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked download for this exact video. OGM never substitutes a different song. On the Android APK tap Connect YouTube once (real Google page). On web, paste youtube.com cookies via the key icon — a login iframe cannot read HttpOnly cookies.',
+        'YouTube blocked download for this exact video. OGM never substitutes a different song. Tap Connect YouTube (web: TV device code in a new Google/YouTube tab; APK: Google pages in the app). Google may still block. Not an unlimited bypass. Optional: paste cookies via the key icon.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -117,6 +122,39 @@ function classifyPipelineError(
 app.get('/api/health', (_req, res) => {
   const ai = aiKeyStatus();
   res.json({ ok: true, service: 'ogm-converter', ai: { gemini: ai.gemini, nvidia: ai.nvidia } });
+});
+
+app.post('/api/youtube-oauth/start', async (_req, res) => {
+  try {
+    const started = await startYoutubeDeviceLogin();
+    return res.json({ ok: true, ...publicDeviceStart(started) });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Could not start YouTube TV sign-in';
+    return res.status(502).json({ ok: false, error: message });
+  }
+});
+
+app.post('/api/youtube-oauth/poll', async (req, res) => {
+  const deviceCode = String(req.body?.deviceCode || '').trim();
+  if (!deviceCode) {
+    return res.status(400).json({ ok: false, error: 'deviceCode is required' });
+  }
+  try {
+    const result = await pollYoutubeDeviceLogin(deviceCode);
+    if (result.status === 'connected') {
+      return res.json({
+        ok: true,
+        status: 'connected',
+        refreshToken: result.refreshToken,
+        accessToken: result.accessToken,
+        expiresAt: result.expiresAt,
+      });
+    }
+    return res.json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Could not check YouTube TV sign-in';
+    return res.status(502).json({ ok: false, status: 'error', error: message });
+  }
 });
 
 app.get('/api/youtube/search', async (req, res) => {
@@ -456,9 +494,12 @@ function parseConvertRequest(req: express.Request) {
     (req.path.includes('convert-mp3') ? 'MP3' : 'MP3');
   const requestedBitrate = Number((req.body && req.body.bitrate) || req.query.bitrate || 320);
   const userCookies = ((req.body && req.body.cookies) || (req.query.cookies as string) || '').trim();
+  const youtubeOauthRefresh = String(
+    (req.body && (req.body.youtubeOauth || req.body.youtubeOauthRefresh)) || ''
+  ).trim();
   const customTitle = ((req.body && req.body.title) || (req.query.title as string) || '').trim();
   const customArtist = ((req.body && req.body.artist) || (req.query.artist as string) || '').trim();
-  return { url, requestedFormat, requestedBitrate, userCookies, customTitle, customArtist };
+  return { url, requestedFormat, requestedBitrate, userCookies, youtubeOauthRefresh, customTitle, customArtist };
 }
 
 function pipelineParamsFromRequest(req: express.Request) {
@@ -472,6 +513,7 @@ function pipelineParamsFromRequest(req: express.Request) {
       formatSpec,
       requestedBitrate: parsed.requestedBitrate,
       userCookies: parsed.userCookies,
+      youtubeOauthRefresh: parsed.youtubeOauthRefresh,
       customTitle: parsed.customTitle,
       customArtist: parsed.customArtist,
       extractYouTubeId,
@@ -776,8 +818,10 @@ app.post('/api/ai/transcribe', async (req, res) => {
   const videoId = String(req.body?.videoId || req.body?.ytVideoId || '').trim();
   const audioUrl = String(req.body?.audioUrl || '').trim();
   const title = String(req.body?.title || '').trim();
+  const cookies = String(req.body?.cookies || '').trim();
+  const youtubeOauthRefresh = String(req.body?.youtubeOauth || req.body?.youtubeOauthRefresh || '').trim();
   try {
-    const result = await transcribeForOgm({ videoId, audioUrl, title });
+    const result = await transcribeForOgm({ videoId, audioUrl, title, cookies, youtubeOauthRefresh });
     const status = result.ok ? 200 : result.keysMissing ? 503 : 422;
     return res.status(status).json(result);
   } catch (err: unknown) {

@@ -3,6 +3,8 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { refreshYoutubeAccessToken } from './youtubeTvOauth.ts';
+import { YOUTUBE_PLAYER_CLIENTS_OAUTH, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
 export interface AudioFormatSpec {
   format: 'FLAC' | 'ALAC' | 'DSD' | 'WAV' | 'MP3';
   extension: string;
@@ -179,7 +181,7 @@ export function classifyPipelineError(
     return {
       code: 'YOUTUBE_BOT_CHECK',
       error:
-        'YouTube blocked download for this exact video. OGM never substitutes a different song. On the Android APK tap Connect YouTube once (real Google page). On web, paste youtube.com cookies via the key icon — a login iframe cannot read HttpOnly cookies.',
+        'YouTube blocked download for this exact video. OGM never substitutes a different song. Tap Connect YouTube (web: TV device code in a new Google/YouTube tab; APK: Google pages in the app). Google may still block. Not an unlimited bypass. Optional: paste cookies via the key icon.',
     };
   }
   if (phase === 'ffmpeg') {
@@ -194,7 +196,7 @@ export function classifyPipelineError(
     return {
       code: 'EXTRACTION_FAILED',
       error:
-        'Could not fetch audio for this track. Try MP3 first, tap the key icon to paste YouTube cookies, or retry in a few minutes.',
+        'Could not fetch audio for this track. Try MP3 first, tap Connect YouTube, or retry in a few minutes.',
     };
   }
   return {
@@ -208,6 +210,8 @@ export interface ConvertPipelineParams {
   formatSpec: AudioFormatSpec;
   requestedBitrate: number;
   userCookies?: string;
+  /** YouTube TV oauth refresh token from Connect YouTube (web). Never log. */
+  youtubeOauthRefresh?: string;
   customTitle?: string;
   customArtist?: string;
   extractYouTubeId: (rawUrl: string) => string | null;
@@ -248,6 +252,7 @@ export async function runConvertPipeline(
     url,
     formatSpec,
     userCookies: userCookiesRaw = '',
+    youtubeOauthRefresh = '',
     customTitle = '',
     customArtist = '',
     extractYouTubeId,
@@ -262,7 +267,6 @@ export async function runConvertPipeline(
   const userCookies = mergedYoutubeCookies(userCookiesRaw);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-audio-'));
   const rawInputTemplate = path.join(workDir, 'raw_source.%(ext)s');
-  const cookieFilePath = path.join(workDir, 'cookies.txt');
 
   const isMp3 = formatSpec.format === 'MP3';
   const extractTimeout = isMp3 ? ytDlpMp3TimeoutMs : ytDlpTimeoutMs;
@@ -290,26 +294,16 @@ export async function runConvertPipeline(
       const canonicalWatchUrl = `https://www.youtube.com/watch?v=${ytId}`;
       let downloadedRawPath: string | null = null;
 
-      const cookieArgs: string[] = [];
-      if (userCookies) {
-        if (userCookies.includes('# Netscape HTTP Cookie File') || userCookies.includes('\t')) {
-          fs.writeFileSync(cookieFilePath, userCookies, 'utf8');
-          cookieArgs.push('--cookies', cookieFilePath);
-        } else {
-          const netscapeLines = ['# Netscape HTTP Cookie File'];
-          for (const pair of userCookies.split(';')) {
-            const [k, ...vParts] = pair.trim().split('=');
-            const v = vParts.join('=');
-            if (k && v) {
-              netscapeLines.push(
-                `.youtube.com\tTRUE\t/\tTRUE\t2147483647\t${k.trim()}\t${v.trim()}`
-              );
-            }
-          }
-          fs.writeFileSync(cookieFilePath, netscapeLines.join('\n') + '\n', 'utf8');
-          cookieArgs.push('--cookies', cookieFilePath);
-        }
+      let accessToken = '';
+      const oauthRefresh = youtubeOauthRefresh.trim();
+      if (oauthRefresh) {
+        const refreshed = await refreshYoutubeAccessToken(oauthRefresh);
+        if (refreshed) accessToken = refreshed.accessToken;
       }
+      const cookieArgs = youtubeYtdlpAuthArgs(workDir, userCookies, accessToken);
+      const playerClients = accessToken
+        ? [...YOUTUBE_PLAYER_CLIENTS_OAUTH, ...YOUTUBE_PLAYER_CLIENTS.filter((c) => !YOUTUBE_PLAYER_CLIENTS_OAUTH.includes(c))]
+        : YOUTUBE_PLAYER_CLIENTS;
 
       let lastExtractFailure: { code: ConvertErrorCode; error: string } | null = null;
 
@@ -322,7 +316,7 @@ export async function runConvertPipeline(
       }, 3500);
 
       try {
-        for (const playerClient of YOUTUBE_PLAYER_CLIENTS) {
+        for (const playerClient of playerClients) {
           if (downloadedRawPath) break;
           const clientArgs: string[] = [];
           if (playerClient) {
@@ -363,7 +357,7 @@ export async function runConvertPipeline(
               clearRawSourceArtifacts(workDir);
               lastExtractFailure = {
                 code: 'EXTRACTION_FAILED',
-                error: 'Downloaded stream did not match the YouTube video ID. Retry with cookies via the key icon.',
+                error: 'Downloaded stream did not match the YouTube video ID. Tap Connect YouTube and retry.',
               };
             }
           } catch (directErr) {
@@ -382,7 +376,7 @@ export async function runConvertPipeline(
         const failure = lastExtractFailure || {
           code: 'YOUTUBE_BOT_CHECK' as ConvertErrorCode,
           error:
-            'Could not download this exact YouTube video. Tap the key icon on the recorder and paste youtube.com cookies, then try again.',
+            'Could not download this exact YouTube video. Tap Connect YouTube (web TV code or APK login), then try again. Google may still block this exact video.',
         };
         return { ok: false, ...failure, workDir };
       }

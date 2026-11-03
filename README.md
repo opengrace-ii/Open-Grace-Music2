@@ -161,8 +161,18 @@ Render's datacenter IP is bot-checked by YouTube, so server-side downloads often
 3. Tap **Record**. The WebView observes that request (URL + Cookie / User-Agent / Origin / Referer), then ranged-downloads the same audio itag. Native waits ~14s if the stream has not appeared yet.
 4. The file is served to the PWA at `https://ogm.local/dl/<token>` and stored in IndexedDB.
 5. If capture never saw a stream, InnerTube is a last resort only (now with your session cookies if present). A 403 does **not** dump ANDROID_VR/IOS walls — it tells you to play the video, connect YouTube, and retry.
-6. **PWA / Chrome:** cannot read HttpOnly YouTube cookies from JavaScript. Paste Netscape / Cookie-header cookies via the key icon, or use the APK. Do not expect a working Google login iframe on the website.
-7. **Everything failed:** nothing is saved; a live placeholder is never stored as a download. Google can still block, expire cookies, or require extra checks. Downloading may still be against YouTube’s terms — this is UX for the same cookie session, not an unlimited bypass. OGM never substitutes another song.
+6. **PWA / Chrome (web one-time login):** tap **Connect YouTube** — OGM starts a **YouTube TV device-code** (not a password form on our origin). **Open YouTube** in a new tab, enter the code on Google’s pages, wait until status is **Connected**. Tokens stay in localStorage and go with `/api/convert-audio`. A Google login iframe on this site cannot read HttpOnly cookies. Optional: paste Netscape cookies via the key icon. Google may still block.
+7. **Everything failed:** nothing is saved; a live placeholder is never stored as a download. Google can still block, expire cookies, or require extra checks. Downloading may still be against YouTube’s terms — this is UX for your own session, not an unlimited bypass. OGM never substitutes another song.
+
+### Connect YouTube — web vs APK
+
+| Surface | What Connect YouTube does | Where the session lives |
+| --- | --- | --- |
+| **Website / PWA / Chrome** | YouTube **TV device code**. New tab on Google’s pages (`google.com/device` / YouTube activate). Poll until **Connected**. | `localStorage` (tokens + optional pasted cookies). Sent with Record. |
+| **APK 1.3.2+** (`OgmAndroid`) | Native WebView on **real Google/YouTube pages**. Password never hits OGM. | Android `CookieManager` + private prefs. Preferred when the bridge exists. |
+| **Old APK (no bridge)** | Same **web TV code** UI as Chrome (Connect is not “install APK only”). | Browser storage inside the WebView. Reinstall 1.3.2 for native login + capture. |
+
+No APK version bump for this web path. Google can still refuse the download.
 
 **What file you get:** YouTube audio is already lossy, so the real container is kept and labelled honestly — **M4A (AAC)** (or **OPUS/WebM** if no AAC stream exists). If you picked **MP3**, the downloaded audio is converted on the phone (lamejs) from the lossy source. If you picked **FLAC / ALAC / WAV**, the already-downloaded bytes are POSTed to `POST /api/transcode?format=…` (server FFmpeg, no YouTube access, so no bot-check); if that is unreachable the real M4A is saved instead and the toast says so. DSD is not produced on-device. FLAC/WAV from YouTube is a lossless container around a lossy source — no quality is gained.
 

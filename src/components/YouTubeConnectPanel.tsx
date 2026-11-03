@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Youtube, Loader2 } from 'lucide-react';
+import { Youtube, Loader2, ExternalLink, Copy } from 'lucide-react';
 import { isInsideApk } from '../services/onDeviceDownload';
 import {
   clearYouTubeSession,
+  isNativeYouTubeLoginAvailable,
   isYouTubeLoginAvailable,
+  openYouTubeActivateTab,
+  pollWebYouTubeDeviceLogin,
   pullNativeYoutubeCookies,
+  startWebYouTubeDeviceLogin,
   startYouTubeLogin,
   statusLabel,
   subscribeYouTubeSession,
@@ -13,22 +17,27 @@ import {
 } from '../services/youtubeSession';
 
 interface YouTubeConnectPanelProps {
-  /** Called after native cookies are copied into local youtubeCookies storage. */
+  /** Called after native cookies or a web TV session is stored. */
   onCookies?: (header: string) => void;
   compact?: boolean;
 }
 
 export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ onCookies, compact }) => {
+  const nativeLogin = isNativeYouTubeLoginAvailable();
   const canLogin = isYouTubeLoginAvailable();
   const insideApk = isInsideApk();
   const [status, setStatus] = useState<YoutubeSessionStatus>(() => youtubeSessionStatus());
   const [busy, setBusy] = useState(false);
+  const [userCode, setUserCode] = useState('');
+  const [verificationUrl, setVerificationUrl] = useState('https://www.google.com/device');
+  const [deviceCode, setDeviceCode] = useState('');
+  const [webHint, setWebHint] = useState<string | null>(null);
   const onCookiesRef = React.useRef(onCookies);
   onCookiesRef.current = onCookies;
 
   useEffect(() => {
     setStatus(youtubeSessionStatus());
-    if (isYouTubeLoginAvailable() && youtubeSessionStatus() === 'connected') {
+    if (isNativeYouTubeLoginAvailable() && youtubeSessionStatus() === 'connected') {
       const h = pullNativeYoutubeCookies();
       if (h) onCookiesRef.current?.(h);
     }
@@ -38,20 +47,97 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ onCook
       if (next === 'connected') {
         const h = pullNativeYoutubeCookies();
         if (h) onCookiesRef.current?.(h);
+        setUserCode('');
+        setDeviceCode('');
+        setWebHint(null);
       }
     });
   }, []);
 
-  const connect = () => {
+  useEffect(() => {
+    if (!deviceCode || status === 'connected') return;
+    let cancelled = false;
+    let delay = 5000;
+    const tick = async () => {
+      try {
+        const result = await pollWebYouTubeDeviceLogin(deviceCode);
+        if (cancelled) return;
+        if (result.status === 'connected') {
+          setBusy(false);
+          setStatus('connected');
+          setUserCode('');
+          setDeviceCode('');
+          setWebHint(null);
+          return;
+        }
+        if (result.status === 'expired') {
+          setBusy(false);
+          setWebHint('That code expired. Tap Connect YouTube again.');
+          setDeviceCode('');
+          return;
+        }
+        if (result.status === 'denied') {
+          setBusy(false);
+          setWebHint('YouTube declined the link. Tap Connect YouTube to try again.');
+          setDeviceCode('');
+          return;
+        }
+        if (result.status === 'error') {
+          setBusy(false);
+          setWebHint(result.error || 'Could not finish YouTube TV sign-in.');
+          return;
+        }
+        if (result.interval) delay = Math.max(3000, result.interval * 1000);
+      } catch {
+        if (!cancelled) setWebHint('Waiting for YouTube — check your connection.');
+      }
+      if (!cancelled) timer = window.setTimeout(() => void tick(), delay);
+    };
+    let timer = window.setTimeout(() => void tick(), delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [deviceCode, status]);
+
+  const connectNative = () => {
     setBusy(true);
     const ok = startYouTubeLogin();
     if (!ok) setBusy(false);
   };
 
+  const connectWeb = async () => {
+    setBusy(true);
+    setWebHint(null);
+    try {
+      const started = await startWebYouTubeDeviceLogin();
+      setUserCode(started.userCode);
+      setVerificationUrl(started.verificationUrl || started.activateUrl || 'https://www.google.com/device');
+      setDeviceCode(started.deviceCode);
+      openYouTubeActivateTab(started.verificationUrl, started.userCode);
+    } catch (err) {
+      setWebHint(err instanceof Error ? err.message : 'Could not start YouTube TV sign-in.');
+      setBusy(false);
+    }
+  };
+
   const signOut = () => {
     clearYouTubeSession();
     setStatus('not_connected');
+    setUserCode('');
+    setDeviceCode('');
+    setBusy(false);
+    setWebHint(null);
     onCookies?.('');
+  };
+
+  const copyCode = async () => {
+    if (!userCode) return;
+    try {
+      await navigator.clipboard.writeText(userCode.replace(/-/g, ''));
+    } catch {
+      // ignore
+    }
   };
 
   return (
@@ -80,7 +166,7 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ onCook
             ) : (
               <button
                 type="button"
-                onClick={connect}
+                onClick={nativeLogin ? connectNative : () => void connectWeb()}
                 disabled={busy}
                 className="px-3 py-1.5 rounded-lg bg-[#b8d99e] text-[#11120f] text-[11px] font-mono font-bold disabled:opacity-40 inline-flex items-center gap-1"
               >
@@ -91,7 +177,7 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ onCook
           </div>
         ) : null}
       </div>
-      {canLogin ? (
+      {nativeLogin ? (
         <p className="text-[11px] text-[#a3a198] leading-relaxed">
           One-time sign-in on <strong className="text-[#eeeae2] font-medium">Google’s real pages</strong> inside
           this app. We never collect your password. After connecting, retry Record. This is your own YouTube
@@ -100,17 +186,49 @@ export const YouTubeConnectPanel: React.FC<YouTubeConnectPanelProps> = ({ onCook
         </p>
       ) : insideApk ? (
         <p className="text-[11px] text-[#a3a198] leading-relaxed">
-          This installed APK is too old for Connect YouTube. Reinstall <strong className="text-[#eeeae2]">1.3.2+</strong>{' '}
-          (versionCode 8+), then sign in on Google’s real pages in the app.
+          This installed APK is too old for native Connect YouTube. Reinstall <strong className="text-[#eeeae2]">1.3.2+</strong>{' '}
+          (versionCode 8+) for the in-app Google page, or use the TV code below in Chrome.
         </p>
       ) : (
         <p className="text-[11px] text-[#a3a198] leading-relaxed">
-          Sign-in for downloads works in the <strong className="text-[#eeeae2] font-medium">Android APK</strong>.
-          Chrome cannot read YouTube’s HttpOnly cookies from this page, so a Google login iframe here would not
-          work. Use the key icon to paste Netscape / Cookie-header cookies, or install the APK and tap Connect
-          YouTube.
+          One-time <strong className="text-[#eeeae2] font-medium">YouTube TV / device code</strong> in a new tab
+          (Google’s pages — we never collect your password). Chrome cannot read YouTube HttpOnly cookies from this
+          origin. Google may still block; this is not an unlimited bypass. Exact video only. Optional: paste
+          Netscape cookies via the key icon.
         </p>
       )}
+      {!nativeLogin && userCode ? (
+        <div className="rounded-lg border border-[#3a4433] bg-[#0c0d0b] p-2.5 space-y-2">
+          <p className="text-[10px] font-mono uppercase tracking-wide text-[#9fa396]">Enter this code on YouTube</p>
+          <p className="text-lg sm:text-xl font-mono font-bold tracking-[0.2em] text-[#eeeae2] text-center">
+            {userCode}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => openYouTubeActivateTab(verificationUrl, userCode)}
+              className="px-3 py-1.5 rounded-lg bg-[#b8d99e] text-[#11120f] text-[11px] font-mono font-bold inline-flex items-center gap-1"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Open YouTube
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyCode()}
+              className="px-3 py-1.5 rounded-lg border border-[#292a24] text-[11px] font-mono text-[#a3a198] inline-flex items-center gap-1"
+            >
+              <Copy className="w-3 h-3" />
+              Copy code
+            </button>
+          </div>
+          <p className="text-[10px] text-[#8a877f] leading-relaxed">
+            Approve on <span className="font-mono text-[#b8d99e]">youtube.com/activate</span> or{' '}
+            <span className="font-mono text-[#b8d99e]">google.com/device</span>, then wait here until the status
+            reads Connected.
+          </p>
+        </div>
+      ) : null}
+      {webHint ? <p className="text-[11px] text-[#e2c986] leading-relaxed">{webHint}</p> : null}
     </div>
   );
 };

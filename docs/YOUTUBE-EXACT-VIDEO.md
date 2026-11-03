@@ -4,12 +4,18 @@ OGM records **the audio from the URL you paste** — never a “similar” track
 
 ## How it works now
 
-**Android APK (TubeMate-style):** loads **that** watch page in a hidden WebView, intercepts `googlevideo.com` audio for that video ID, then if needed calls the studio server **with the phone’s YouTube cookies**.
+**Android APK 1.3.2+ (TubeMate-style):** tap **Connect YouTube** once — Google’s real pages inside the app WebView (`CookieManager`). Then OGM loads **that** watch page, intercepts `googlevideo.com` audio for that video ID, and can send the phone’s session to the studio server. No APK bump is required for the web login path.
 
-**PWA / Render:** yt-dlp uses Node as a JS runtime (YouTube player handshake) plus cookies from:
+**PWA / Chrome / desktop:** Chrome cannot read YouTube’s HttpOnly cookies from this origin, so a Google login iframe here would not work. Tap **Connect YouTube** for a **YouTube TV device-code** flow:
 
-- The **key icon** on the recorder (saved in the browser), or
-- Render env **`OGM_YT_COOKIES`** (paste once in the dashboard).
+1. OGM shows a short code and opens **Open YouTube** (Google’s `google.com/device` / YouTube activate pages) in a **new tab**.
+2. Sign in and enter the code on Google’s pages. We never collect your password.
+3. OGM polls until the TV session is linked, stores the tokens in **this browser’s localStorage** (never logged), and sends them with `/api/convert-audio`.
+4. The server refreshes the access token and passes it to yt-dlp (plus any pasted cookies / `OGM_YT_COOKIES`).
+
+**Optional fallback:** recorder **key icon** — paste Netscape `cookies.txt` or a Cookie header.
+
+Google may still block datacenter IPs, expire the session, or ask for extra checks. This is **not** an unlimited bypass. Exact video only.
 
 ## What went wrong before
 
@@ -17,8 +23,6 @@ When YouTube blocked the server (datacenter IP), an old **SoundCloud search fall
 
 ## If the PWA still cannot record
 
-1. Tap the **key icon** on the Studio Master Tape Recorder.
-2. On a computer where you are logged into YouTube, export **youtube.com** cookies (Netscape `cookies.txt` or Cookie header).
-3. Paste once — OGM remembers them — then **Record** again.
-
-Phone users: install/update the APK so on-device capture can run even when Render is blocked.
+1. Tap **Connect YouTube** (Settings, More, or the recorder) and finish the TV code in the new tab until status is **Connected**.
+2. Retry **Record**.
+3. If Google still blocks: paste **youtube.com** cookies via the key icon, or use the **1.3.2 APK** (native WebView login + on-device capture).

@@ -129,6 +129,8 @@ export interface StartConvertJobBody {
   format: string;
   bitrate?: number;
   cookies?: string;
+  /** YouTube TV oauth refresh token from Connect YouTube (web). Never log. */
+  youtubeOauth?: string;
   title?: string;
   artist?: string;
 }

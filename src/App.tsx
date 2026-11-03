@@ -42,6 +42,7 @@ import {
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
 import { loadSavedYoutubeCookies, saveYoutubeCookies } from './services/youtubeCookies';
+import { loadYoutubeOauthRefreshToken } from './services/youtubeOauth';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -1024,6 +1025,7 @@ export default function App() {
         format,
         bitrate: format === 'MP3' ? bitrateKbps : bitrateKbps,
         cookies: (cookies || inlineCookies || loadSavedYoutubeCookies()).trim() || undefined,
+        youtubeOauth: loadYoutubeOauthRefreshToken() || undefined,
         title: customTitle,
         artist: customArtist,
       });
@@ -1234,7 +1236,7 @@ export default function App() {
       } else if (ytId && serverBlocked) {
         display =
           `Couldn’t download this on the server (${message}) — nothing was saved as ${format}. ` +
-          `On the Android APK tap Connect YouTube (once) then retry Record. In Chrome, paste youtube.com cookies via the key icon — a Google login iframe here cannot read HttpOnly cookies. ` +
+          `Tap Connect YouTube once (on the website: TV device code in a new Google/YouTube tab; on the APK: Google’s real pages in the app). Google may still block — this is not an unlimited bypass. Exact video only. Optional: paste youtube.com cookies via the key icon. ` +
           `OGM never substitutes a different song. Or import an audio file. To only listen live (not an offline file), open the YouTube Tuner and tap Listen.`;
       } else {
         display = message;
@@ -1843,7 +1845,7 @@ export default function App() {
                 rows={2}
                 value={inlineCookies}
                 onChange={(e) => setInlineCookies(e.target.value)}
-                placeholder="Paste youtube.com cookies (Netscape export or Cookie header) if YouTube blocks the server…"
+                placeholder="Optional: paste youtube.com cookies (Netscape export or Cookie header). Prefer Connect YouTube above."
                 className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
               />
             </div>

@@ -5,6 +5,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenAI } from '@google/genai';
 import { fetchYoutubeTranscript } from './youtubeTranscript.ts';
+import { refreshYoutubeAccessToken } from './youtubeTvOauth.ts';
+import { youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,13 +49,23 @@ function ytDlpJsRuntimeArgs(): string[] {
   return ['--js-runtimes', `node:${nodeBin}`, '--remote-components', 'ejs:github'];
 }
 
-async function extractShortMp3(videoId: string): Promise<
+async function extractShortMp3(
+  videoId: string,
+  auth?: { cookies?: string; youtubeOauthRefresh?: string }
+): Promise<
   | { ok: true; buffer: Buffer; mimeType: string }
   | { ok: false; loginRequired: boolean; error: string }
 > {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-ai-'));
   const outTemplate = path.join(workDir, 'clip.%(ext)s');
   const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  let accessToken = '';
+  const refresh = (auth?.youtubeOauthRefresh || '').trim();
+  if (refresh) {
+    const refreshed = await refreshYoutubeAccessToken(refresh);
+    if (refreshed) accessToken = refreshed.accessToken;
+  }
+  const authArgs = youtubeYtdlpAuthArgs(workDir, auth?.cookies || '', accessToken);
   try {
     try {
       await execFileAsync(
@@ -75,6 +87,7 @@ async function extractShortMp3(videoId: string): Promise<
           '--audio-quality',
           '7',
           ...ytDlpJsRuntimeArgs(),
+          ...authArgs,
           '-o',
           outTemplate,
           watchUrl,
@@ -91,7 +104,7 @@ async function extractShortMp3(videoId: string): Promise<
           ok: false,
           loginRequired: true,
           error:
-            'YouTube asked for a login to fetch audio. Title and description are not a transcript — we need the audio clip. On the APK tap Connect YouTube; on web paste cookies via the key icon.',
+            'YouTube asked for a login to fetch audio. Title and description are not a transcript — we need the audio clip. Tap Connect YouTube (web TV code or APK), then retry Transcript.',
         };
       }
       return {
@@ -213,6 +226,8 @@ export async function transcribeForOgm(input: {
   videoId?: string;
   audioUrl?: string;
   title?: string;
+  cookies?: string;
+  youtubeOauthRefresh?: string;
 }): Promise<{
   ok: boolean;
   source?: 'ogm-gemini' | 'ogm-nvidia' | 'youtube-captions';
@@ -230,7 +245,10 @@ export async function transcribeForOgm(input: {
       if (captions) return captions;
       return { ok: false, keysMissing: true, needAudio: false, error: AI_KEYS_HINT };
     }
-    const clip = await extractShortMp3(videoId);
+    const clip = await extractShortMp3(videoId, {
+      cookies: input.cookies,
+      youtubeOauthRefresh: input.youtubeOauthRefresh,
+    });
     if (clip.ok) {
       if (keys.gemini) {
         try {

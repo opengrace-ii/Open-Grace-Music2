@@ -198,7 +198,9 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               <strong>Recording YouTube (1.3.2+):</strong> tap <strong>Connect YouTube</strong> once (real Google
               page in the app — we never collect your password), play the video so YouTube issues a real stream,
               then RECORD grabs that same audio. Tap Play if the embed is paused, wait a few seconds, then retry.
-              Chrome cannot read HttpOnly cookies — paste via the key icon, or use the APK. You get a real{' '}
+              Chrome: tap <strong>Connect YouTube</strong> for a TV device code in a new Google/YouTube tab (we never
+              collect your password). Google may still block. Optional: paste cookies via the key icon, or use the APK.
+              You get a real{' '}
               <strong>M4A (AAC)</strong> file — or MP3/FLAC converted from it; YouTube audio is already lossy.
               Reinstall the 1.3.2 APK once.
             </li>

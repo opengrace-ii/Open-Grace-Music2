@@ -119,8 +119,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           <h4 className="font-serif-display text-sm font-bold text-[#eeeae2]">YouTube</h4>
           <YouTubeConnectPanel />
           <p className="text-[11px] text-[#8a877f] leading-relaxed">
-            Server fallback still accepts cookies from the recorder key icon (Netscape export or Cookie header). The APK
-            Connect flow fills that same store after you sign in on Google’s page.
+            Web Connect YouTube uses a TV device code (new Google/YouTube tab). The APK uses Google’s pages in the
+            WebView. Tokens/cookies stay in this browser and are sent with Record. Optional: paste Netscape cookies via
+            the recorder key icon. Google may still block.
           </p>
         </div>
 

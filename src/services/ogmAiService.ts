@@ -1,4 +1,6 @@
 import { apiUrl, fetchWithTimeout } from './converterApi';
+import { loadSavedYoutubeCookies } from './youtubeCookies';
+import { loadYoutubeOauthRefreshToken } from './youtubeOauth';
 
 export const AI_KEYS_HINT =
   'Add GEMINI_API_KEY or NVIDIA_API_KEY in Settings / .env to transcribe here.';
@@ -42,10 +44,14 @@ export function hasLocalAiKeys(): boolean {
 /** Merge client keys into AI POST bodies so server routes receive them every call. */
 function withClientAiKeys(body: Record<string, unknown>): Record<string, unknown> {
   const local = loadLocalAiKeys();
+  const cookies = loadSavedYoutubeCookies();
+  const youtubeOauth = loadYoutubeOauthRefreshToken();
   return {
     ...body,
     ...(local.geminiApiKey ? { geminiApiKey: local.geminiApiKey } : {}),
     ...(local.nvidiaApiKey ? { nvidiaApiKey: local.nvidiaApiKey } : {}),
+    ...(cookies ? { cookies } : {}),
+    ...(youtubeOauth ? { youtubeOauth } : {}),
   };
 }
 
