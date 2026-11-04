@@ -37,7 +37,7 @@ function assert(cond, msg) {
 }
 
 assert(pkg.scripts.recorder === 'node recorder/worker.mjs', 'npm run recorder uses worker.mjs');
-assert(pkg.version === '1.5.0', 'package version is 1.5.0');
+assert(pkg.version === '1.5.1', 'package version is 1.5.1');
 
 const missing = run({});
 assert(missing.status !== 0, 'exits non-zero with no hub/secret');

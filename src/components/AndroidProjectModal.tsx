@@ -135,7 +135,7 @@ export const AndroidProjectModal: React.FC<AndroidProjectModalProps> = ({
                     </span>
                   </p>
                   <p className="text-[11px] text-[#a3a198] mt-0.5">
-                    Native offline playback, lock-screen controls, and Music/OpenGraceMusic export.
+                    Native offline playback, lock-screen controls, and Music/Open Grace Music export.
                   </p>
                 </div>
 

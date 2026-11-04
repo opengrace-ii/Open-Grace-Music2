@@ -23,7 +23,7 @@ export function readApkShellVersion(): ApkShellVersion | null {
   }
 }
 
-/** e.g. `v1.5.0 · a1b2c3d` or `v1.5.0 · a1b2c3d · APK 1.5.0 (13)` */
+/** e.g. `v1.5.1 · a1b2c3d` or `v1.5.1 · a1b2c3d · APK 1.5.1 (14)` */
 export function formatOgmVersionLabel(
   version = OGM_WEB_VERSION,
   sha = OGM_GIT_SHA,

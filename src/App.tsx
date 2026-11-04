@@ -91,6 +91,8 @@ import {
   formatFromMimeOrExt,
   mimeForFormat,
 } from './utils/audioFormatLabel';
+import { saveAudioToDevice } from './services/saveToDevice';
+import { safeDownloadFilename } from './utils/downloadFilename';
 import {
   downloadYouTubeAudioOnDevice,
   isInsideApk,
@@ -661,16 +663,21 @@ export default function App() {
     }
   };
 
-  const triggerBrowserDownload = (blob: Blob, title: string, ext: string) => {
-    const safeTitle = title.replace(/[^a-zA-Z0-9._ -]/g, '').trim() || 'OpenGraceMusic_Track';
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = `${safeTitle}.${ext.toLowerCase()}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+  const saveCopyToDevice = (
+    blob: Blob,
+    title: string,
+    ext: string,
+    extra?: { artist?: string; album?: string; mime?: string; durationSec?: number }
+  ) => {
+    void saveAudioToDevice({
+      blob,
+      title,
+      ext,
+      artist: extra?.artist,
+      album: extra?.album,
+      mime: extra?.mime,
+      durationSec: extra?.durationSec,
+    });
   };
 
   // Import Local Audio Files
@@ -957,7 +964,14 @@ export default function App() {
       setDownloadStatus('Saving recorded audio to Library…');
       const saved = await saveTrackToDB(track, finalBlob);
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
-      if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, ext);
+      if (saveToDeviceFolder) {
+        saveCopyToDevice(finalBlob, title, ext, {
+          artist,
+          album: track.album,
+          mime: finalMime,
+          durationSec: track.duration,
+        });
+      }
 
       logActivity({
         action: 'record',
@@ -1233,11 +1247,12 @@ export default function App() {
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
 
       if (saveToDeviceFolder) {
-        triggerBrowserDownload(
-          audioBlob,
-          headerTitle,
-          extensionForFormat(headerFormat) || headerExt
-        );
+        saveCopyToDevice(audioBlob, headerTitle, extensionForFormat(headerFormat) || headerExt, {
+          artist: headerArtist,
+          album: newTrack.album,
+          mime: persistMime,
+          durationSec: finalDuration,
+        });
       }
 
       logActivity({
@@ -1386,8 +1401,18 @@ export default function App() {
         WEBM: 'webm',
       };
       const ext = extMap[track.format.toUpperCase()] || track.format.toLowerCase() || 'flac';
-      triggerBrowserDownload(track.blob, track.title, ext);
-      addToast(`♪ Saved "${track.title}.${ext}"`, 'success');
+      void saveAudioToDevice({
+        blob: track.blob,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        ext,
+        mime: track.mimeType,
+        durationSec: track.duration,
+      }).then((where) => {
+        if (where === 'music') addToast(`♪ Saved to Music/Open Grace Music`, 'success');
+        else if (where === 'download') addToast(`♪ Saved "${track.title}.${ext}"`, 'success');
+      });
       return;
     }
 
@@ -1395,11 +1420,11 @@ export default function App() {
       const ext = track.format.toLowerCase() || 'flac';
       const a = document.createElement('a');
       a.href = track.audioUrl;
-      a.download = `${track.title}.${ext}`;
+      a.download = safeDownloadFilename(track.title, ext);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      addToast(`♪ Saved "${track.title}.${ext}"`, 'success');
+      addToast(`♪ Saved "${a.download}"`, 'success');
       return;
     }
 

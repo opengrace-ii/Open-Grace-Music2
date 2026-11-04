@@ -435,6 +435,11 @@ class OnDeviceDownloadTest {
         assertTrue(YouTubeLoginActivity.urlLooksLikeYoutubeHome("https://m.youtube.com/"))
     }
 
+    @Test
+    fun `shared music folder uses Music Open Grace Music relative path`() {
+        assertEquals("Music/Open Grace Music/", com.example.data.downloader.DeviceMusicHelper.relativePath())
+    }
+
     /** Opt-in live check: OGM_LIVE_YT=<videoId> ./gradlew testDebugUnitTest. Needs a non-datacenter IP. */
     @Test
     fun `live resolve and fetch first bytes`() {

@@ -30,6 +30,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.example.data.ConverterServerPrefs
 import com.example.data.OgmPublicBase
+import com.example.data.downloader.DeviceMusicHelper
 import com.example.ondevice.DownloadEvents
 import com.example.ondevice.OnDeviceDownloadManager
 import com.example.ondevice.WebViewStreamCapture
@@ -130,7 +131,7 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         }
 
     private val mediaPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* picker works without it */ }
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     private fun launchFileChooser(params: WebChromeClient.FileChooserParams?, cb: ValueCallback<Array<Uri>>): Boolean {
         filePathCallback?.onReceiveValue(null)
@@ -161,10 +162,20 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
     }
 
     private fun maybeRequestMediaPermission() {
-        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
-        if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-            mediaPermissionLauncher.launch(perm)
+        val needed = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            needed += Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            needed += Manifest.permission.READ_EXTERNAL_STORAGE
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                needed += Manifest.permission.WRITE_EXTERNAL_STORAGE
+            }
+        }
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            mediaPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 
@@ -583,6 +594,32 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
 
         @JavascriptInterface
         fun appVersionCode(): Int = BuildConfig.VERSION_CODE
+
+        @JavascriptInterface
+        fun supportsSaveToMusic(): Boolean = true
+
+        @JavascriptInterface
+        fun beginSaveToMusic(metaJson: String?): String =
+            DeviceMusicHelper.beginWebSave(applicationContext, metaJson ?: "{}")
+
+        @JavascriptInterface
+        fun appendSaveToMusic(sessionId: String?, base64Chunk: String?) {
+            if (sessionId.isNullOrBlank() || base64Chunk.isNullOrBlank()) return
+            DeviceMusicHelper.appendWebSave(sessionId, base64Chunk)
+        }
+
+        @JavascriptInterface
+        fun finishSaveToMusic(sessionId: String?): String {
+            if (sessionId.isNullOrBlank()) {
+                return org.json.JSONObject().put("ok", false).put("error", "Missing save").toString()
+            }
+            return DeviceMusicHelper.finishWebSave(applicationContext, sessionId)
+        }
+
+        @JavascriptInterface
+        fun cancelSaveToMusic(sessionId: String?) {
+            sessionId?.let { DeviceMusicHelper.cancelWebSave(it) }
+        }
 
         /**
          * Opens real Google / YouTube pages in a WebView. We never collect passwords

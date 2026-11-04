@@ -26,6 +26,12 @@ declare global {
       supportsOnDeviceDownload?: () => boolean;
       shellVersion?: () => string;
       appVersionCode?: () => number;
+      supportsSaveToMusic?: () => boolean;
+      beginSaveToMusic?: (metaJson: string) => string;
+      appendSaveToMusic?: (sessionId: string, base64Chunk: string) => void;
+      finishSaveToMusic?: (sessionId: string) => string;
+      cancelSaveToMusic?: (sessionId: string) => void;
+      requestMediaPermission?: () => void;
       downloadYouTubeAudio?: (videoId: string, format: string, callbackId: string) => void;
       cancelDownload?: (callbackId: string) => void;
       releaseDownload?: (token: string) => void;

@@ -44,6 +44,18 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun musicFolder_isSharedOpenGraceMusicPath() {
+        val helper = com.example.data.downloader.DeviceMusicHelper
+        assertEquals("Open Grace Music", helper.MUSIC_SUBDIR)
+        assertEquals("Hallelujah", helper.sanitizeFileBase("Hallelujah"))
+        assertEquals("a b c", helper.sanitizeFileBase("a/b:c"))
+        assertEquals("Open Grace Music", helper.sanitizeFileBase("   "))
+        assertEquals("x".repeat(80), helper.sanitizeFileBase("x".repeat(200)))
+        assertEquals("mp3", helper.resolveExtension("audio/mpeg"))
+        assertEquals("flac", helper.resolveExtension("audio/flac"))
+    }
+
+    @Test
     fun audiophileFormats_and_mimeMapping_areAccurate() {
         assertEquals("audio/flac", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("FLAC"))
         assertEquals("audio/mp4", com.example.data.downloader.DeviceMusicHelper.resolveMimeType("ALAC"))
