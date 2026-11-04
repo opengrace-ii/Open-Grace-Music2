@@ -1,11 +1,4 @@
-import { apiUrl, fetchWithTimeout } from './converterApi';
-import { loadSavedYoutubeCookies, saveYoutubeCookies, sanitizeCookieHeader } from './youtubeCookies';
-import {
-  loadSavedYoutubeOauth,
-  loadYoutubeOauthRefreshToken,
-  saveYoutubeOauth,
-  type YoutubeOauthSession,
-} from './youtubeOauth';
+import { sanitizeCookieHeader } from './youtubeCookies';
 
 export type YoutubeSessionStatus = 'connected' | 'not_connected' | 'expired';
 
@@ -25,15 +18,6 @@ export function isNativeYouTubeLoginAvailable(): boolean {
   }
 }
 
-/** Native APK WebView login, or web TV device-code login. */
-export function isYouTubeLoginAvailable(): boolean {
-  return isNativeYouTubeLoginAvailable() || typeof window !== 'undefined';
-}
-
-function webSessionConnected(): boolean {
-  return Boolean(loadYoutubeOauthRefreshToken() || loadSavedYoutubeCookies());
-}
-
 export function youtubeSessionStatus(): YoutubeSessionStatus {
   try {
     const b = typeof window !== 'undefined' ? window.OgmAndroid : undefined;
@@ -43,20 +27,17 @@ export function youtubeSessionStatus(): YoutubeSessionStatus {
       if (b.hasYouTubeSession?.() === true) return 'connected';
     }
   } catch {
-    // older APK / PWA
+    // PWA
   }
-  if (webSessionConnected()) return 'connected';
   return 'not_connected';
 }
 
-/** Pull cookies the APK injected into the main frame only. Never logs the value. */
 export function pullNativeYoutubeCookies(): string {
   try {
     const fromWindow =
       typeof window !== 'undefined' ? String((window as { __ogmYtCookieHeader?: string }).__ogmYtCookieHeader || '') : '';
     const fromBridge = window.OgmAndroid?.getYouTubeCookieHeader?.() || '';
-    const h = sanitizeCookieHeader(fromWindow || fromBridge);
-    return h;
+    return sanitizeCookieHeader(fromWindow || fromBridge);
   } catch {
     return '';
   }
@@ -78,9 +59,6 @@ export function clearYouTubeSession(): void {
   } catch {
     // PWA
   }
-  saveYoutubeCookies('');
-  saveYoutubeOauth(null);
-  notifyYouTubeSession('not_connected');
 }
 
 const sessionListeners = new Set<(status: YoutubeSessionStatus) => void>();
@@ -108,93 +86,3 @@ export function statusLabel(status: YoutubeSessionStatus): string {
   if (status === 'expired') return 'Expired';
   return 'Not connected';
 }
-
-export interface YoutubeDeviceLoginStart {
-  userCode: string;
-  verificationUrl: string;
-  deviceCode: string;
-  interval: number;
-  expiresIn: number;
-  activateUrl: string;
-}
-
-export async function startWebYouTubeDeviceLogin(): Promise<YoutubeDeviceLoginStart> {
-  const res = await fetchWithTimeout(apiUrl('/api/youtube-oauth/start'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-    timeoutMs: 20_000,
-  });
-  const data = (await res.json()) as YoutubeDeviceLoginStart & { ok?: boolean; error?: string };
-  if (!res.ok || !data.userCode || !data.deviceCode) {
-    throw new Error(data.error || 'Could not start YouTube TV sign-in.');
-  }
-  return data;
-}
-
-export async function pollWebYouTubeDeviceLogin(deviceCode: string): Promise<{
-  status: 'pending' | 'slow_down' | 'expired' | 'denied' | 'error' | 'connected';
-  interval?: number;
-  error?: string;
-  session?: YoutubeOauthSession;
-}> {
-  const res = await fetchWithTimeout(apiUrl('/api/youtube-oauth/poll'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceCode }),
-    timeoutMs: 20_000,
-  });
-  const data = (await res.json()) as {
-    status?: string;
-    error?: string;
-    interval?: number;
-    refreshToken?: string;
-    accessToken?: string;
-    expiresAt?: number;
-  };
-  if (data.status === 'connected' && data.refreshToken) {
-    const session: YoutubeOauthSession = {
-      refreshToken: data.refreshToken,
-      accessToken: data.accessToken,
-      expiresAt: data.expiresAt,
-    };
-    saveYoutubeOauth(session);
-    notifyYouTubeSession('connected');
-    return { status: 'connected', session };
-  }
-  if (
-    data.status === 'pending' ||
-    data.status === 'slow_down' ||
-    data.status === 'expired' ||
-    data.status === 'denied' ||
-    data.status === 'error'
-  ) {
-    return { status: data.status, interval: data.interval, error: data.error };
-  }
-  return { status: 'error', error: data.error || 'Unexpected sign-in response.' };
-}
-
-export function openYouTubeActivateTab(verificationUrl: string, userCode?: string): void {
-  let url = (verificationUrl || 'https://www.google.com/device').trim();
-  if (!/^https:\/\//i.test(url)) url = 'https://www.google.com/device';
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    if (
-      host !== 'google.com' &&
-      !host.endsWith('.google.com') &&
-      host !== 'youtube.com' &&
-      !host.endsWith('.youtube.com')
-    ) {
-      url = 'https://www.google.com/device';
-    }
-  } catch {
-    url = 'https://www.google.com/device';
-  }
-  const code = (userCode || '').replace(/\s/g, '');
-  if (code && /google\.com\/device/i.test(url) && !/[?&]user_code=/.test(url)) {
-    url += `${url.includes('?') ? '&' : '?'}user_code=${encodeURIComponent(code)}`;
-  }
-  window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-export { loadYoutubeOauthRefreshToken, loadSavedYoutubeOauth };

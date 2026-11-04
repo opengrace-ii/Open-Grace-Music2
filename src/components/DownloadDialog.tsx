@@ -4,7 +4,6 @@ import {
   Youtube,
   Clipboard,
   Loader2,
-  KeyRound,
   AlertCircle,
   Disc3,
   Radio,
@@ -12,13 +11,13 @@ import {
 } from 'lucide-react';
 import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
-import { loadSavedYoutubeCookies, saveYoutubeCookies } from '../services/youtubeCookies';
 import {
   apiUrl,
   fetchWithTimeout,
   humanizeConverterError,
   studioFormatWarning,
 } from '../services/converterApi';
+import { apkDownloadLandingUrl } from '../utils/apkDownload';
 
 interface DownloadDialogProps {
   isOpen: boolean;
@@ -35,7 +34,6 @@ interface DownloadDialogProps {
     format: AudiophileFormatId,
     bitrateKbps: number,
     saveToDeviceFolder: boolean,
-    cookies?: string,
     customTitle?: string,
     customArtist?: string
   ) => void;
@@ -59,8 +57,6 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   const [selectedFormat, setSelectedFormat] = useState<AudiophileFormatId>('MP3');
   const [mp3Bitrate, setMp3Bitrate] = useState<number>(320);
   const [saveToPhoneFolder, setSaveToPhoneFolder] = useState(true);
-  const [showCookieBox, setShowCookieBox] = useState(false);
-  const [cookies, setCookies] = useState('');
   const [previewData, setPreviewData] = useState<{
     valid: boolean;
     isYouTube: boolean;
@@ -71,14 +67,6 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-
-  useEffect(() => {
-    setCookies(loadSavedYoutubeCookies());
-  }, []);
-
-  useEffect(() => {
-    saveYoutubeCookies(cookies);
-  }, [cookies]);
 
   useEffect(() => {
     if (initialUrl) {
@@ -171,7 +159,6 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
       selectedFormat,
       effectiveBitrate,
       saveToPhoneFolder,
-      cookies.trim() || undefined,
       previewData?.title,
       previewData?.author
     );
@@ -339,29 +326,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
               <span>EXPORT .{activeFormatObj.extension.toUpperCase()} TO DEVICE</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setShowCookieBox(!showCookieBox)}
-              className={`cassette-btn px-3 py-1.5 text-xs font-mono ${
-                showCookieBox ? 'cassette-btn-engaged' : 'text-[#9fa396]'
-              }`}
-            >
-              <KeyRound className="w-3.5 h-3.5 text-[#e2c986]" />
-              <span>STUDIO KEY</span>
-            </button>
           </div>
-
-          {showCookieBox && (
-            <div className="cassette-window p-2.5 rounded-xl">
-              <textarea
-                rows={2}
-                value={cookies}
-                onChange={(e) => setCookies(e.target.value)}
-                placeholder="Chrome youtube.com cookies (Netscape or header)"
-                className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
-              />
-            </div>
-          )}
 
           {/* Recording Progress Meter */}
           {isDownloading && (
@@ -389,7 +354,16 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
               <span className="cassette-led cassette-led-rec shrink-0 mt-1" />
               <div className="min-w-0">
                 <p className="leading-snug">{downloadError}</p>
-                <p className="mt-1 text-[11px] font-mono text-[#9fa396]">Details are in Activity log (More).</p>
+                {/Open the APK/i.test(downloadError) ? (
+                  <a
+                    href={apkDownloadLandingUrl()}
+                    className="mt-2 inline-block text-[11px] font-mono text-[#b8d99e] underline"
+                  >
+                    Open the APK
+                  </a>
+                ) : (
+                  <p className="mt-1 text-[11px] font-mono text-[#9fa396]">Details are in Activity log (More).</p>
+                )}
               </div>
             </div>
           )}

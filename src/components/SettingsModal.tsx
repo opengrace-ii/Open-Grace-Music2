@@ -6,8 +6,9 @@ import {
   resolveConverterApiBaseUrl,
   setSavedConverterServerUrl,
 } from '../services/converterServerUrl';
-import { checkConverterApiAvailable } from '../services/converterApi';
+import { checkConverterApiAvailable, fetchRecorderPresence } from '../services/converterApi';
 import { fetchAiStatus, loadLocalAiKeys, saveAiKeys, saveLocalAiKeys } from '../services/ogmAiService';
+import { apkDownloadLandingUrl } from '../utils/apkDownload';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   });
   const [aiSaving, setAiSaving] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
+  const [recorderOnline, setRecorderOnline] = useState<boolean | null>(null);
+  const [recorderWorkers, setRecorderWorkers] = useState(0);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -35,7 +38,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     setGeminiKey('');
     setNvidiaKey('');
     setAiMessage(null);
+    setRecorderOnline(null);
     void fetchAiStatus().then(setAiStatus);
+    void fetchRecorderPresence().then((p) => {
+      setRecorderOnline(p.online);
+      setRecorderWorkers(p.workers);
+    });
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -49,6 +57,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
     try {
       const ok = await checkConverterApiAvailable();
       setHealthOk(ok);
+      const presence = await fetchRecorderPresence();
+      setRecorderOnline(presence.online);
+      setRecorderWorkers(presence.workers);
       onSaved?.();
     } finally {
       setChecking(false);
@@ -95,6 +106,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
           <p className="text-[11px] text-[#8a877f] leading-relaxed">
             Leave blank for this site ({effective || DEFAULT_OGM_PUBLIC_BASE_URL}).
           </p>
+
+          {recorderOnline === true && (
+            <p className="flex items-center gap-2 text-xs text-[#86efac]">
+              <CheckCircle2 className="w-4 h-4" /> Recorder worker online ({recorderWorkers})
+            </p>
+          )}
+          {recorderOnline === false && (
+            <p className="flex items-start gap-2 text-xs text-[#fcd34d]">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              No recorder is online.{' '}
+              <a href={apkDownloadLandingUrl()} className="underline text-[#b8d99e]">
+                Open the APK
+              </a>{' '}
+              to record on a phone.
+            </p>
+          )}
 
           {healthOk === true && (
             <p className="flex items-center gap-2 text-xs text-[#86efac]">

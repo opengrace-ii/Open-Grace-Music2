@@ -7,12 +7,22 @@ import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
-import { runConvertPipeline } from './server/convertPipeline.ts';
+import { resolveFormatSpec } from './server/audioFormats.ts';
 import {
-  pollYoutubeDeviceLogin,
-  publicDeviceStart,
-  startYoutubeDeviceLogin,
-} from './server/youtubeTvOauth.ts';
+  claimRecorderJob,
+  configuredWorkerSecret,
+  enqueueRecorderJob,
+  failRecorderJob,
+  getRecorderJob,
+  noteWorkerHeartbeat,
+  normalizeSecret,
+  publicJobStatus,
+  recorderPresence,
+  storeRecorderResult,
+  takeRecorderResult,
+  updateRecorderProgress,
+  workerSecretMatches,
+} from './server/recorderJobs.ts';
 import { browseYoutubeHome, searchYoutubeVideos } from './server/youtubeSearch.ts';
 import { fetchYoutubeTranscript } from './server/youtubeTranscript.ts';
 import {
@@ -36,131 +46,15 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 43123;
 
 app.use(express.json({ limit: '10mb' }));
 
-const YT_DLP_TIMEOUT_MS = 300_000;
-const YT_DLP_MP3_TIMEOUT_MS = 90_000;
-const FFMPEG_TIMEOUT_MS = 240_000;
-const FFMPEG_MP3_TIMEOUT_MS = 90_000;
-
-type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
-
-interface ConvertJobRecord {
-  id: string;
-  stage: ConvertStage;
-  percent: number;
-  message: string;
-  error?: string;
-  code?: ConvertErrorCode;
-  resultPath?: string;
-  workDir?: string;
-  responseMeta?: Record<string, string>;
-  createdAt: number;
-}
-
-const convertJobs = new Map<string, ConvertJobRecord>();
-
-function pruneOldConvertJobs() {
-  const cutoff = Date.now() - 45 * 60 * 1000;
-  for (const [id, job] of convertJobs) {
-    if (job.createdAt < cutoff) {
-      if (job.workDir) {
-        try {
-          fs.rmSync(job.workDir, { recursive: true, force: true });
-        } catch {
-          // ignore
-        }
-      }
-      convertJobs.delete(id);
-    }
-  }
-}
-
-function newConvertJobId(): string {
-  return `cj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-type ConvertErrorCode = 'YOUTUBE_BOT_CHECK' | 'TIMEOUT' | 'FFMPEG_FAILED' | 'EXTRACTION_FAILED';
-
-function pipelineErrorText(err: unknown): string {
-  if (!err || typeof err !== 'object') return String(err);
-  const e = err as { message?: string; stderr?: string | Buffer };
-  const stderr = e.stderr ? String(e.stderr) : '';
-  return [stderr, e.message].filter(Boolean).join(' ').trim();
-}
-
-function classifyPipelineError(
-  err: unknown,
-  phase: 'extract' | 'ffmpeg'
-): { code: ConvertErrorCode; error: string } {
-  const raw = pipelineErrorText(err);
-  const lower = raw.toLowerCase();
-  const killed = !!(err && typeof err === 'object' && (err as { killed?: boolean }).killed);
-
-  if (killed || lower.includes('timed out') || lower.includes('etimedout')) {
-    return {
-      code: 'TIMEOUT',
-      error:
-        'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
-    };
-  }
-  if (
-    /login_required|sign in to confirm|please sign in|not a bot|http error 429|http error 403|cookies are needed|confirm your age/i.test(
-      lower
-    )
-  ) {
-    return {
-      code: 'YOUTUBE_BOT_CHECK',
-      error:
-        'YouTube asked for a login (LOGIN_REQUIRED). Converter host is blocked.',
-    };
-  }
-  if (phase === 'ffmpeg') {
-    return {
-      code: 'FFMPEG_FAILED',
-      error: `Audio mastering failed: ${raw.slice(0, 200) || 'FFmpeg error'}`,
-    };
-  }
-  return {
-    code: 'EXTRACTION_FAILED',
-    error: raw.slice(0, 220) || 'Could not extract an audio stream for this link.',
-  };
-}
-
 app.get('/api/health', (_req, res) => {
   const ai = aiKeyStatus();
-  res.json({ ok: true, service: 'ogm-converter', ai: { gemini: ai.gemini, nvidia: ai.nvidia } });
-});
-
-app.post('/api/youtube-oauth/start', async (_req, res) => {
-  try {
-    const started = await startYoutubeDeviceLogin();
-    return res.json({ ok: true, ...publicDeviceStart(started) });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Could not start YouTube TV sign-in';
-    return res.status(502).json({ ok: false, error: message });
-  }
-});
-
-app.post('/api/youtube-oauth/poll', async (req, res) => {
-  const deviceCode = String(req.body?.deviceCode || '').trim();
-  if (!deviceCode) {
-    return res.status(400).json({ ok: false, error: 'deviceCode is required' });
-  }
-  try {
-    const result = await pollYoutubeDeviceLogin(deviceCode);
-    if (result.status === 'connected') {
-      return res.json({
-        ok: true,
-        status: 'connected',
-        refreshToken: result.refreshToken,
-        accessToken: result.accessToken,
-        expiresAt: result.expiresAt,
-      });
-    }
-    return res.json({ ok: true, ...result });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Could not check YouTube TV sign-in';
-    return res.status(502).json({ ok: false, status: 'error', error: message });
-  }
+  const rec = recorderPresence();
+  res.json({
+    ok: true,
+    service: 'ogm-converter',
+    ai: { gemini: ai.gemini, nvidia: ai.nvidia },
+    recorder: { online: rec.online, workers: rec.workers, secretConfigured: Boolean(configuredWorkerSecret()) },
+  });
 });
 
 app.get('/api/youtube/search', async (req, res) => {
@@ -221,7 +115,10 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Ogm-Worker-Secret, X-Ogm-Worker-Id'
+  );
   res.setHeader('Access-Control-Expose-Headers', AUDIO_EXPOSE_HEADERS);
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -300,116 +197,7 @@ async function fetchYouTubeOEmbed(ytId: string): Promise<{
   return { title, author, thumbnailUrl };
 }
 
-// Build clean search queries for SoundCloud exact-song fallback when YouTube blocks datacenter IP
-function buildSearchQueries(rawTitle: string, rawAuthor: string): string[] {
-  const cleanTitle = rawTitle
-    .replace(/\[[^\]]*\]/g, ' ')
-    .replace(/\|.*$/g, ' ')
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(
-      /\b(?:official\s+music\s+video|official\s+video|official\s+audio|lyric\s+video|4k|hd|hq|long\s+version)\b/gi,
-      ' '
-    )
-    .replace(/[-–—|]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const cleanAuthor = rawAuthor
-    .replace(/\b(?:official|vevo|music|media|records|channel|tv|topic)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const songPart = rawTitle
-    .split(/[-–—|]/)[1]
-    ?.replace(/\[[^\]]*\]/g, ' ')
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const queries: string[] = [];
-  const add = (q: string) => {
-    const trimmed = q.replace(/\s+/g, ' ').trim();
-    if (trimmed.length >= 8 && !queries.includes(trimmed)) queries.push(trimmed);
-  };
-
-  if (cleanAuthor && songPart) add(`${cleanAuthor} ${songPart}`);
-  if (cleanTitle) add(cleanTitle);
-  if (cleanAuthor && cleanTitle) add(`${cleanAuthor} ${cleanTitle}`);
-  if (songPart) add(songPart);
-
-  return queries.length > 0 ? queries : [rawTitle.replace(/\s+/g, ' ').trim()];
-}
-
-export interface AudioFormatSpec {
-  format: 'FLAC' | 'ALAC' | 'DSD' | 'WAV' | 'MP3';
-  extension: string;
-  mimeType: string;
-  sampleRate: number;
-  bitDepth: string;
-  bitrateLabel: string;
-  ffmpegArgs: string[];
-}
-
-export function resolveFormatSpec(rawFormat?: string, rawBitrate?: number): AudioFormatSpec {
-  const fmt = (rawFormat || 'MP3').toUpperCase().trim();
-  const mp3Bitrate =
-    rawBitrate && [128, 192, 256, 320].includes(Number(rawBitrate)) ? Number(rawBitrate) : 320;
-
-  switch (fmt) {
-    case 'FLAC':
-      return {
-        format: 'FLAC',
-        extension: 'flac',
-        mimeType: 'audio/flac',
-        sampleRate: 96000,
-        bitDepth: '24-bit',
-        bitrateLabel: '24-bit / 96 kHz Lossless (~2300 kbps)',
-        ffmpegArgs: ['-vn', '-c:a', 'flac', '-sample_fmt', 's32', '-ar', '96000', '-compression_level', '8'],
-      };
-    case 'ALAC':
-      return {
-        format: 'ALAC',
-        extension: 'm4a',
-        mimeType: 'audio/mp4',
-        sampleRate: 96000,
-        bitDepth: '24-bit',
-        bitrateLabel: '24-bit / 96 kHz Apple Lossless ALAC',
-        ffmpegArgs: ['-vn', '-c:a', 'alac', '-sample_fmt', 's32p', '-ar', '96000'],
-      };
-    case 'DSD':
-    case 'DSF':
-      return {
-        format: 'DSD',
-        extension: 'wav',
-        mimeType: 'audio/wav',
-        sampleRate: 192000,
-        bitDepth: '24-bit',
-        bitrateLabel: '24-bit / 192 kHz Hi-Res Master DSD/PCM',
-        ffmpegArgs: ['-vn', '-c:a', 'pcm_s24le', '-ar', '192000'],
-      };
-    case 'WAV':
-      return {
-        format: 'WAV',
-        extension: 'wav',
-        mimeType: 'audio/wav',
-        sampleRate: 48000,
-        bitDepth: '24-bit',
-        bitrateLabel: '24-bit / 48 kHz Uncompressed PCM',
-        ffmpegArgs: ['-vn', '-c:a', 'pcm_s24le', '-ar', '48000'],
-      };
-    case 'MP3':
-    default:
-      return {
-        format: 'MP3',
-        extension: 'mp3',
-        mimeType: 'audio/mpeg',
-        sampleRate: 48000,
-        bitDepth: '16-bit',
-        bitrateLabel: `${mp3Bitrate} kbps CBR Master`,
-        ffmpegArgs: ['-vn', '-c:a', 'libmp3lame', '-b:a', `${mp3Bitrate}k`, '-ar', '48000'],
-      };
-  }
-}
+export { resolveFormatSpec };
 
 // API: Validate URL & Resolve Metadata (/api/validate-url and /api/media-info)
 async function handleValidateUrl(req: express.Request, res: express.Response) {
@@ -492,267 +280,203 @@ app.get('/api/validate-url', handleValidateUrl);
 app.post('/api/validate-url', handleValidateUrl);
 app.get('/api/media-info', handleValidateUrl);
 
-function parseConvertRequest(req: express.Request) {
-  const url = ((req.body && req.body.url) || (req.query.url as string) || '').trim();
-  const requestedFormat =
-    (req.body && req.body.format) ||
-    (req.query.format as string) ||
-    (req.path.includes('convert-mp3') ? 'MP3' : 'MP3');
-  const requestedBitrate = Number((req.body && req.body.bitrate) || req.query.bitrate || 320);
-  const userCookies = String((req.body && req.body.cookies) || '').replace(/[\r\n\0]/g, '').trim();
-  const youtubeOauthRefresh = String(
-    (req.body && (req.body.youtubeOauth || req.body.youtubeOauthRefresh)) || ''
-  ).trim();
-  const customTitle = ((req.body && req.body.title) || (req.query.title as string) || '').trim();
-  const customArtist = ((req.body && req.body.artist) || (req.query.artist as string) || '').trim();
-  return { url, requestedFormat, requestedBitrate, userCookies, youtubeOauthRefresh, customTitle, customArtist };
+function workerSecretFromRequest(req: express.Request): string {
+  const header = String(req.headers.authorization || '');
+  const bearer = header.match(/^Bearer\s+(.+)$/i)?.[1];
+  const alt = String(req.headers['x-ogm-worker-secret'] || '');
+  return normalizeSecret(bearer || alt);
 }
 
-function pipelineParamsFromRequest(req: express.Request) {
-  const parsed = parseConvertRequest(req);
-  const formatSpec = resolveFormatSpec(parsed.requestedFormat, parsed.requestedBitrate);
-  return {
-    ...parsed,
-    formatSpec,
-    pipelineParams: {
-      url: parsed.url,
-      formatSpec,
-      requestedBitrate: parsed.requestedBitrate,
-      userCookies: parsed.userCookies,
-      youtubeOauthRefresh: parsed.youtubeOauthRefresh,
-      customTitle: parsed.customTitle,
-      customArtist: parsed.customArtist,
-      extractYouTubeId,
-      fetchYouTubeOEmbed,
-      buildSearchQueries,
-      ytDlpTimeoutMs: YT_DLP_TIMEOUT_MS,
-      ytDlpMp3TimeoutMs: YT_DLP_MP3_TIMEOUT_MS,
-      ffmpegTimeoutMs: FFMPEG_TIMEOUT_MS,
-      ffmpegMp3TimeoutMs: FFMPEG_MP3_TIMEOUT_MS,
-    },
-  };
-}
-
-function streamConvertResult(
-  res: express.Response,
-  result: Awaited<ReturnType<typeof runConvertPipeline>>,
-  formatSpec: ReturnType<typeof resolveFormatSpec>
-) {
-  if (!result.ok) {
-    try {
-      fs.rmSync(result.workDir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
-    const status = result.code === 'EXTRACTION_FAILED' ? 502 : 500;
-    return res.status(status).json({ error: result.error, code: result.code });
-  }
-
-  const stat = fs.statSync(result.outputFilePath);
-  const cleanup = () => {
-    try {
-      fs.rmSync(result.workDir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
-  };
-
-  for (const [key, value] of Object.entries(result.responseMeta)) {
-    if (key !== 'Content-Type') {
-      res.setHeader(key, value);
-    }
-  }
-  res.setHeader('Content-Type', formatSpec.mimeType);
-  res.setHeader('Content-Length', stat.size.toString());
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${encodeURIComponent(result.safeFilename)}.${formatSpec.extension}"`
-  );
-
-  const readStream = fs.createReadStream(result.outputFilePath);
-  readStream.on('close', cleanup);
-  readStream.on('error', cleanup);
-  return readStream.pipe(res);
-}
-
-// API: Audiophile Lossless & Hi-Res Audio Extractor & Transcoder (/api/convert-audio and /api/convert-mp3)
-async function handleConvertAudio(req: express.Request, res: express.Response) {
-  const { url, formatSpec, pipelineParams } = pipelineParamsFromRequest(req);
-  if (!url) {
-    return res.status(400).json({ error: 'url is required' });
-  }
-
-  const result = await runConvertPipeline(pipelineParams);
-  if (!result.ok) {
-    console.error('[convert-audio] Failed:', result.error);
-  }
-  return streamConvertResult(res, result, formatSpec);
-}
-
-async function handleConvertAudioStart(req: express.Request, res: express.Response) {
-  pruneOldConvertJobs();
-  const { url, formatSpec, pipelineParams } = pipelineParamsFromRequest(req);
-  if (!url) {
-    return res.status(400).json({ error: 'url is required' });
-  }
-
-  const jobId = newConvertJobId();
-  const job: ConvertJobRecord = {
-    id: jobId,
-    stage: 'validate',
-    percent: 5,
-    message: 'Queued for studio conversion…',
-    createdAt: Date.now(),
-  };
-  convertJobs.set(jobId, job);
-
-  res.json({ jobId, format: formatSpec.format });
-
-  void (async () => {
-    const result = await runConvertPipeline(pipelineParams, (stage, percent, message) => {
-      const current = convertJobs.get(jobId);
-      if (!current || current.stage === 'done' || current.stage === 'error') return;
-      current.stage = stage;
-      current.percent = percent;
-      current.message = message;
-      convertJobs.set(jobId, current);
+function requireWorkerAuth(req: express.Request, res: express.Response): boolean {
+  if (!configuredWorkerSecret()) {
+    res.status(503).json({
+      error: 'Recorder worker secret is not set on this host (OGM_WORKER_SECRET).',
+      code: 'WORKER_SECRET_MISSING',
     });
-
-    const current = convertJobs.get(jobId);
-    if (!current) return;
-
-    if (!result.ok) {
-      current.stage = 'error';
-      current.percent = 100;
-      current.message = result.error;
-      current.error = result.error;
-      current.code = result.code;
-      current.workDir = result.workDir;
-      convertJobs.set(jobId, current);
-      try {
-        fs.rmSync(result.workDir, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
-      return;
-    }
-
-    current.stage = 'done';
-    current.percent = 100;
-    current.message = 'Conversion complete — ready to download';
-    current.resultPath = result.outputFilePath;
-    current.workDir = result.workDir;
-    current.responseMeta = result.responseMeta;
-    convertJobs.set(jobId, current);
-  })();
+    return false;
+  }
+  if (!workerSecretMatches(workerSecretFromRequest(req))) {
+    res.status(401).json({ error: 'Invalid worker secret.', code: 'WORKER_UNAUTHORIZED' });
+    return false;
+  }
+  return true;
 }
 
-function handleConvertJobStatus(req: express.Request, res: express.Response) {
-  const jobId = String(req.params.jobId || '');
-  const job = convertJobs.get(jobId);
-  if (!job) {
-    return res.status(404).json({ error: 'Conversion job not found or expired' });
-  }
-  return res.json({
-    jobId: job.id,
-    stage: job.stage,
-    percent: job.percent,
-    message: job.message,
-    done: job.stage === 'done',
-    error: job.error,
-    code: job.code,
+function workerIdFromRequest(req: express.Request): string {
+  const q = String(req.query.workerId || '');
+  const bodyId =
+    req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? String(req.body.workerId || '') : '';
+  const header = String(req.headers['x-ogm-worker-id'] || '');
+  return (header || bodyId || q || 'worker').replace(/[^\w.-]/g, '').slice(0, 64) || 'worker';
+}
+
+app.get('/api/recorder/presence', (_req, res) => {
+  return res.json({ ok: true, ...recorderPresence() });
+});
+
+app.post('/api/recorder/heartbeat', (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  noteWorkerHeartbeat(workerIdFromRequest(req));
+  return res.json({ ok: true, ...recorderPresence() });
+});
+
+app.post('/api/recorder/jobs', (req, res) => {
+  const created = enqueueRecorderJob({
+    url: String(req.body?.url || ''),
+    format: String(req.body?.format || 'MP3'),
+    bitrate: Number(req.body?.bitrate) || 320,
+    title: String(req.body?.title || ''),
+    artist: String(req.body?.artist || ''),
   });
-}
-
-function handleConvertJobDownload(req: express.Request, res: express.Response) {
-  const jobId = String(req.params.jobId || '');
-  const job = convertJobs.get(jobId);
-  if (!job || job.stage !== 'done' || !job.resultPath || !job.workDir) {
-    return res.status(404).json({ error: 'Converted file not ready yet' });
+  if (!created.ok) {
+    return res.status(created.code === 'BUSY' ? 429 : 400).json({ error: created.error, code: created.code });
   }
+  return res.json({ jobId: created.job.id, format: created.job.format });
+});
 
-  const stat = fs.statSync(job.resultPath);
-  const cleanup = () => {
-    convertJobs.delete(jobId);
-    try {
-      fs.rmSync(job.workDir!, { recursive: true, force: true });
-    } catch {
-      // ignore
+app.get('/api/recorder/claim', async (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  const waitMs = Math.min(25_000, Math.max(0, parseInt(String(req.query.wait || '0'), 10) || 0));
+  const job = await claimRecorderJob(workerIdFromRequest(req), waitMs);
+  if (!job) return res.status(204).end();
+  return res.json({
+    job: {
+      id: job.id,
+      url: job.url,
+      format: job.format,
+      bitrate: job.bitrate,
+      title: job.title,
+      artist: job.artist,
+    },
+  });
+});
+
+app.post('/api/recorder/jobs/:jobId/progress', (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  updateRecorderProgress(job, {
+    stage: req.body?.stage,
+    percent: req.body?.percent,
+    message: req.body?.message,
+  });
+  return res.json({ ok: true, ...publicJobStatus(job) });
+});
+
+app.post('/api/recorder/jobs/:jobId/fail', (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  failRecorderJob(job, String(req.body?.error || 'Recording failed'), String(req.body?.code || 'EXTRACTION_FAILED'));
+  return res.json({ ok: true });
+});
+
+app.post(
+  '/api/recorder/jobs/:jobId/result',
+  express.raw({ type: () => true, limit: '80mb' }),
+  (req, res) => {
+    if (!requireWorkerAuth(req, res)) return;
+    const job = getRecorderJob(String(req.params.jobId || ''));
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
     }
-  };
-
-  if (job.responseMeta) {
-    for (const [key, value] of Object.entries(job.responseMeta)) {
-      if (key !== 'Content-Type') {
-        res.setHeader(key, value);
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+    const meta: Record<string, string> = {};
+    for (const key of [
+      'content-type',
+      'x-audio-id',
+      'x-audio-title',
+      'x-audio-artist',
+      'x-audio-duration',
+      'x-audio-format',
+      'x-audio-extension',
+      'x-audio-sample-rate',
+      'x-audio-bit-depth',
+      'x-audio-bitrate-label',
+      'x-audio-codec',
+      'x-audio-container',
+      'x-audio-source',
+      'x-audio-thumbnail',
+    ]) {
+      const value = req.headers[key];
+      if (typeof value === 'string' && value) {
+        meta[key === 'content-type' ? 'Content-Type' : headerCanonical(key)] = value;
       }
     }
+    if (!meta['Content-Type']) meta['Content-Type'] = 'application/octet-stream';
+    const stored = storeRecorderResult(job, bytes, meta);
+    if (!stored.ok) return res.status(400).json({ error: stored.error });
+    return res.json({ ok: true });
   }
-  const ext = job.responseMeta?.['X-Audio-Extension'] || 'mp3';
-  const titleHeader = job.responseMeta?.['X-Audio-Title'];
+);
+
+function headerCanonical(key: string): string {
+  return key
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('-');
+}
+
+app.get('/api/recorder/jobs/:jobId', (req, res) => {
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) {
+    return res.status(404).json({ error: 'Recording job not found or expired', code: 'NOT_FOUND' });
+  }
+  return res.json(publicJobStatus(job));
+});
+
+app.get('/api/recorder/jobs/:jobId/file', (req, res) => {
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) {
+    return res.status(404).json({ error: 'Recording job not found or expired' });
+  }
+  const taken = takeRecorderResult(job);
+  if (!taken) {
+    return res.status(404).json({ error: 'Recorded file not ready yet' });
+  }
+  const stat = fs.statSync(taken.path);
+  for (const [key, value] of Object.entries(taken.meta)) {
+    if (key !== 'Content-Type') res.setHeader(key, value);
+  }
+  const ext = taken.meta['X-Audio-Extension'] || 'bin';
+  const titleHeader = taken.meta['X-Audio-Title'];
   const safeName = titleHeader ? decodeURIComponent(titleHeader) : 'OpenGraceMusic_Track';
-  res.setHeader('Content-Type', job.responseMeta?.['Content-Type'] || 'application/octet-stream');
+  res.setHeader('Content-Type', taken.meta['Content-Type'] || 'application/octet-stream');
   res.setHeader('Content-Length', stat.size.toString());
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${encodeURIComponent(safeName.replace(/[^a-zA-Z0-9._ -]/g, '').trim() || 'track')}.${ext}"`
   );
-
-  const readStream = fs.createReadStream(job.resultPath);
-  readStream.on('close', cleanup);
-  readStream.on('error', cleanup);
-  return readStream.pipe(res);
-}
-
-function handleConvertJobEvents(req: express.Request, res: express.Response) {
-  const jobId = String(req.params.jobId || '');
-  const job = convertJobs.get(jobId);
-  if (!job) {
-    return res.status(404).json({ error: 'Conversion job not found or expired' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  const send = () => {
-    const current = convertJobs.get(jobId);
-    if (!current) {
-      res.write(`event: error\ndata: ${JSON.stringify({ error: 'job expired' })}\n\n`);
-      res.end();
-      return;
-    }
-    res.write(
-      `event: progress\ndata: ${JSON.stringify({
-        stage: current.stage,
-        percent: current.percent,
-        message: current.message,
-        done: current.stage === 'done',
-        error: current.error,
-        code: current.code,
-      })}\n\n`
-    );
-    if (current.stage === 'done' || current.stage === 'error') {
-      clearInterval(timer);
-      res.end();
+  const stream = fs.createReadStream(taken.path);
+  const cleanup = () => {
+    try {
+      fs.rmSync(path.dirname(taken.path), { recursive: true, force: true });
+    } catch {
+      // ignore
     }
   };
+  stream.on('close', cleanup);
+  stream.on('error', cleanup);
+  return stream.pipe(res);
+});
 
-  send();
-  const timer = setInterval(send, 2000);
-  req.on('close', () => clearInterval(timer));
-}
+const CONVERT_GONE = {
+  error: 'This host does not download YouTube. Use the APK on a phone, or a recorder worker.',
+  code: 'RECORDER_REQUIRED',
+};
 
-app.post('/api/convert-audio/start', handleConvertAudioStart);
-app.get('/api/convert-audio/job/:jobId', handleConvertJobStatus);
-app.get('/api/convert-audio/job/:jobId/download', handleConvertJobDownload);
-app.get('/api/convert-audio/job/:jobId/events', handleConvertJobEvents);
-
-app.post('/api/convert-audio', handleConvertAudio);
-app.get('/api/convert-audio', handleConvertAudio);
-app.post('/api/convert-mp3', handleConvertAudio);
-app.get('/api/convert-mp3', handleConvertAudio);
+app.post('/api/convert-audio/start', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.get('/api/convert-audio/job/:jobId', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.get('/api/convert-audio/job/:jobId/download', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.get('/api/convert-audio/job/:jobId/events', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.post('/api/convert-audio', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.get('/api/convert-audio', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.post('/api/convert-mp3', (_req, res) => res.status(410).json(CONVERT_GONE));
+app.get('/api/convert-mp3', (_req, res) => res.status(410).json(CONVERT_GONE));
 
 // API: Transcode already-downloaded audio bytes (no YouTube access, so no bot-check).
 // Used by the Android APK after its on-device download to produce FLAC/ALAC/WAV/MP3.

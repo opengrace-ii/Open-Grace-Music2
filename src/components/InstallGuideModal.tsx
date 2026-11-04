@@ -194,7 +194,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Protect notice — tap <strong>Install anyway</strong> only if you trust this source.
             </li>
             <li>
-              Connect YouTube, play the video, then Record. Google may still block. Reinstall 1.3.5 once if this APK is older.
+              Play the video, then Record. Phone capture still works on this APK. Web Record uses the PC recorder. Reinstall 1.3.5 once if this APK is older.
             </li>
             <li>
               Allow <strong>Notifications</strong> (Android 13+) so background play can show
