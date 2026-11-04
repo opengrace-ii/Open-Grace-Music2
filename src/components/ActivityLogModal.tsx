@@ -10,17 +10,22 @@ import {
   Upload,
   RefreshCw,
   Info,
+  Copy,
 } from 'lucide-react';
 import {
   ActivityEntry,
   ActivityResult,
   clearActivityLog,
+  formatActivityEntryText,
+  formatActivityLogDump,
   formatBytes,
   formatIst,
   formatLocal,
   shortenSource,
   subscribeActivityLog,
 } from '../services/activityLog';
+import { copyTextToClipboard } from '../utils/copyText';
+import { formatOgmVersionLabel, OGM_GIT_SHA, OGM_WEB_VERSION, readApkShellVersion } from '../version';
 
 interface ActivityLogModalProps {
   isOpen: boolean;
@@ -75,6 +80,7 @@ function ActionIcon({ action }: { action: ActivityEntry['action'] }) {
 export const ActivityLogModal: React.FC<ActivityLogModalProps> = ({ isOpen, onClose }) => {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -83,8 +89,29 @@ export const ActivityLogModal: React.FC<ActivityLogModalProps> = ({ isOpen, onCl
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) setConfirmClear(false);
+    if (!isOpen) {
+      setConfirmClear(false);
+      setCopiedKey(null);
+    }
   }, [isOpen]);
+
+  const flashCopied = (key: string) => {
+    setCopiedKey(key);
+    window.setTimeout(() => {
+      setCopiedKey((cur) => (cur === key ? null : cur));
+    }, 1600);
+  };
+
+  const handleCopyEntry = async (entry: ActivityEntry) => {
+    const ok = await copyTextToClipboard(formatActivityEntryText(entry));
+    if (ok) flashCopied(entry.id);
+  };
+
+  const handleCopyAll = async () => {
+    const versionLine = formatOgmVersionLabel(OGM_WEB_VERSION, OGM_GIT_SHA, readApkShellVersion());
+    const ok = await copyTextToClipboard(formatActivityLogDump(entries, versionLine));
+    if (ok) flashCopied('all');
+  };
 
   if (!isOpen) return null;
 
@@ -124,16 +151,26 @@ export const ActivityLogModal: React.FC<ActivityLogModalProps> = ({ isOpen, onCl
               : 'No events recorded yet'}
           </span>
           {entries.length > 0 && (
-            <button
-              type="button"
-              onClick={handleClear}
-              className={`cassette-btn px-2.5 py-1.5 text-[11px] font-mono ${
-                confirmClear ? 'text-[#f0a1a1] border-[#5c2b2b]' : 'text-[#9fa396]'
-              }`}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>{confirmClear ? 'Tap again to clear' : 'Clear log'}</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => void handleCopyAll()}
+                className="cassette-btn px-2.5 py-1.5 text-[11px] font-mono text-[#9fa396]"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{copiedKey === 'all' ? 'Copied' : 'Copy all'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleClear}
+                className={`cassette-btn px-2.5 py-1.5 text-[11px] font-mono ${
+                  confirmClear ? 'text-[#f0a1a1] border-[#5c2b2b]' : 'text-[#9fa396]'
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{confirmClear ? 'Tap again to clear' : 'Clear log'}</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -192,10 +229,20 @@ export const ActivityLogModal: React.FC<ActivityLogModalProps> = ({ isOpen, onCl
                         {shortenSource(entry.source, 80)}
                       </p>
                     )}
-                    <p className="text-[10px] font-mono text-[#686b60] mt-1.5">
-                      {formatIst(entry.ts)}
-                      <span className="text-[#4a4e43]"> · device {formatLocal(entry.ts)}</span>
-                    </p>
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-mono text-[#686b60] min-w-0">
+                        {formatIst(entry.ts)}
+                        <span className="text-[#4a4e43]"> · device {formatLocal(entry.ts)}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyEntry(entry)}
+                        className="cassette-btn px-2 py-1 text-[10px] font-mono text-[#9fa396] shrink-0"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedKey === entry.id ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

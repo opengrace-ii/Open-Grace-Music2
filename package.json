@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.4.2",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -21,7 +21,8 @@
     "test:dead-paths": "tsx scripts/test-dead-paths.ts",
     "test:recorder-e2e": "node scripts/test-recorder-e2e.mjs",
     "test:recorder-worker": "node scripts/test-recorder-worker.mjs",
-    "test:version": "tsx scripts/test-version.ts"
+    "test:version": "tsx scripts/test-version.ts",
+    "test:activity-log": "tsx scripts/test-activity-log.ts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

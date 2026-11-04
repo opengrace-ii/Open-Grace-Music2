@@ -167,6 +167,33 @@ export function formatIst(ts: number): string {
   }
 }
 
+/** Full plain-text dump of one log row (action, format, status, details, URL, clocks). */
+export function formatActivityEntryText(entry: ActivityEntry): string {
+  const lines: string[] = [
+    `${String(entry.result || 'info').toUpperCase()} · ${entry.action}${
+      entry.format ? ` · ${entry.format}` : ''
+    }`,
+    entry.label || '',
+  ];
+  if (entry.detail) lines.push(entry.detail);
+  if (entry.source) lines.push(`URL: ${entry.source}`);
+  if (entry.sizeBytes) lines.push(`Size: ${formatBytes(entry.sizeBytes)}`);
+  lines.push(`IST: ${formatIst(entry.ts)}`);
+  lines.push(`Device: ${formatLocal(entry.ts)}`);
+  return lines.filter((line) => line.length > 0).join('\n');
+}
+
+/** Newest-first dump. `versionLine` is the app stamp (same idea as the footer). */
+export function formatActivityLogDump(entries: ActivityEntry[], versionLine: string): string {
+  const newestFirst = [...entries].sort((a, b) => b.ts - a.ts);
+  const header = [
+    versionLine.trim() || 'Open Grace Music',
+    `Activity log · ${newestFirst.length} event${newestFirst.length === 1 ? '' : 's'} · newest first`,
+  ].join('\n');
+  if (newestFirst.length === 0) return `${header}\n\n(empty)\n`;
+  return `${header}\n\n${newestFirst.map(formatActivityEntryText).join('\n\n---\n\n')}\n`;
+}
+
 /** The device's own local clock (whatever timezone the phone is set to). */
 export function formatLocal(ts: number): string {
   try {
