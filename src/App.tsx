@@ -42,7 +42,12 @@ import {
   deletePlaylist,
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
-import { loadSavedYoutubeCookies, saveYoutubeCookies, sanitizeCookieHeader } from './services/youtubeCookies';
+import {
+  hasPastedYoutubeCookies,
+  loadSavedYoutubeCookies,
+  saveYoutubeCookies,
+  sanitizeCookieHeader,
+} from './services/youtubeCookies';
 import { loadYoutubeOauthRefreshToken } from './services/youtubeOauth';
 import { pullNativeYoutubeCookies, youtubeSessionStatus } from './services/youtubeSession';
 import { extractYouTubeId } from './services/mediaResolver';
@@ -98,23 +103,10 @@ import {
   transcodeOnServer,
 } from './services/onDeviceDownload';
 import {
-  TAB_RECORD_ROUTE,
-  TAB_SHARE_HINT,
-  TabRecordEmptyError,
-  TabShareCancelledError,
-  TabShareUnsupportedError,
-  formatTapeClock,
-  hasPastedYoutubeCookies,
-  honestBrowserCaptureFormat,
-  isTabAudioCaptureSupported,
-  isTabShareCancelError,
-  isWebTabRecordSurface,
-  recordTabAudioStream,
-  requestThisTabAudioStream,
-  shouldCallRenderConvert,
-  stopMediaStream,
-  type TabRecordControls,
-} from './services/browserTabCapture';
+  BROWSER_EXACT_ROUTE,
+  downloadExactYoutubeAudioInBrowser,
+  ExactVideoUnavailableError,
+} from './services/browserExactDownload';
 import { YouTubeConnectPanel } from './components/YouTubeConnectPanel';
 
 export default function App() {
@@ -176,9 +168,8 @@ export default function App() {
   const [downloadStatus, setDownloadStatus] = useState('');
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadMeterLabel, setDownloadMeterLabel] = useState('');
-  const [tabRecordingActive, setTabRecordingActive] = useState(false);
-  const tabRecordingRef = useRef(false);
-  const tabRecordCtlRef = useRef<TabRecordControls | null>(null);
+  const downloadAbortRef = useRef<AbortController | null>(null);
+  const downloadCancelledRef = useRef(false);
   const [converterApiOnline, setConverterApiOnline] = useState<boolean | null>(null);
   const [convertingTrackId, setConvertingTrackId] = useState<string | null>(null);
   const [convertingProgress, setConvertingProgress] = useState(0);
@@ -241,10 +232,6 @@ export default function App() {
         if (dur > 0) setDuration(dur);
       },
       onTrackEnded: () => {
-        if (tabRecordingRef.current) {
-          tabRecordCtlRef.current?.stop();
-          return;
-        }
         handleTrackEnded();
       },
       onNextRequested: () => {
@@ -1005,10 +992,9 @@ export default function App() {
   };
 
   /**
-   * Web (no OgmAndroid): play the exact YouTube id in-app and capture this tab’s audio.
-   * Progress is recording time. Never calls Render. Not used on the APK.
+   * Browser exact-ID download (Invidious/Piped). No tab capture. No wrong-song fallback.
    */
-  const recordBrowserTab = async (
+  const recordBrowserExact = async (
     ytId: string,
     trimmedUrl: string,
     format: AudiophileFormatId,
@@ -1016,138 +1002,98 @@ export default function App() {
     saveToDeviceFolder: boolean,
     customTitle?: string,
     customArtist?: string
-  ): Promise<{ ok: true } | { ok: false; reason: string; cancelled: boolean; unsupported: boolean }> => {
+  ): Promise<{ ok: true } | { ok: false; reason: string; cancelled: boolean }> => {
     const label = 'Record YouTube';
-    const restoreShowVideo = playerEngine.getShowVideo();
-    let stream: MediaStream | null = null;
-    tabRecordingRef.current = true;
-    setTabRecordingActive(true);
-    setDownloadMeterLabel('');
-    setDownloadProgress(0);
-    setDownloadStatus(TAB_SHARE_HINT);
-
-    const fail = (reason: string, cancelled: boolean, unsupported = false) => {
+    const fail = (reason: string, cancelled = false) => {
       logActivity({
         action: 'record',
         label,
         result: 'failed',
         format,
-        detail: `route=${TAB_RECORD_ROUTE} · ${reason}`,
+        detail: `route=${BROWSER_EXACT_ROUTE} · ${reason}`,
         source: trimmedUrl,
       });
-      return { ok: false as const, reason, cancelled, unsupported };
+      return { ok: false as const, reason, cancelled };
     };
 
     try {
-      if (!isTabAudioCaptureSupported()) {
-        return fail(
-          new TabShareUnsupportedError().message,
-          false,
-          true
-        );
-      }
-
       logActivity({
         action: 'record',
         label,
         result: 'started',
         format,
-        detail: `route=${TAB_RECORD_ROUTE} · play ${ytId} then capture this-tab audio`,
+        detail: `route=${BROWSER_EXACT_ROUTE} · exact id ${ytId}`,
         source: trimmedUrl,
       });
+      setDownloadStatus('Fetching this video…');
+      setDownloadProgress(0.1);
 
-      stream = await requestThisTabAudioStream();
-
-      playerEngine.setShowVideo(true);
-      await playerEngine.playYouTubeId(ytId, { title: customTitle, artist: customArtist });
-      const playing = playerEngine.getCurrentTrack();
-      if (playing) {
-        setCurrentTrack(playing);
-        setCurrentTime(0);
-        setDuration(playerEngine.getDuration() || playing.duration || 0);
-      }
-
-      const started = await playerEngine.waitUntilPlaying(18_000, ytId);
-      if (!started || playerEngine.getPlayingYouTubeId() !== ytId) {
-        throw new Error(
-          `This video did not start in the player (${ytId}). Allow playback, then retry Record.`
-        );
-      }
-
-      playerEngine.pause();
-      playerEngine.seekTo(0);
-      await new Promise((r) => setTimeout(r, 150));
-
-      logActivity({
-        action: 'record',
-        label,
-        result: 'progress',
-        format,
-        detail: `route=${TAB_RECORD_ROUTE} · recording this-tab audio for ${ytId}`,
-        source: trimmedUrl,
-      });
-
-      const recPromise = recordTabAudioStream(stream, {
-        getMediaDurationSec: () => playerEngine.getDuration(),
-        getMediaCurrentSec: () => playerEngine.getCurrentTime(),
-        onProgress: (elapsed, dur) => {
-          const labelClock =
-            dur > 1 ? `${formatTapeClock(elapsed)} / ${formatTapeClock(dur)}` : formatTapeClock(elapsed);
-          setDownloadMeterLabel(labelClock);
-          setDownloadProgress(dur > 1 ? Math.max(0.02, Math.min(0.99, elapsed / dur)) : 0);
-          setDownloadStatus(`RECORDING this tab · ${labelClock}`);
+      const exact = await downloadExactYoutubeAudioInBrowser(
+        ytId,
+        (percent, message) => {
+          setDownloadProgress(Math.max(0.1, Math.min(0.82, percent)));
+          setDownloadStatus(message);
         },
-        registerStop: (ctl) => {
-          tabRecordCtlRef.current = ctl;
-        },
-      });
-
-      playerEngine.play();
-
-      const rec = await recPromise;
-      tabRecordCtlRef.current = null;
-      stopMediaStream(stream);
-      stream = null;
-
-      if (rec.blob.size < 4000) {
-        throw new TabRecordEmptyError();
+        { signal: downloadAbortRef.current?.signal }
+      );
+      if (downloadCancelledRef.current) {
+        return fail('Record cancelled.', true);
+      }
+      if (exact.videoId !== ytId) {
+        return fail(`Mirror returned video ${exact.videoId}, not ${ytId}.`);
       }
 
-      let finalBlob = rec.blob;
-      let convertedToMp3 = false;
-      if (format === 'MP3') {
-        setDownloadStatus('Encoding MP3 from this-tab audio…');
-        setDownloadMeterLabel('');
+      let finalBlob = exact.blob;
+      let finalFormat = exact.format;
+      let finalMime = exact.mimeType;
+      let note = ` · ${exact.source}`;
+      const wantsTranscode = format === 'MP3' || format === 'FLAC' || format === 'ALAC' || format === 'WAV';
+      if (wantsTranscode) {
+        setDownloadProgress(0.84);
+        setDownloadStatus(`Converting downloaded ${exact.format} → ${format}…`);
         try {
-          finalBlob = await convertBlobToMp3(rec.blob, bitrateKbps, (pr) => {
-            setDownloadProgress(0.72 + pr * 0.22);
-          });
-          convertedToMp3 = true;
+          if (format === 'MP3') {
+            try {
+              finalBlob = await convertBlobToMp3(exact.blob, bitrateKbps, (pr) =>
+                setDownloadProgress(0.84 + pr * 0.1)
+              );
+            } catch {
+              finalBlob = await transcodeOnServer(exact.blob, 'MP3', apiUrl);
+            }
+            finalMime = 'audio/mpeg';
+            note = ` · MP3 from this video (${exact.source})`;
+          } else {
+            finalBlob = await transcodeOnServer(exact.blob, format, apiUrl);
+            finalMime = mimeForFormat(format);
+            note = ` · ${format} wrap of this video’s lossy audio (${exact.source})`;
+          }
+          finalFormat = format;
         } catch {
-          convertedToMp3 = false;
-          finalBlob = rec.blob;
+          finalBlob = exact.blob;
+          finalFormat = exact.format;
+          finalMime = exact.mimeType;
+          note = ` · saved this video as ${exact.format} (could not convert to ${format})`;
         }
       }
 
-      const honest = honestBrowserCaptureFormat(format, rec.mimeType, convertedToMp3);
-      const title = customTitle || playing?.title || `YouTube ${ytId}`;
-      const artist = customArtist || playing?.artist || 'Open Grace Music';
-      const durationSec = rec.durationSec || playerEngine.getDuration() || 0;
-
+      const title = customTitle || exact.title || `YouTube ${ytId}`;
+      const artist = customArtist || exact.artist || 'Open Grace Music';
+      const ext = extensionForFormat(finalFormat);
       const track: Track = {
-        id: `yt_${ytId}_${honest.format.toLowerCase()}`,
+        id: `yt_${ytId}_${finalFormat.toLowerCase()}`,
         title,
         artist,
-        album: `Open Grace · ${honest.format} (this-tab capture of ${ytId})`,
-        duration: durationSec,
+        album: `Open Grace · ${finalFormat}`,
+        duration: exact.durationSec || 0,
         sizeBytes: finalBlob.size,
-        format: honest.format,
-        mimeType: honest.mime,
+        format: finalFormat,
+        mimeType: finalMime,
         source: 'YOUTUBE',
         storageStatus: 'PERSISTENT',
         addedAt: Date.now(),
         thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-        bitrateKbps: convertedToMp3 ? bitrateKbpsForFormat('MP3', bitrateKbps) : 0,
+        bitrateKbps:
+          finalFormat === 'MP3' ? bitrateKbpsForFormat('MP3', bitrateKbps) : exact.bitrateKbps,
         isFavorite: false,
         originalUrl: trimmedUrl,
         ytVideoId: ytId,
@@ -1172,7 +1118,7 @@ export default function App() {
       setDownloadStatus('Saving recorded audio to Library…');
       const saved = await saveTrackToDB(track, finalBlob);
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
-      if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, honest.extension);
+      if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, ext);
 
       setShowDownloadDialog(false);
       setActivePage('library');
@@ -1183,27 +1129,24 @@ export default function App() {
         action: 'record',
         label: `Saved "${title}"`,
         result: 'saved',
-        format: honest.format,
+        format: finalFormat,
         sizeBytes: finalBlob.size,
-        detail: `route=${TAB_RECORD_ROUTE} · real .${honest.extension} stored in Library · plays offline${honest.note}`,
+        detail: `route=${BROWSER_EXACT_ROUTE} · real .${ext} stored in Library · plays offline${note}`,
         source: trimmedUrl,
       });
-      addToast(`♪ Recorded "${title}" (${honest.format}${honest.note})`, 'success');
+      addToast(`♪ Recorded "${title}" (${finalFormat}${note})`, 'success');
       playTrack(saved);
       return { ok: true };
     } catch (err) {
-      const cancelled =
-        err instanceof TabShareCancelledError || isTabShareCancelError(err);
-      const unsupported = err instanceof TabShareUnsupportedError;
-      const reason = err instanceof Error ? err.message : 'Tab recording failed';
-      return fail(reason, cancelled, unsupported);
-    } finally {
-      tabRecordingRef.current = false;
-      tabRecordCtlRef.current = null;
-      setTabRecordingActive(false);
-      setDownloadMeterLabel('');
-      stopMediaStream(stream);
-      if (!restoreShowVideo) playerEngine.setShowVideo(false);
+      const cancelled = downloadCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError');
+      if (cancelled) return fail('Record cancelled.', true);
+      const reason =
+        err instanceof ExactVideoUnavailableError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Couldn’t fetch this exact video.';
+      return fail(reason);
     }
   };
 
@@ -1225,6 +1168,8 @@ export default function App() {
 
     const formatObj = AUDIOPHILE_FORMATS.find((f) => f.id === format) || AUDIOPHILE_FORMATS[0];
 
+    downloadCancelledRef.current = false;
+    downloadAbortRef.current = new AbortController();
     setIsDownloading(true);
     setDownloadError(null);
     setDownloadProgress(0.08);
@@ -1244,13 +1189,47 @@ export default function App() {
     let loggedStage = '';
 
     const insideApk = isInsideApk();
-    const webTab = isWebTabRecordSurface();
     const pastedCookies = sanitizeCookieHeader(
       cookies || inlineCookies || (insideApk ? pullNativeYoutubeCookies() : '') || loadSavedYoutubeCookies()
     );
     const hasCookies = hasPastedYoutubeCookies(pastedCookies);
     let onDeviceFailure: string | null = null;
-    let tabFailure: string | null = null;
+    let browserExactFailure: string | null = null;
+    let browserExactTried = false;
+
+    const finishOk = () => {
+      setIsDownloading(false);
+      setDownloadProgress(0);
+      setDownloadStatus('');
+      setDownloadMeterLabel('');
+    };
+
+    const tryBrowserExact = async (): Promise<boolean> => {
+      if (!ytId || downloadCancelledRef.current) return false;
+      browserExactTried = true;
+      setDownloadProgress(0.1);
+      setDownloadStatus('Fetching this video…');
+      const r = await recordBrowserExact(
+        ytId,
+        trimmedUrl,
+        format,
+        bitrateKbps,
+        saveToDeviceFolder,
+        customTitle,
+        customArtist
+      );
+      if (r.ok) {
+        finishOk();
+        return true;
+      }
+      browserExactFailure = r.reason;
+      if (r.cancelled) {
+        setDownloadError('Record cancelled.');
+        finishOk();
+        return true;
+      }
+      return false;
+    };
 
     if (ytId && isOnDeviceDownloadAvailable()) {
       const r = await recordOnDevice(
@@ -1263,9 +1242,7 @@ export default function App() {
         customArtist
       );
       if (r.ok) {
-        setIsDownloading(false);
-        setDownloadProgress(0);
-        setDownloadStatus('');
+        finishOk();
         return;
       }
       onDeviceFailure = r.reason;
@@ -1281,59 +1258,19 @@ export default function App() {
       });
     } else if (ytId && insideApk) {
       onDeviceFailure = 'this installed APK is too old to download on the phone (reinstall the latest APK)';
-    } else if (ytId && webTab) {
-      const r = await recordBrowserTab(
-        ytId,
-        trimmedUrl,
-        format,
-        bitrateKbps,
-        saveToDeviceFolder,
-        customTitle,
-        customArtist
-      );
-      if (r.ok) {
-        setIsDownloading(false);
-        setDownloadProgress(0);
-        setDownloadStatus('');
-        setDownloadMeterLabel('');
-        return;
-      }
-      tabFailure = r.reason;
-      const callRender = shouldCallRenderConvert({
-        isWebTabSurface: true,
-        hasCookies,
-        tabShareCancelled: r.cancelled,
-        tabShareUnsupported: r.unsupported,
-      });
-      if (!callRender) {
-        setDownloadError(r.reason);
-        setIsDownloading(false);
-        setDownloadProgress(0);
-        setDownloadStatus('');
-        setDownloadMeterLabel('');
-        return;
-      }
+    } else if (ytId && !hasCookies) {
+      // Web: Render datacenter is usually LOGIN_REQUIRED. Fetch this exact ID from the browser first.
+      if (await tryBrowserExact()) return;
       setDownloadProgress(0.08);
-      setDownloadStatus('Trying server with pasted cookies…');
+      setDownloadStatus('Trying converter…');
       logActivity({
         action: 'record',
         label: 'Record YouTube',
         result: 'progress',
         format,
-        detail: `route=server · falling back after ${TAB_RECORD_ROUTE} · cookies pasted`,
+        detail: `route=server · falling back after ${BROWSER_EXACT_ROUTE}`,
         source: trimmedUrl,
       });
-    }
-
-    if (webTab && ytId && !hasCookies) {
-      setDownloadError(
-        tabFailure ||
-          'Web Record captures this tab’s audio. Share this Open Grace Music tab and tick Also share tab audio.'
-      );
-      setIsDownloading(false);
-      setDownloadProgress(0);
-      setDownloadStatus('');
-      return;
     }
 
     try {
@@ -1536,13 +1473,25 @@ export default function App() {
       addToast(`♪ Recorded "${headerTitle}" (${headerFormat}${honesty})`, 'success');
       playTrack(saved);
     } catch (err: unknown) {
+      if (downloadCancelledRef.current) {
+        setDownloadError('Record cancelled.');
+        return;
+      }
+      if (ytId && !browserExactTried) {
+        if (await tryBrowserExact()) return;
+      }
       const { message, code } = humanizeConverterError(err);
-      // Honest failure: we NEVER silently save a live-stream tape and call it a download.
       const serverBlocked =
         code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
       const youtubeConnected = youtubeSessionStatus() === 'connected';
       const display = ytId
-        ? recordFailureSentence(format, message, code, onDeviceFailure, youtubeConnected)
+        ? recordFailureSentence(
+            format,
+            browserExactFailure || message,
+            code,
+            onDeviceFailure,
+            youtubeConnected
+          )
         : message;
       logActivity({
         action: 'record',
@@ -1551,12 +1500,13 @@ export default function App() {
         format,
         detail:
           ytId && serverBlocked
-            ? `route=server · ${message}${onDeviceFailure ? ` · on-device: ${onDeviceFailure}` : ''}${tabFailure ? ` · ${TAB_RECORD_ROUTE}: ${tabFailure}` : ''}`
+            ? `route=server · ${message}${onDeviceFailure ? ` · on-device: ${onDeviceFailure}` : ''}${browserExactFailure ? ` · ${BROWSER_EXACT_ROUTE}: ${browserExactFailure}` : ''}`
             : message,
         source: trimmedUrl,
       });
       setDownloadError(display);
     } finally {
+      downloadAbortRef.current = null;
       setIsDownloading(false);
       setDownloadProgress(0);
       setDownloadStatus('');
@@ -1996,8 +1946,7 @@ export default function App() {
             <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <p className="leading-snug">
-                Render converter is unreachable. Web Record still works in Chrome: it captures this tab’s audio.
-                Paste cookies (key) only if you want a Render extract.
+                Converter is unreachable. Record can still fetch this exact video in the browser.
               </p>
             </div>
           )}
@@ -2066,9 +2015,6 @@ export default function App() {
           {studioFormatWarning(inlineFormat) && (
             <p className="text-[11px] font-mono text-[#e2c986] leading-snug">
               {studioFormatWarning(inlineFormat)}
-              {isWebTabRecordSurface()
-                ? ` Chrome cannot encode ${inlineFormat} in this tab — Record saves WEBM/M4A with an honest label.`
-                : ''}
             </p>
           )}
 
@@ -2097,10 +2043,13 @@ export default function App() {
               </button>
             </div>
 
-            {tabRecordingActive ? (
+            {isDownloading ? (
               <button
                 type="button"
-                onClick={() => tabRecordCtlRef.current?.stop()}
+                onClick={() => {
+                  downloadCancelledRef.current = true;
+                  downloadAbortRef.current?.abort();
+                }}
                 className="cassette-btn cassette-btn-primary px-6 py-3 text-xs sm:text-sm font-mono uppercase tracking-wider shrink-0"
               >
                 <Square className="w-4 h-4 fill-current" />
@@ -2109,7 +2058,7 @@ export default function App() {
             ) : (
               <button
                 type="button"
-                disabled={!inlineUrl.trim() || isDownloading}
+                disabled={!inlineUrl.trim()}
                 onClick={() =>
                   handleStartDownload(
                     inlineUrl,
@@ -2123,24 +2072,11 @@ export default function App() {
                 }
                 className="cassette-btn cassette-btn-primary px-6 py-3 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40 shrink-0"
               >
-                {isDownloading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>RECORDING {inlineFormat}...</span>
-                  </>
-                ) : (
-                  <>
-                    <Radio className="w-4 h-4" />
-                    <span>⏺ RECORD {inlineFormat}</span>
-                  </>
-                )}
+                <Radio className="w-4 h-4" />
+                <span>⏺ RECORD {inlineFormat}</span>
               </button>
             )}
           </div>
-
-          {isWebTabRecordSurface() && !isDownloading && (
-            <p className="text-[11px] font-mono text-[#9fa396] leading-snug">{TAB_SHARE_HINT}</p>
-          )}
 
           {inlineFormat === 'MP3' && (
             <div className="cassette-bank inline-flex items-center gap-1.5">
@@ -2601,9 +2537,10 @@ export default function App() {
         downloadStatus={downloadStatus}
         downloadError={downloadError}
         downloadMeterLabel={downloadMeterLabel}
-        tabRecordingActive={tabRecordingActive}
-        webTabHint={isWebTabRecordSurface() ? TAB_SHARE_HINT : null}
-        onStopTabRecording={() => tabRecordCtlRef.current?.stop()}
+        onCancelDownload={() => {
+          downloadCancelledRef.current = true;
+          downloadAbortRef.current?.abort();
+        }}
         onClose={() => {
           setShowDownloadDialog(false);
           setDownloadError(null);

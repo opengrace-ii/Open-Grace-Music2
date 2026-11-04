@@ -9,7 +9,14 @@ import {
   matchExtractedYoutubeId,
   type YoutubeIdMatchResult,
 } from './youtubeIdMatch.ts';
-import { YOUTUBE_PLAYER_CLIENTS_COOKIES, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
+import {
+  YOUTUBE_PLAYER_CLIENTS,
+  YOUTUBE_PLAYER_CLIENTS_COOKIES,
+  mergedYoutubeCookies,
+  ytDlpJsRuntimeArgs,
+  youtubePlayerExtractorArgs,
+  youtubeYtdlpAuthArgs,
+} from './youtubeYtdlpAuth.ts';
 import {
   EXTRACT_STALL_MS,
   parseYtDlpDownloadPercent,
@@ -30,24 +37,16 @@ export interface AudioFormatSpec {
 
 const execFileAsync = promisify(execFile);
 
-/** yt-dlp player clients — same video ID only (phone-style clients first). */
-const YOUTUBE_PLAYER_CLIENTS: (string | null)[] = [
-  'android,ios,tv_embedded,mweb',
-  'android,ios,web',
-  'android_vr,web_safari',
-  'web_embedded,tv_embedded',
-  'mweb,tv',
-];
-
-function ytDlpJsRuntimeArgs(): string[] {
-  const nodeBin = process.execPath || 'node';
-  return ['--js-runtimes', `node:${nodeBin}`, '--remote-components', 'ejs:github'];
-}
-
-function mergedYoutubeCookies(userCookies: string): string {
-  const fromUser = userCookies.trim();
-  if (fromUser) return fromUser;
-  return (process.env.OGM_YT_COOKIES || '').trim();
+function playerClientsForCookies(hasCookies: boolean): string[] {
+  if (!hasCookies) return YOUTUBE_PLAYER_CLIENTS.slice();
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const client of [...YOUTUBE_PLAYER_CLIENTS_COOKIES, ...YOUTUBE_PLAYER_CLIENTS]) {
+    if (seen.has(client)) continue;
+    seen.add(client);
+    ordered.push(client);
+  }
+  return ordered;
 }
 
 function pickRawSourceFile(workDir: string): string | null {
@@ -198,7 +197,7 @@ export type ConvertStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' |
 export type ProgressEmitter = (stage: ConvertStage, percent: number, message: string) => void;
 
 export const YOUTUBE_LOGIN_REQUIRED_ERROR =
-  'YouTube asked for a login (LOGIN_REQUIRED). Converter host is blocked — Chrome cookies (key icon) or APK 1.3.5 Record.';
+  'YouTube asked for a login (LOGIN_REQUIRED). Converter host is blocked.';
 
 function pipelineErrorText(err: unknown): string {
   if (!err || typeof err !== 'object') return String(err);
@@ -383,13 +382,8 @@ export async function runConvertPipeline(
       if (youtubeOauthRefresh.trim() && !userCookies) {
         console.log('[convert-audio] TV oauth is not used by yt-dlp (YouTube OAuth removed); cookies required');
       }
-      const cookieArgs = youtubeYtdlpAuthArgs(workDir, userCookies);
-      const playerClients = userCookies
-        ? [
-            ...YOUTUBE_PLAYER_CLIENTS_COOKIES,
-            ...YOUTUBE_PLAYER_CLIENTS.filter((c) => !YOUTUBE_PLAYER_CLIENTS_COOKIES.includes(c)),
-          ]
-        : YOUTUBE_PLAYER_CLIENTS;
+      const cookieArgs = youtubeYtdlpAuthArgs(workDir, userCookiesRaw);
+      const playerClients = playerClientsForCookies(Boolean(userCookies));
 
       let lastExtractFailure: { code: ConvertErrorCode; error: string } | null = null;
 
@@ -411,38 +405,42 @@ export async function runConvertPipeline(
         );
       };
 
+      const extractStarted = Date.now();
+      const perClientTimeout = isMp3 ? 28_000 : 45_000;
+
       try {
         for (const playerClient of playerClients) {
           if (downloadedRawPath) break;
+          const remaining = extractTimeout - (Date.now() - extractStarted);
+          if (remaining < 8_000) break;
           clearRawSourceArtifacts(workDir);
-          const clientArgs: string[] = [];
-          if (playerClient) {
-            clientArgs.push('--extractor-args', `youtube:player_client=${playerClient}`);
-          }
-          try {
-            await runYtDlpWatched(
+          const clientTimeout = Math.min(perClientTimeout, remaining);
+          const jsArgs = ytDlpJsRuntimeArgs();
+          const runOnce = async (extra: string[]) =>
+            runYtDlpWatched(
               [
                 '--no-playlist',
                 '--no-warnings',
                 '--newline',
+                '--no-cache-dir',
                 '--socket-timeout',
-                '20',
+                '15',
                 '--retries',
                 '1',
                 '--fragment-retries',
                 '1',
                 '--write-info-json',
-                ...ytDlpJsRuntimeArgs(),
+                ...extra,
                 '-f',
                 isMp3 ? 'bestaudio[ext=m4a]/bestaudio/best' : 'bestaudio/best',
                 ...cookieArgs,
-                ...clientArgs,
+                ...youtubePlayerExtractorArgs(playerClient),
                 '-o',
                 rawInputTemplate,
                 canonicalWatchUrl,
               ],
               {
-                timeoutMs: extractTimeout,
+                timeoutMs: clientTimeout,
                 stallMs: EXTRACT_STALL_MS,
                 onLine: (line) => {
                   lastOutputAt = Date.now();
@@ -455,11 +453,22 @@ export async function runConvertPipeline(
                       `Extracting from YouTube (yt-dlp)… ${Math.round(dl)}%`
                     );
                   } else if (/ERROR:|LOGIN_REQUIRED/i.test(line)) {
-                    progress('extract', extractPercent, 'Waiting on YouTube…');
+                    progress('extract', extractPercent, `Trying ${playerClient}…`);
                   }
                 },
               }
             );
+          try {
+            try {
+              await runOnce(jsArgs);
+            } catch (jsErr) {
+              const jsText = jsErr instanceof Error ? jsErr.message : String(jsErr);
+              if (/js-runtime|no such option|remote-components/i.test(jsText)) {
+                await runOnce([]);
+              } else {
+                throw jsErr;
+              }
+            }
             const attempt = evaluateExtractedDownload(workDir, ytId);
             if (attempt.status === 'ok') {
               markExtracted(playerClient, attempt);
@@ -477,7 +486,6 @@ export async function runConvertPipeline(
           } catch (directErr) {
             const classified = classifyPipelineError(directErr, 'extract');
             const watchdogErr = directErr instanceof YtDlpWatchdogError ? directErr : null;
-            const aborted = classified.code === 'TIMEOUT' || classified.code === 'YOUTUBE_BOT_CHECK';
             if (!watchdogErr?.stalled && !watchdogErr?.killed && !watchdogErr?.timedOut) {
               const attempt = evaluateExtractedDownload(workDir, ytId);
               if (attempt.status === 'ok') {
@@ -496,7 +504,7 @@ export async function runConvertPipeline(
               `[convert-audio] YouTube direct failed (${ytId}${playerClient ? ` client=${playerClient}` : ''}):`,
               lastExtractFailure.error
             );
-            if (aborted) break;
+            // Keep trying other player clients. LOGIN_REQUIRED on android must not skip ios/web.
           }
         }
       } finally {

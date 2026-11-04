@@ -28,9 +28,7 @@ interface DownloadDialogProps {
   downloadStatus: string;
   downloadError?: string | null;
   downloadMeterLabel?: string;
-  tabRecordingActive?: boolean;
-  webTabHint?: string | null;
-  onStopTabRecording?: () => void;
+  onCancelDownload?: () => void;
   onClose: () => void;
   onStartDownload: (
     url: string,
@@ -52,9 +50,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
   downloadStatus,
   downloadError,
   downloadMeterLabel,
-  tabRecordingActive,
-  webTabHint,
-  onStopTabRecording,
+  onCancelDownload,
   onClose,
   onStartDownload,
   onOpenYouTubeBrowser,
@@ -263,9 +259,6 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
           {studioFormatWarning(selectedFormat) && (
             <p className="mt-2 text-[11px] font-mono text-[#e2c986] leading-snug">
               {studioFormatWarning(selectedFormat)}
-              {webTabHint
-                ? ` Chrome cannot encode ${selectedFormat} in this tab — Record saves WEBM/M4A with an honest label.`
-                : ''}
             </p>
           )}
 
@@ -401,16 +394,12 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             </div>
           )}
 
-          {webTabHint && !isDownloading && (
-            <p className="text-[11px] font-mono text-[#9fa396] leading-snug">{webTabHint}</p>
-          )}
-
           {/* Primary Cassette Transport Action Bank */}
           <div className="cassette-bank flex flex-col sm:flex-row gap-2 pt-1">
-            {tabRecordingActive ? (
+            {isDownloading ? (
               <button
                 type="button"
-                onClick={() => onStopTabRecording?.()}
+                onClick={() => onCancelDownload?.()}
                 className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider"
               >
                 <Square className="w-4 h-4 fill-current" />
@@ -419,20 +408,11 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             ) : (
               <button
                 type="submit"
-                disabled={!url.trim() || isDownloading}
+                disabled={!url.trim()}
                 className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40"
               >
-                {isDownloading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>RECORDING {selectedFormat}...</span>
-                  </>
-                ) : (
-                  <>
-                    <Radio className="w-4 h-4" />
-                    <span>⏺ RECORD {selectedFormat} TO LIBRARY</span>
-                  </>
-                )}
+                <Radio className="w-4 h-4" />
+                <span>⏺ RECORD {selectedFormat} TO LIBRARY</span>
               </button>
             )}
 

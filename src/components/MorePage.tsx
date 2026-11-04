@@ -49,9 +49,8 @@ export const MorePage: React.FC<MorePageProps> = ({
         <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <p className="leading-snug">
-            Converter is unreachable at {converterUrlLabel || '(no server set)'}. Web Record still
-            captures this tab’s audio in Chrome. Set a URL in Settings only for Render extract
-            (needs pasted cookies).
+            Converter is unreachable at {converterUrlLabel || '(no server set)'}. Record can still
+            fetch this exact video in the browser. Set a URL in Settings for server extract.
           </p>
         </div>
       )}
