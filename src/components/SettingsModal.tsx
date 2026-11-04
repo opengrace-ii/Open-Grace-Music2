@@ -9,6 +9,7 @@ import {
 import { checkConverterApiAvailable, fetchRecorderPresence } from '../services/converterApi';
 import { fetchAiStatus, loadLocalAiKeys, saveAiKeys, saveLocalAiKeys } from '../services/ogmAiService';
 import { apkDownloadLandingUrl } from '../utils/apkDownload';
+import { VersionStamp } from './VersionStamp';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -207,6 +208,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
             {aiSaving ? 'Saving…' : 'Save AI keys'}
           </button>
         </div>
+
+        <VersionStamp className="mt-5" />
 
         <div className="mt-6 flex flex-wrap gap-2 justify-end">
           <button

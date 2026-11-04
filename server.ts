@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { resolveFormatSpec } from './server/audioFormats.ts';
@@ -46,12 +46,33 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 43123;
 
 app.use(express.json({ limit: '10mb' }));
 
+function ogmPackageVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    return String(pkg.version || '0.0.0');
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function ogmGitSha(): string {
+  const env = (process.env.RENDER_GIT_COMMIT || process.env.OGM_GIT_SHA || process.env.SOURCE_VERSION || '').trim();
+  if (env) return env.replace(/^v/, '').slice(0, 7);
+  try {
+    return execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
 app.get('/api/health', (_req, res) => {
   const ai = aiKeyStatus();
   const rec = recorderPresence();
   res.json({
     ok: true,
     service: 'ogm-converter',
+    version: ogmPackageVersion(),
+    git: ogmGitSha(),
     ai: { gemini: ai.gemini, nvidia: ai.nvidia },
     recorder: { online: rec.online, workers: rec.workers, secretConfigured: Boolean(configuredWorkerSecret()) },
   });

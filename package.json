@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.4.0",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -13,13 +13,15 @@
     "start": "tsx server.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "recorder": "tsx recorder/cli.ts",
+    "recorder": "node recorder/worker.mjs",
     "test:convert": "node scripts/test-youtube-convert.mjs",
     "test:health": "node scripts/test-health.mjs",
     "test:id-match": "tsx scripts/test-youtube-id-match.ts",
     "test:recorder": "tsx scripts/test-recorder-jobs.ts",
     "test:dead-paths": "tsx scripts/test-dead-paths.ts",
-    "test:recorder-e2e": "node scripts/test-recorder-e2e.mjs"
+    "test:recorder-e2e": "node scripts/test-recorder-e2e.mjs",
+    "test:recorder-worker": "node scripts/test-recorder-worker.mjs",
+    "test:version": "tsx scripts/test-version.ts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

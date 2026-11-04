@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getActivityLog, subscribeActivityLog } from '../services/activityLog';
 import { YouTubeConnectPanel } from './YouTubeConnectPanel';
+import { VersionStamp } from './VersionStamp';
 
 interface MorePageProps {
   converterApiOnline: boolean | null;
@@ -43,6 +44,7 @@ export const MorePage: React.FC<MorePageProps> = ({
       <div>
         <h2 className="font-serif-display text-xl font-bold text-[#f0ece1]">More</h2>
         <p className="text-xs font-mono text-[#9fa396] mt-0.5">Install, converter, and Android project</p>
+        <VersionStamp className="mt-2" />
       </div>
 
       {converterApiOnline === false && (

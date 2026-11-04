@@ -55,4 +55,10 @@ assert.match(read('src/App.tsx'), /startConvertJob/);
 assert.doesNotMatch(read('src/App.tsx'), /browser-exact|downloadExactYoutube/);
 pass('web Record is on-device then worker queue');
 
+assert.equal(fs.existsSync(path.join(root, 'recorder/worker.mjs')), true);
+assert.match(read('package.json'), /"recorder": "node recorder\/worker.mjs"/);
+assert.match(read('src/App.tsx'), /VersionStamp/);
+assert.match(read('src/components/MorePage.tsx'), /VersionStamp/);
+pass('standalone Node 18 worker and version stamp are wired');
+
 console.log('all dead-path tests passed');

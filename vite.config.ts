@@ -1,8 +1,28 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import {execSync} from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
+
+function ogmPackageVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
+    return String(pkg.version || '0.0.0');
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function ogmGitSha(): string {
+  const env = (process.env.OGM_GIT_SHA || process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION || '').trim();
+  if (env) return env.replace(/^v/, '').slice(0, 7);
+  try {
+    return execSync('git rev-parse --short=7 HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
 
 const DEV_SW_BUILD_ID = 'dev-local';
 
@@ -83,6 +103,8 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss(), ogmServiceWorkerBuildIdPlugin()],
     define: {
       'import.meta.env.VITE_OGM_PUBLIC_BASE_URL': JSON.stringify(ogmPublicBase),
+      __OGM_VERSION__: JSON.stringify(ogmPackageVersion()),
+      __OGM_GIT_SHA__: JSON.stringify(ogmGitSha()),
     },
     resolve: {
       alias: {

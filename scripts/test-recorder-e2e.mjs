@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = process.env.OGM_E2E_PORT || '43129';
+const PORT = process.env.OGM_E2E_PORT || String(43130 + Math.floor(Math.random() * 50));
 const BASE = `http://127.0.0.1:${PORT}`;
 const SECRET = 'e2e-worker-secret';
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-e2e-'));
@@ -70,7 +70,7 @@ const server = spawnLogged('npx', ['tsx', 'server.ts'], {
   OGM_WORKER_SECRET: SECRET,
 });
 
-const worker = spawnLogged('npx', ['tsx', 'recorder/cli.ts', '--hub', BASE], {
+const worker = spawnLogged(process.execPath, ['recorder/worker.mjs', '--hub', BASE], {
   OGM_HUB_URL: BASE,
   OGM_WORKER_SECRET: SECRET,
   OGM_RECORDER_HOME: recorderHome,

@@ -66,6 +66,7 @@ import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 import { AppPageNav } from './components/AppPageNav';
 import { HomeListenDashboard } from './components/HomeListenDashboard';
 import { MorePage } from './components/MorePage';
+import { VersionStamp } from './components/VersionStamp';
 import { ActivityLogModal } from './components/ActivityLogModal';
 import { logActivity } from './services/activityLog';
 import {
@@ -2209,6 +2210,9 @@ export default function App() {
         </>
         )}
       </main>
+      <footer className="max-w-5xl mx-auto w-full px-4 sm:px-6 pb-3 relative z-10">
+        <VersionStamp />
+      </footer>
 
       {/* Docked Cassette Transport Bar */}
       <NowPlayingBar

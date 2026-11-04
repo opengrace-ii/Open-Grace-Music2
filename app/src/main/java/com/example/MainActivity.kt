@@ -581,6 +581,9 @@ class MainActivity : ComponentActivity(), OgmPlaybackService.WebPlaybackBridge {
         @JavascriptInterface
         fun shellVersion(): String = BuildConfig.VERSION_NAME
 
+        @JavascriptInterface
+        fun appVersionCode(): Int = BuildConfig.VERSION_CODE
+
         /**
          * Opens real Google / YouTube pages in a WebView. We never collect passwords
          * on our own form.

@@ -15,6 +15,9 @@ ENV NODE_ENV=development
 RUN npm ci
 
 COPY . .
+ARG OGM_GIT_SHA=unknown
+ARG RENDER_GIT_COMMIT
+ENV OGM_GIT_SHA=${RENDER_GIT_COMMIT:-${OGM_GIT_SHA}}
 RUN npm run build
 
 ENV NODE_ENV=production
