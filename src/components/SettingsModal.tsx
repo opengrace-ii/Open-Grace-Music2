@@ -8,7 +8,6 @@ import {
 } from '../services/converterServerUrl';
 import { checkConverterApiAvailable, fetchRecorderPresence } from '../services/converterApi';
 import { fetchAiStatus, loadLocalAiKeys, saveAiKeys, saveLocalAiKeys } from '../services/ogmAiService';
-import { apkDownloadLandingUrl } from '../utils/apkDownload';
 import { VersionStamp } from './VersionStamp';
 
 interface SettingsModalProps {
@@ -110,17 +109,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
 
           {recorderOnline === true && (
             <p className="flex items-center gap-2 text-xs text-[#86efac]">
-              <CheckCircle2 className="w-4 h-4" /> Recorder worker online ({recorderWorkers})
+              <CheckCircle2 className="w-4 h-4" /> PC recorder: online ({recorderWorkers})
             </p>
           )}
           {recorderOnline === false && (
             <p className="flex items-start gap-2 text-xs text-[#fcd34d]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              No recorder is online.{' '}
-              <a href={apkDownloadLandingUrl()} className="underline text-[#b8d99e]">
-                Open the APK
-              </a>{' '}
-              to record on a phone.
+              PC recorder: offline. Open the APK to record on this phone.
             </p>
           )}
 

@@ -11,8 +11,11 @@ export function recordFailureSentence(
     const short = onDeviceFailure.replace(/\s+/g, ' ').trim().slice(0, 160);
     return `Couldn’t save this as ${format}. ${short}`;
   }
+  if (code === 'WORKER_SECRET_MISSING' || /hub secret isn’t set|worker_secret_missing/.test(blob)) {
+    return 'Hub secret isn’t set (OGM_WORKER_SECRET).';
+  }
   if (code === 'RECORDER_OFFLINE' || /no recorder is online|pc recorder is offline/.test(blob)) {
-    return `Couldn’t save this as ${format}. No recorder is online. Open the APK to record on this phone.`;
+    return 'No recorder is online. Open the APK to record on this phone.';
   }
   if (code === 'TIMEOUT' || /timed out|timeout/.test(blob)) {
     return `Couldn’t save this as ${format}. Recording timed out — try MP3 320.`;

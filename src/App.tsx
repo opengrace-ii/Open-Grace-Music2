@@ -67,6 +67,7 @@ import { AppPageNav } from './components/AppPageNav';
 import { HomeListenDashboard } from './components/HomeListenDashboard';
 import { MorePage } from './components/MorePage';
 import { VersionStamp } from './components/VersionStamp';
+import { RecorderStatusLine } from './components/RecorderStatusLine';
 import { ActivityLogModal } from './components/ActivityLogModal';
 import { logActivity } from './services/activityLog';
 import {
@@ -79,6 +80,8 @@ import {
   recordFailureSentence,
   startConvertJob,
   studioFormatWarning,
+  compactRecordLabel,
+  fetchRecorderPresence,
   waitForConvertJob,
 } from './services/converterApi';
 import { isNativeYouTubeLoginAvailable } from './services/youtubeSession';
@@ -154,6 +157,9 @@ export default function App() {
   const [downloadStatus, setDownloadStatus] = useState('');
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadMeterLabel, setDownloadMeterLabel] = useState('');
+  const [downloadSaved, setDownloadSaved] = useState(false);
+  const [recorderOnline, setRecorderOnline] = useState<boolean | null>(null);
+  const [recorderSecretConfigured, setRecorderSecretConfigured] = useState<boolean | null>(null);
   const downloadAbortRef = useRef<AbortController | null>(null);
   const downloadCancelledRef = useRef(false);
   const [converterApiOnline, setConverterApiOnline] = useState<boolean | null>(null);
@@ -356,15 +362,29 @@ export default function App() {
 
   const refreshConverterHealth = () => {
     checkConverterApiAvailable().then((ok) => setConverterApiOnline(ok));
+    fetchRecorderPresence().then((p) => {
+      setRecorderOnline(p.online);
+      setRecorderSecretConfigured(p.secretConfigured);
+    });
   };
 
   useEffect(() => {
     let cancelled = false;
-    checkConverterApiAvailable().then((ok) => {
-      if (!cancelled) setConverterApiOnline(ok);
-    });
+    const pull = () => {
+      checkConverterApiAvailable().then((ok) => {
+        if (!cancelled) setConverterApiOnline(ok);
+      });
+      fetchRecorderPresence().then((p) => {
+        if (cancelled) return;
+        setRecorderOnline(p.online);
+        setRecorderSecretConfigured(p.secretConfigured);
+      });
+    };
+    pull();
+    const timer = window.setInterval(pull, 8000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -939,11 +959,6 @@ export default function App() {
       setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
       if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, ext);
 
-      setShowDownloadDialog(false);
-      setActivePage('library');
-      setInlineUrl('');
-      setInlinePreview(null);
-
       logActivity({
         action: 'record',
         label: `Saved "${title}"`,
@@ -953,7 +968,6 @@ export default function App() {
         detail: `route=${onDeviceRoute(info.client)} (${info.client}) · real .${ext} stored in Library · plays offline${note}`,
         source: trimmedUrl,
       });
-      addToast(`♪ Recorded "${title}" on this phone (${finalFormat}${note})`, 'success');
       playTrack(saved);
       return { ok: true };
     } catch (err) {
@@ -992,8 +1006,9 @@ export default function App() {
     downloadAbortRef.current = new AbortController();
     setIsDownloading(true);
     setDownloadError(null);
+    setDownloadSaved(false);
     setDownloadProgress(0.08);
-    setDownloadStatus(`Validating · preparing ${format} (${formatObj.badge})...`);
+    setDownloadStatus('Queued');
 
     const ytId = extractYouTubeId(trimmedUrl);
 
@@ -1011,12 +1026,7 @@ export default function App() {
     const insideApk = isInsideApk();
     let onDeviceFailure: string | null = null;
 
-    const finishOk = () => {
-      setIsDownloading(false);
-      setDownloadProgress(0);
-      setDownloadStatus('');
-      setDownloadMeterLabel('');
-    };
+    let recordedOk = false;
 
     if (ytId && isOnDeviceDownloadAvailable()) {
       const r = await recordOnDevice(
@@ -1029,7 +1039,10 @@ export default function App() {
         customArtist
       );
       if (r.ok) {
-        finishOk();
+        setIsDownloading(false);
+        setDownloadProgress(1);
+        setDownloadStatus('Saved to Library');
+        setDownloadSaved(true);
         return;
       }
       onDeviceFailure = r.reason;
@@ -1227,15 +1240,6 @@ export default function App() {
         );
       }
 
-      setShowDownloadDialog(false);
-      setActivePage('library');
-      setInlineUrl('');
-      setInlinePreview(null);
-
-      const honesty =
-        ytId && (headerFormat === 'FLAC' || headerFormat === 'ALAC' || headerFormat === 'WAV')
-          ? ` · real .${extensionForFormat(headerFormat)} from lossy YouTube source`
-          : '';
       logActivity({
         action: 'record',
         label: `Saved "${headerTitle}"`,
@@ -1245,8 +1249,8 @@ export default function App() {
         detail: `route=recorder-worker · Offline .${extensionForFormat(headerFormat)} file stored in Library · plays with internet off`,
         source: trimmedUrl,
       });
-      addToast(`♪ Recorded "${headerTitle}" (${headerFormat}${honesty})`, 'success');
       playTrack(saved);
+      recordedOk = true;
     } catch (err: unknown) {
       if (downloadCancelledRef.current) {
         setDownloadError('Record cancelled.');
@@ -1268,9 +1272,17 @@ export default function App() {
     } finally {
       downloadAbortRef.current = null;
       setIsDownloading(false);
-      setDownloadProgress(0);
-      setDownloadStatus('');
-      setDownloadMeterLabel('');
+      if (recordedOk) {
+        setDownloadProgress(1);
+        setDownloadStatus('Saved to Library');
+        setDownloadSaved(true);
+        setDownloadMeterLabel('');
+      } else {
+        setDownloadProgress(0);
+        setDownloadStatus('');
+        setDownloadMeterLabel('');
+        setDownloadSaved(false);
+      }
     }
   };
 
@@ -1645,6 +1657,17 @@ export default function App() {
                 meta?.author
               );
             }}
+            isRecording={isDownloading}
+            recordPercent={downloadProgress}
+            recordStatus={downloadStatus}
+            recordError={downloadError}
+            recordSaved={downloadSaved}
+            recorderOnline={recorderOnline}
+            recorderSecretConfigured={recorderSecretConfigured}
+            onCancelRecord={() => {
+              downloadCancelledRef.current = true;
+              downloadAbortRef.current?.abort();
+            }}
           />
         )}
 
@@ -1765,6 +1788,11 @@ export default function App() {
             </p>
           )}
 
+          <RecorderStatusLine
+            online={recorderOnline}
+            secretConfigured={recorderSecretConfigured}
+          />
+
           {/* URL Slot + Record Cassette Key */}
           <div className="flex flex-col sm:flex-row gap-2.5">
             <div className="cassette-window flex-1 flex items-center rounded-2xl p-1.5">
@@ -1800,7 +1828,7 @@ export default function App() {
                 className="cassette-btn cassette-btn-primary px-6 py-3 text-xs sm:text-sm font-mono uppercase tracking-wider shrink-0"
               >
                 <Square className="w-4 h-4 fill-current" />
-                <span>STOP</span>
+                <span>{compactRecordLabel(true, false, downloadProgress, downloadStatus)}</span>
               </button>
             ) : (
               <button
@@ -1819,7 +1847,11 @@ export default function App() {
                 className="cassette-btn cassette-btn-primary px-6 py-3 text-xs sm:text-sm font-mono uppercase tracking-wider disabled:opacity-40 shrink-0"
               >
                 <Radio className="w-4 h-4" />
-                <span>⏺ RECORD {inlineFormat}</span>
+                <span>
+                  {downloadSaved
+                    ? 'Saved to Library'
+                    : `⏺ RECORD ${inlineFormat}`}
+                </span>
               </button>
             )}
           </div>
@@ -1892,7 +1924,10 @@ export default function App() {
               <div className="flex items-center justify-between text-xs font-mono text-[#b8d99e] gap-2">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="cassette-led cassette-led-rec animate-ping" />
-                  <span className="truncate">{downloadStatus}</span>
+                  <span className="truncate">
+                    {compactRecordLabel(true, false, downloadProgress, downloadStatus)}
+                    {downloadStatus ? ` · ${downloadStatus}` : ''}
+                  </span>
                 </span>
                 <span className="shrink-0">
                   {downloadMeterLabel || `${Math.round(downloadProgress * 100)}%`}
@@ -1907,12 +1942,15 @@ export default function App() {
             </div>
           )}
 
+          {downloadSaved && !isDownloading && !downloadError && (
+            <p className="text-[11px] font-mono text-[#86efac]">Saved to Library</p>
+          )}
+
           {downloadError && !isDownloading && (
             <div className="p-3.5 rounded-xl bg-[#2a1616] border border-[#522929] flex items-start gap-2.5 text-xs text-[#fca5a5]">
               <span className="cassette-led cassette-led-rec shrink-0 mt-1" />
               <div className="min-w-0">
                 <p className="leading-snug">{downloadError}</p>
-                <p className="mt-1 text-[11px] font-mono text-[#9fa396]">Details are in Activity log (More).</p>
               </div>
             </div>
           )}

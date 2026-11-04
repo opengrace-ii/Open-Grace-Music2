@@ -15,6 +15,7 @@ import {
   takeRecorderResult,
   workerSecretMatches,
 } from '../server/recorderJobs.ts';
+import { compactRecordLabel } from '../src/services/recordProgressLabel.ts';
 import { recordFailureSentence } from '../src/services/recordFailureSentence.ts';
 
 function pass(name: string) {
@@ -69,12 +70,24 @@ pass('result upload is taken once');
 
 resetRecorderJobsForTests();
 assert.equal(recorderPresence().online, false);
+assert.equal(recorderPresence().secretConfigured, true);
 pass('presence starts offline');
 
+const prevSecret = process.env.OGM_WORKER_SECRET;
+delete process.env.OGM_WORKER_SECRET;
+assert.equal(recorderPresence().secretConfigured, false);
+process.env.OGM_WORKER_SECRET = prevSecret;
+pass('hub reports secretConfigured false when OGM_WORKER_SECRET is unset');
+
 const webOffline = recordFailureSentence('MP3', 'No recorder is online.', 'RECORDER_OFFLINE', null, false);
-assert.match(webOffline, /Open the APK to record on this phone/);
+assert.equal(webOffline, 'No recorder is online. Open the APK to record on this phone.');
 assert.doesNotMatch(webOffline, /cookie|Connect YouTube|share this tab|Invidious|Piped/i);
 pass('web offline copy offers APK');
+
+const missingSecret = recordFailureSentence('MP3', 'ignored', 'WORKER_SECRET_MISSING', null, false);
+assert.equal(missingSecret, 'Hub secret isn’t set (OGM_WORKER_SECRET).');
+assert.doesNotMatch(missingSecret, /No recorder is online/);
+pass('missing hub secret is distinct from worker offline');
 
 const apkFail = recordFailureSentence('FLAC', 'ignored', 'RECORDER_OFFLINE', 'Missed this video’s audio. Play the video, then retry Record.', true);
 assert.match(apkFail, /Missed this video/);
@@ -90,5 +103,10 @@ const connectedLogin = recordFailureSentence(
 );
 assert.doesNotMatch(connectedLogin, /paste youtube.com cookies|share this tab|getDisplayMedia/i);
 pass('failure copy has no cookie/tab-share instructions');
+
+assert.equal(compactRecordLabel(true, false, 0.08, 'Queued'), 'Queued');
+assert.equal(compactRecordLabel(true, false, 0.42, 'EXTRACTING'), 'Recording 42%');
+assert.equal(compactRecordLabel(false, true, 1, 'Saved to Library'), 'Saved to Library');
+pass('record button labels');
 
 console.log('all recorder job tests passed');

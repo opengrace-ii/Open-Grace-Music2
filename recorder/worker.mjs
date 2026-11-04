@@ -354,12 +354,38 @@ WantedBy=default.target
   console.log('  systemctl --user enable --now open-grace-recorder.service');
 }
 
+function workerAuthError(status) {
+  if (status === 401) {
+    const err = new Error(
+      'Worker secret does not match the hub (HTTP 401). Set the same OGM_WORKER_SECRET on Render and this PC.'
+    );
+    err.status = 401;
+    return err;
+  }
+  if (status === 503) {
+    const err = new Error(
+      'Hub is missing OGM_WORKER_SECRET (HTTP 503). Set it on Render, then use that same value here.'
+    );
+    err.status = 503;
+    return err;
+  }
+  return null;
+}
+
+async function assertWorkerOk(res, action) {
+  if (res.ok || res.status === 204) return;
+  const auth = workerAuthError(res.status);
+  if (auth) throw auth;
+  throw new Error(`${action} failed HTTP ${res.status}: ${(await res.text()).slice(0, 180)}`);
+}
+
 async function postJson(hub, secret, workerId, urlPath, body) {
-  await fetch(`${hub}${urlPath}`, {
+  const res = await fetch(`${hub}${urlPath}`, {
     method: 'POST',
     headers: { ...authHeaders(secret, workerId), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  await assertWorkerOk(res, urlPath);
 }
 
 async function claim(hub, secret, workerId) {
@@ -367,7 +393,7 @@ async function claim(hub, secret, workerId) {
     headers: authHeaders(secret, workerId),
   });
   if (res.status === 204) return null;
-  if (!res.ok) throw new Error(`claim failed HTTP ${res.status}: ${(await res.text()).slice(0, 180)}`);
+  await assertWorkerOk(res, 'claim');
   const data = await res.json();
   return data.job || null;
 }
@@ -392,7 +418,7 @@ async function uploadResult(hub, secret, workerId, jobId, filePath, spec, title,
     headers,
     body: bytes,
   });
-  if (!res.ok) throw new Error(`upload failed HTTP ${res.status}`);
+  await assertWorkerOk(res, 'upload');
 }
 
 async function heartbeat(hub, secret, workerId) {
@@ -400,7 +426,8 @@ async function heartbeat(hub, secret, workerId) {
     method: 'POST',
     headers: authHeaders(secret, workerId),
   });
-  return res.ok;
+  await assertWorkerOk(res, 'heartbeat');
+  return true;
 }
 
 async function main() {
@@ -423,8 +450,14 @@ async function main() {
   let ok = false;
   const t0 = Date.now();
   while (Date.now() - t0 < 20_000) {
-    ok = await heartbeat(hub, secret, workerId).catch(() => false);
-    if (ok) break;
+    try {
+      ok = await heartbeat(hub, secret, workerId);
+      if (ok) break;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const status = err && typeof err === 'object' ? Number(err.status) || 0 : 0;
+      if (status === 401 || status === 503 || /HTTP 401|HTTP 503/.test(message)) fail(message);
+    }
     await new Promise((r) => setTimeout(r, 500));
   }
   if (!ok) {
@@ -481,6 +514,8 @@ async function main() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const status = err && typeof err === 'object' ? Number(err.status) || 0 : 0;
+      if (status === 401 || status === 503 || /HTTP 401|HTTP 503/.test(message)) fail(message);
       console.error(`[recorder] ${message}`);
       await new Promise((r) => setTimeout(r, 3000));
     }

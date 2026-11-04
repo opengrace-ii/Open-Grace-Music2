@@ -9,7 +9,8 @@ export type ConverterErrorCode =
   | 'INVALID_RESPONSE'
   | 'API_UNAVAILABLE'
   | 'RECORDER_OFFLINE'
-  | 'RECORDER_REQUIRED';
+  | 'RECORDER_REQUIRED'
+  | 'WORKER_SECRET_MISSING';
 
 export class ConverterApiError extends Error {
   code: ConverterErrorCode;
@@ -103,6 +104,7 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
 }
 
 export { recordFailureSentence } from './recordFailureSentence';
+export { compactRecordLabel } from './recordProgressLabel';
 
 export async function checkConverterApiAvailable(): Promise<boolean> {
   try {
@@ -139,23 +141,33 @@ export async function fetchRecorderPresence(): Promise<{
   online: boolean;
   workers: number;
   lastSeenAt: number | null;
+  secretConfigured: boolean | null;
 }> {
   try {
     const res = await fetchWithTimeout(apiUrl('/api/recorder/presence'), { timeoutMs: 8_000 });
-    if (!res.ok) return { online: false, workers: 0, lastSeenAt: null };
-    const data = (await res.json()) as { online?: boolean; workers?: number; lastSeenAt?: number | null };
+    if (!res.ok) return { online: false, workers: 0, lastSeenAt: null, secretConfigured: null };
+    const data = (await res.json()) as {
+      online?: boolean;
+      workers?: number;
+      lastSeenAt?: number | null;
+      secretConfigured?: boolean;
+    };
     return {
       online: !!data.online,
       workers: Number(data.workers) || 0,
       lastSeenAt: data.lastSeenAt ?? null,
+      secretConfigured: typeof data.secretConfigured === 'boolean' ? data.secretConfigured : null,
     };
   } catch {
-    return { online: false, workers: 0, lastSeenAt: null };
+    return { online: false, workers: 0, lastSeenAt: null, secretConfigured: null };
   }
 }
 
 export async function startConvertJob(body: StartConvertJobBody): Promise<{ jobId: string }> {
   const presence = await fetchRecorderPresence();
+  if (presence.secretConfigured === false) {
+    throw new ConverterApiError('Hub secret isn’t set (OGM_WORKER_SECRET).', 'WORKER_SECRET_MISSING');
+  }
   if (!presence.online) {
     throw new ConverterApiError('No recorder is online. Open the APK to record on this phone.', 'RECORDER_OFFLINE');
   }

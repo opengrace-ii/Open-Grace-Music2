@@ -96,6 +96,7 @@ export function recorderPresence(now = Date.now()): {
   online: boolean;
   workers: number;
   lastSeenAt: number | null;
+  secretConfigured: boolean;
 } {
   let workers = 0;
   let lastSeenAt: number | null = null;
@@ -105,7 +106,12 @@ export function recorderPresence(now = Date.now()): {
       if (lastSeenAt == null || ts > lastSeenAt) lastSeenAt = ts;
     }
   }
-  return { online: workers > 0, workers, lastSeenAt };
+  return {
+    online: workers > 0,
+    workers,
+    lastSeenAt,
+    secretConfigured: Boolean(configuredWorkerSecret()),
+  };
 }
 
 export function enqueueRecorderJob(

@@ -13,6 +13,7 @@ import { AUDIOPHILE_FORMATS, AudiophileFormatId } from '../types';
 import { extractYouTubeId } from '../services/mediaResolver';
 import {
   apiUrl,
+  compactRecordLabel,
   fetchWithTimeout,
   humanizeConverterError,
   studioFormatWarning,
@@ -334,7 +335,10 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
               <div className="flex items-center justify-between text-xs font-mono text-[#b8d99e] gap-2">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="cassette-led cassette-led-rec animate-ping" />
-                  <span className="truncate">{downloadStatus || `RECORDING ${selectedFormat} MASTER...`}</span>
+                  <span className="truncate">
+                    {compactRecordLabel(true, false, downloadProgress, downloadStatus) ||
+                      `RECORDING ${selectedFormat} MASTER...`}
+                  </span>
                 </span>
                 <span className="shrink-0">
                   {downloadMeterLabel || `${Math.round(downloadProgress * 100)}%`}
@@ -361,9 +365,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
                   >
                     Open the APK
                   </a>
-                ) : (
-                  <p className="mt-1 text-[11px] font-mono text-[#9fa396]">Details are in Activity log (More).</p>
-                )}
+                ) : null}
               </div>
             </div>
           )}
@@ -377,7 +379,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
                 className="cassette-btn cassette-btn-primary flex-1 py-3.5 px-5 text-xs sm:text-sm font-mono uppercase tracking-wider"
               >
                 <Square className="w-4 h-4 fill-current" />
-                <span>STOP</span>
+                <span>{compactRecordLabel(true, false, downloadProgress, downloadStatus)}</span>
               </button>
             ) : (
               <button

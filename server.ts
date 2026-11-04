@@ -74,7 +74,11 @@ app.get('/api/health', (_req, res) => {
     version: ogmPackageVersion(),
     git: ogmGitSha(),
     ai: { gemini: ai.gemini, nvidia: ai.nvidia },
-    recorder: { online: rec.online, workers: rec.workers, secretConfigured: Boolean(configuredWorkerSecret()) },
+    recorder: {
+      online: rec.online,
+      workers: rec.workers,
+      secretConfigured: rec.secretConfigured,
+    },
   });
 });
 
@@ -342,6 +346,12 @@ app.post('/api/recorder/heartbeat', (req, res) => {
 });
 
 app.post('/api/recorder/jobs', (req, res) => {
+  if (!configuredWorkerSecret()) {
+    return res.status(503).json({
+      error: 'Hub secret isn’t set (OGM_WORKER_SECRET).',
+      code: 'WORKER_SECRET_MISSING',
+    });
+  }
   const created = enqueueRecorderJob({
     url: String(req.body?.url || ''),
     format: String(req.body?.format || 'MP3'),

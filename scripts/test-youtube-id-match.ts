@@ -95,7 +95,7 @@ assert.match(stalledErr.error, /stalled/i);
 pass('stalled extract uses last yt-dlp line');
 
 const webOffline = recordFailureSentence('MP3', 'No recorder is online.', 'RECORDER_OFFLINE', null, false);
-assert.match(webOffline, /Open the APK/);
+assert.equal(webOffline, 'No recorder is online. Open the APK to record on this phone.');
 assert.doesNotMatch(webOffline, /share this tab|getDisplayMedia|Connect YouTube and retry/i);
 pass('web offline offers APK, not tab share');
 

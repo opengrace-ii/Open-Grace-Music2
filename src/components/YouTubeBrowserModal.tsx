@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, Search, Youtube, Radio, Play, ClipboardPaste, Plus } from 'lucide-react';
+import { X, Search, Youtube, Radio, Play, ClipboardPaste, Plus, Square } from 'lucide-react';
 import { extractYouTubeId } from '../services/mediaResolver';
 import { apiUrl, fetchWithTimeout } from '../services/converterApi';
 import {
@@ -7,6 +7,8 @@ import {
   loadTunerSearchChips,
   removeTunerSearchChip,
 } from '../services/tunerSearchChips';
+import { compactRecordLabel } from '../services/converterApi';
+import { RecorderStatusLine } from './RecorderStatusLine';
 
 interface YouTubeBrowserModalProps {
   isOpen: boolean;
@@ -22,6 +24,14 @@ interface YouTubeBrowserModalProps {
     videoUrl: string,
     meta?: { title?: string; author?: string }
   ) => void;
+  isRecording?: boolean;
+  recordPercent?: number;
+  recordStatus?: string;
+  recordError?: string | null;
+  recordSaved?: boolean;
+  recorderOnline?: boolean | null;
+  recorderSecretConfigured?: boolean | null;
+  onCancelRecord?: () => void;
 }
 
 type TunerMode = 'browse' | 'watch';
@@ -41,6 +51,14 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   presentation = 'overlay',
   onConvertVideo,
   onListenVideo,
+  isRecording = false,
+  recordPercent = 0,
+  recordStatus = '',
+  recordError = null,
+  recordSaved = false,
+  recorderOnline = null,
+  recorderSecretConfigured = null,
+  onCancelRecord,
 }) => {
   const initialId = extractYouTubeId(initialUrl || '');
   const [mode, setMode] = useState<TunerMode>(initialId ? 'watch' : 'browse');
@@ -348,8 +366,10 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 w-full">
+                  <RecorderStatusLine online={recorderOnline} secretConfigured={recorderSecretConfigured} />
                   <button
                     type="button"
+                    disabled={isRecording}
                     onClick={() =>
                       watchUrl &&
                       (onListenVideo || onConvertVideo)(
@@ -362,20 +382,53 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                     <Play className="w-4 h-4" />
                     <span>LISTEN</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      watchUrl &&
-                      onConvertVideo(
-                        watchUrl,
-                        previewInfo ? { title: previewInfo.title, author: previewInfo.author } : undefined
-                      )
-                    }
-                    className="cassette-btn cassette-btn-primary w-full px-5 py-2.5 text-xs font-mono"
-                  >
-                    <Radio className="w-4 h-4" />
-                    <span>RECORD</span>
-                  </button>
+                  {isRecording ? (
+                    <button
+                      type="button"
+                      onClick={() => onCancelRecord?.()}
+                      className="cassette-btn cassette-btn-primary w-full px-5 py-2.5 text-xs font-mono"
+                    >
+                      <Square className="w-4 h-4 fill-current" />
+                      <span>{compactRecordLabel(true, false, recordPercent, recordStatus)}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        watchUrl &&
+                        onConvertVideo(
+                          watchUrl,
+                          previewInfo ? { title: previewInfo.title, author: previewInfo.author } : undefined
+                        )
+                      }
+                      className="cassette-btn cassette-btn-primary w-full px-5 py-2.5 text-xs font-mono"
+                    >
+                      <Radio className="w-4 h-4" />
+                      <span>
+                        {compactRecordLabel(false, recordSaved, recordPercent, recordStatus)}
+                      </span>
+                    </button>
+                  )}
+                  {isRecording && (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-mono text-[#b8d99e]">
+                        {compactRecordLabel(true, false, recordPercent, recordStatus)}
+                        {recordStatus ? ` · ${recordStatus}` : ''}
+                      </p>
+                      <div className="w-full h-2 bg-[#161a13] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#b8d99e] to-[#e2c986] transition-all duration-200 rounded-full"
+                          style={{ width: `${Math.round(recordPercent * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {recordSaved && !isRecording && !recordError && (
+                    <p className="text-[11px] font-mono text-[#86efac]">Saved to Library</p>
+                  )}
+                  {recordError && !isRecording && (
+                    <p className="text-[11px] font-mono text-[#fca5a5] leading-snug">{recordError}</p>
+                  )}
                 </div>
               </div>
               {catalog.length > 0 ? (
