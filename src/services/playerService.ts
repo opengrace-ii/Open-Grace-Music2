@@ -315,6 +315,23 @@ class AudioPlayerEngine {
     await this.playTrack(track);
   }
 
+  /** Seek a hair so YouTube issues a fresh googlevideo URL (n-param / signature). */
+  public nudgeYoutubeForCapture(): void {
+    this.setShowVideo(true);
+    if (!this.usingYoutube || !this.ytPlayer) return;
+    try {
+      const t = this.ytPlayer.getCurrentTime() || 0;
+      this.ytPlayer.seekTo(t + 0.35, true);
+      this.ytPlayer.playVideo();
+    } catch {
+      try {
+        this.ytPlayer.playVideo();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   private notifyTime(current: number, duration: number) {
     this.listeners.forEach((l) => l.onTimeUpdate(current, duration));
   }

@@ -109,4 +109,15 @@ assert.equal(compactRecordLabel(true, false, 0.42, 'EXTRACTING'), 'Recording 42%
 assert.equal(compactRecordLabel(false, true, 1, 'Saved to Library'), 'Saved to Library');
 pass('record button labels');
 
+const tooBig = recordFailureSentence(
+  'FLAC',
+  'This video is too long for FLAC through the recorder (~1400 MB). Try MP3 320.',
+  'FILE_TOO_LARGE',
+  null,
+  false
+);
+assert.match(tooBig, /too long for FLAC/);
+assert.match(tooBig, /MP3 320/);
+pass('large FLAC copy is short');
+
 console.log('all recorder job tests passed');

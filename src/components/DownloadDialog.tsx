@@ -19,6 +19,7 @@ import {
   studioFormatWarning,
 } from '../services/converterApi';
 import { apkDownloadLandingUrl } from '../utils/apkDownload';
+import { FormatEstimatePicker } from './FormatEstimatePicker';
 
 interface DownloadDialogProps {
   isOpen: boolean;
@@ -65,6 +66,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
     title: string;
     author: string;
     thumbnailUrl: string;
+    durationSec?: number;
   } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -99,6 +101,7 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
           title: data.title || 'Audio Stream',
           author: data.author || 'Open Grace Music',
           thumbnailUrl: data.thumbnailUrl || '',
+          durationSec: Number(data.durationSec) || 0,
         });
       } else {
         setPreviewData(null);
@@ -218,31 +221,13 @@ export const DownloadDialog: React.FC<DownloadDialogProps> = ({
             </button>
           </div>
 
-          {/* Tape Bias / Master Format Selector Bank */}
-          <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-            {AUDIOPHILE_FORMATS.map((fmt) => {
-              const isSelected = selectedFormat === fmt.id;
-              return (
-                <button
-                  key={fmt.id}
-                  type="button"
-                  disabled={isDownloading}
-                  onClick={() => setSelectedFormat(fmt.id)}
-                  className={`cassette-btn flex-col items-start px-3 py-2 text-left ${
-                    isSelected ? 'cassette-btn-engaged' : ''
-                  }`}
-                >
-                  <div className="w-full flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold">{fmt.id}</span>
-                    <span className={`cassette-led ${isSelected ? 'cassette-led-on' : ''}`} />
-                  </div>
-                  <div className="text-[10px] font-mono text-[#9fa396] mt-0.5 truncate w-full">
-                    {fmt.badge}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <FormatEstimatePicker
+            selected={selectedFormat}
+            onSelect={setSelectedFormat}
+            durationSec={Number(previewData?.durationSec) || 0}
+            mp3Bitrate={mp3Bitrate}
+            disabled={isDownloading}
+          />
 
           {studioFormatWarning(selectedFormat) && (
             <p className="mt-2 text-[11px] font-mono text-[#e2c986] leading-snug">

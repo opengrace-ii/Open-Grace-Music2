@@ -26,7 +26,8 @@ object WebViewStreamCapture {
     /** Progressive muxed A+V itags the IFrame still requests when it skips adaptive audio. */
     val MUXED_ITAGS: Set<Int> = setOf(18, 22, 59, 78)
 
-    private const val MAX_AGE_MS = 90_000L
+    /** googlevideo n-param / signature URLs go stale in tens of seconds. */
+    const val MAX_AGE_MS = 15_000L
     private val WATCH_ID_RE = Regex("^[A-Za-z0-9_-]{11}$")
 
     data class CapturedStream(
@@ -85,7 +86,7 @@ object WebViewStreamCapture {
     }
 
     fun remember(stream: CapturedStream) {
-        if (!isDownloadCandidate(stream.itag, stream.mime) && !isSabrUnknown(stream.itag, stream.mime)) return
+        if (!isRangedDownloadable(stream)) return
         if (isAudioCandidate(stream.itag, stream.mime) || latestAudio.get() == null) {
             latestAudio.set(stream)
         } else {
@@ -106,12 +107,14 @@ object WebViewStreamCapture {
 
     fun findFor(watchId: String, now: Long = System.currentTimeMillis()): CapturedStream? {
         if (!WATCH_ID_RE.matches(watchId)) return null
-        val fresh = { s: CapturedStream -> now - s.capturedAt in 0..MAX_AGE_MS }
+        val usable = { s: CapturedStream ->
+            now - s.capturedAt in 0..MAX_AGE_MS && isRangedDownloadable(s)
+        }
 
-        byWatchId[watchId]?.takeIf(fresh)?.let { return it }
+        byWatchId[watchId]?.takeIf(usable)?.let { return it }
 
         val latest = latestAudio.get()
-        if (latest != null && fresh(latest)) {
+        if (latest != null && usable(latest)) {
             if (latest.watchIdInQuery == watchId) return latest
             if (latest.playingWatchId == watchId) return latest
             val playing = currentlyPlayingWatchId
@@ -124,9 +127,36 @@ object WebViewStreamCapture {
         return null
     }
 
+    fun forget(watchId: String) {
+        if (WATCH_ID_RE.matches(watchId)) byWatchId.remove(watchId)
+        val latest = latestAudio.get() ?: return
+        if (latest.watchIdInQuery == watchId || latest.playingWatchId == watchId) {
+            latestAudio.compareAndSet(latest, null)
+        }
+    }
+
+    fun forgetUrl(url: String) {
+        val drop = url.trim()
+        if (drop.isEmpty()) return
+        val it = byWatchId.entries.iterator()
+        while (it.hasNext()) {
+            if (it.next().value.url == drop) it.remove()
+        }
+        val latest = latestAudio.get()
+        if (latest?.url == drop) latestAudio.compareAndSet(latest, null)
+    }
+
     fun clear() {
         byWatchId.clear()
         latestAudio.set(null)
+    }
+
+    /** True only for GET-able videoplayback audio/muxed itags — not SABR initplayback. */
+    fun isRangedDownloadable(stream: CapturedStream): Boolean {
+        val path = runCatching { Uri.parse(stream.url).path.orEmpty().lowercase(Locale.US) }.getOrDefault("")
+        if (path.contains("initplayback") || path.contains("videogoodput")) return false
+        if (!path.contains("videoplayback")) return false
+        return isDownloadCandidate(stream.itag, stream.mime)
     }
 
     /**
@@ -343,5 +373,5 @@ object WebViewStreamCapture {
     const val DEFAULT_UA =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    const val WAIT_FOR_STREAM_MS = 18_000L
+    const val WAIT_FOR_STREAM_MS = 28_000L
 }

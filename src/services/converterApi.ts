@@ -10,7 +10,8 @@ export type ConverterErrorCode =
   | 'API_UNAVAILABLE'
   | 'RECORDER_OFFLINE'
   | 'RECORDER_REQUIRED'
-  | 'WORKER_SECRET_MISSING';
+  | 'WORKER_SECRET_MISSING'
+  | 'FILE_TOO_LARGE';
 
 export class ConverterApiError extends Error {
   code: ConverterErrorCode;
@@ -127,6 +128,7 @@ export interface ConvertJobStatus {
   done: boolean;
   error?: string;
   code?: ConverterErrorCode;
+  sizeBytes?: number;
 }
 
 export interface StartConvertJobBody {
@@ -193,9 +195,33 @@ export async function fetchConvertJobStatus(jobId: string): Promise<ConvertJobSt
   return (await res.json()) as ConvertJobStatus;
 }
 
-export async function downloadConvertJobResult(jobId: string): Promise<Response> {
+export async function downloadConvertJobResult(
+  jobId: string,
+  sizeBytes = 0
+): Promise<Response> {
+  const CHUNK = 4 * 1024 * 1024;
+  if (sizeBytes > CHUNK) {
+    const parts: Blob[] = [];
+    let offset = 0;
+    let mime = 'application/octet-stream';
+    const headers = new Headers();
+    while (offset < sizeBytes) {
+      const res = await fetchWithTimeout(
+        apiUrl(
+          `/api/recorder/jobs/${encodeURIComponent(jobId)}/file?offset=${offset}&limit=${CHUNK}`
+        ),
+        { timeoutMs: 180_000 }
+      );
+      if (!res.ok) throw await readConverterError(res);
+      mime = res.headers.get('content-type') || mime;
+      res.headers.forEach((v, k) => headers.set(k, v));
+      parts.push(await res.blob());
+      offset += CHUNK;
+    }
+    return new Response(new Blob(parts, { type: mime }), { headers, status: 200 });
+  }
   return fetchWithTimeout(apiUrl(`/api/recorder/jobs/${encodeURIComponent(jobId)}/file`), {
-    timeoutMs: 240_000,
+    timeoutMs: 12 * 60_000,
   });
 }
 
@@ -210,26 +236,40 @@ export function studioFormatWarning(format: string): string | null {
   return `${format} is a lossless wrap of YouTube’s lossy audio — not a studio master.`;
 }
 
-/** Poll job progress until done/error or timeout (default 8 min — FLAC extract + FFmpeg). */
+/** Poll until done/error. Hard cap is hours; a stall with no progress is the real timeout. */
 export async function waitForConvertJob(
   jobId: string,
   onProgress?: (status: ConvertJobStatus) => void,
-  timeoutMs = 480_000
+  stallMs = 5 * 60_000,
+  maxMs = 6 * 60 * 60_000
 ): Promise<ConvertJobStatus> {
   const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
+  let lastSig = '';
+  let lastChange = Date.now();
+  while (Date.now() - started < maxMs) {
     const status = await fetchConvertJobStatus(jobId);
     onProgress?.(status);
+    const sig = `${status.stage}|${status.percent}|${status.message}|${status.done}`;
+    if (sig !== lastSig) {
+      lastSig = sig;
+      lastChange = Date.now();
+    }
     if (status.stage === 'error') {
       throw new ConverterApiError(status.error || 'Conversion failed', status.code || 'EXTRACTION_FAILED');
     }
     if (status.done) {
       return status;
     }
+    if (Date.now() - lastChange > stallMs) {
+      throw new ConverterApiError(
+        'Conversion stalled. Try MP3 320 for long videos.',
+        'TIMEOUT'
+      );
+    }
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new ConverterApiError(
-    'Conversion timed out. Studio formats can take several minutes — retry or try MP3 320.',
+    'Conversion stalled. Try MP3 320 for long videos.',
     'TIMEOUT'
   );
 }

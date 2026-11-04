@@ -23,8 +23,11 @@ export function recordFailureSentence(
   if (code === 'RECORDER_OFFLINE' || /no recorder is online|pc recorder is offline/.test(blob)) {
     return 'No recorder is online. Open the APK to record on this phone.';
   }
-  if (code === 'TIMEOUT' || /timed out|timeout/.test(blob)) {
+  if (code === 'TIMEOUT' || /timed out|timeout|stalled/.test(blob)) {
     return `Couldn’t save this as ${format}. Recording timed out — try MP3 320.`;
+  }
+  if (code === 'FILE_TOO_LARGE' || /too long for|too large/.test(blob)) {
+    return `Couldn’t save this as ${format}. This video is too long for ${format} through the recorder. Try MP3 320.`;
   }
   if (/did not match|different video/.test(blob)) {
     return `Couldn’t save this as ${format}. YouTube resolved a different video — retry this exact URL.`;

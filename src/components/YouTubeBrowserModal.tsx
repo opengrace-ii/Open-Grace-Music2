@@ -9,6 +9,8 @@ import {
 } from '../services/tunerSearchChips';
 import { compactRecordLabel } from '../services/converterApi';
 import { RecorderStatusLine } from './RecorderStatusLine';
+import { FormatEstimatePicker } from './FormatEstimatePicker';
+import { AudiophileFormatId } from '../types';
 
 interface YouTubeBrowserModalProps {
   isOpen: boolean;
@@ -32,6 +34,9 @@ interface YouTubeBrowserModalProps {
   recorderOnline?: boolean | null;
   recorderSecretConfigured?: boolean | null;
   onCancelRecord?: () => void;
+  selectedFormat?: AudiophileFormatId;
+  onSelectFormat?: (id: AudiophileFormatId) => void;
+  mp3Bitrate?: number;
 }
 
 type TunerMode = 'browse' | 'watch';
@@ -59,12 +64,17 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
   recorderOnline = null,
   recorderSecretConfigured = null,
   onCancelRecord,
+  selectedFormat = 'MP3',
+  onSelectFormat,
+  mp3Bitrate = 320,
 }) => {
   const initialId = extractYouTubeId(initialUrl || '');
   const [mode, setMode] = useState<TunerMode>(initialId ? 'watch' : 'browse');
   const [searchInput, setSearchInput] = useState(initialUrl || '');
   const [selectedYtId, setSelectedYtId] = useState<string | null>(initialId);
-  const [previewInfo, setPreviewInfo] = useState<{ title: string; author: string } | null>(null);
+  const [previewInfo, setPreviewInfo] = useState<{ title: string; author: string; durationSec?: number } | null>(
+    null
+  );
   const [catalog, setCatalog] = useState<CatalogVideo[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -73,12 +83,33 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
 
   const fetchInfo = useCallback(async (id: string) => {
     try {
+      const res = await fetchWithTimeout(
+        apiUrl(`/api/validate-url?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`),
+        { timeoutMs: 12_000 }
+      );
+      const json = (await res.json()) as {
+        title?: string;
+        author?: string;
+        durationSec?: number;
+      };
+      if (res.ok) {
+        setPreviewInfo({
+          title: json.title || `YouTube ${id}`,
+          author: json.author || 'YouTube',
+          durationSec: Number(json.durationSec) || 0,
+        });
+        return;
+      }
+    } catch {
+      // fall through to oEmbed
+    }
+    try {
       const res = await fetch(
         `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`
       );
       if (res.ok) {
         const json = await res.json();
-        setPreviewInfo({ title: json.title, author: json.author_name });
+        setPreviewInfo({ title: json.title, author: json.author_name, durationSec: 0 });
       }
     } catch {
       // ignore
@@ -366,6 +397,13 @@ export const YouTubeBrowserModal: React.FC<YouTubeBrowserModalProps> = ({
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 w-full">
+                  <FormatEstimatePicker
+                    selected={selectedFormat}
+                    onSelect={(id) => onSelectFormat?.(id)}
+                    durationSec={Number(previewInfo?.durationSec) || 0}
+                    mp3Bitrate={mp3Bitrate}
+                    disabled={isRecording}
+                  />
                   <RecorderStatusLine online={recorderOnline} secretConfigured={recorderSecretConfigured} />
                   <button
                     type="button"

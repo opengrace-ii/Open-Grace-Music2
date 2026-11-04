@@ -13,6 +13,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  MAX_HUB_UPLOAD_BYTES,
+  RESULT_CHUNK_BYTES,
+  extractTimeoutMs,
+  ffmpegTimeoutMs,
+  tooLargeMessage,
+} from './limits.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, '..');
@@ -181,31 +188,50 @@ function formatSpec(rawFormat, rawBitrate) {
 }
 
 function runCmd(command, args, opts = {}) {
-  const timeoutMs = opts.timeoutMs || 300_000;
+  const stallMs = opts.stallMs || 120_000;
+  const maxMs = opts.maxMs || opts.timeoutMs || 45 * 60_000;
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error(`${command} timed out`));
-    }, timeoutMs);
+    const started = Date.now();
+    let lastData = Date.now();
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(watch);
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const watch = setInterval(() => {
+      const now = Date.now();
+      if (now - lastData > stallMs) {
+        child.kill('SIGKILL');
+        finish(new Error(`${command} stalled`));
+      } else if (now - started > maxMs) {
+        child.kill('SIGKILL');
+        finish(new Error(`${command} timed out`));
+      }
+    }, 2000);
     child.stdout.on('data', (d) => {
-      stdout += d.toString();
-      if (opts.onOut) opts.onOut(d.toString());
+      lastData = Date.now();
+      const text = d.toString();
+      stdout += text;
+      if (stdout.length > 400_000) stdout = stdout.slice(-200_000);
+      if (opts.onOut) opts.onOut(text);
     });
     child.stderr.on('data', (d) => {
-      stderr += d.toString();
-      if (opts.onOut) opts.onOut(d.toString());
+      lastData = Date.now();
+      const text = d.toString();
+      stderr += text;
+      if (stderr.length > 400_000) stderr = stderr.slice(-200_000);
+      if (opts.onOut) opts.onOut(text);
     });
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+    child.on('error', (err) => finish(err));
     child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${command} exit ${code}: ${(stderr || stdout).slice(-400)}`));
+      if (code === 0) finish(null, { stdout, stderr });
+      else finish(new Error(`${command} exit ${code}: ${(stderr || stdout).slice(-400)}`));
     });
   });
 }
@@ -243,7 +269,31 @@ function ffmpegBin() {
   return (process.env.OGM_FFMPEG || 'ffmpeg').trim();
 }
 
-async function recordJob(job, cookies) {
+function parseYtdlpPercent(text) {
+  const m = String(text).match(/\[download\]\s+([0-9.]+)%/);
+  return m ? Number(m[1]) : null;
+}
+
+function parseFfmpegOutTimeSec(text) {
+  const m = String(text).match(/out_time_ms=(\d+)/);
+  if (!m) return null;
+  return Number(m[1]) / 1_000_000;
+}
+
+function infoDurationSec(workDir) {
+  for (const f of fs.readdirSync(workDir).filter((n) => n.endsWith('.info.json'))) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(workDir, f), 'utf8'));
+      const d = Number(j.duration);
+      if (Number.isFinite(d) && d > 0) return d;
+    } catch {
+      // ignore
+    }
+  }
+  return 0;
+}
+
+async function recordJob(job, cookies, onProgress) {
   const spec = formatSpec(job.format, job.bitrate);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-home-'));
   const ytId = extractYouTubeId(job.url);
@@ -251,6 +301,7 @@ async function recordJob(job, cookies) {
   let artist = job.artist || 'Open Grace Music';
   try {
     let inputPath;
+    let durationSec = 0;
     if (ytId) {
       const out = path.join(workDir, 'raw_source.%(ext)s');
       const args = [
@@ -265,11 +316,25 @@ async function recordJob(job, cookies) {
       ];
       if (cookies) args.push('--cookies', cookies);
       args.push(`https://www.youtube.com/watch?v=${ytId}`);
-      await runCmd(ytdlpBin(), args, { timeoutMs: 300_000 });
+      await runCmd(ytdlpBin(), args, {
+        stallMs: 120_000,
+        maxMs: extractTimeoutMs(3600),
+        onOut: (chunk) => {
+          const pct = parseYtdlpPercent(chunk);
+          if (pct != null && onProgress) {
+            onProgress({
+              stage: 'extract',
+              percent: Math.min(54, 12 + Math.round(pct * 0.4)),
+              message: `Fetching audio ${Math.round(pct)}%…`,
+            });
+          }
+        },
+      });
       const got = reportedId(workDir);
       if (got && got.toLowerCase() !== ytId.toLowerCase()) {
         throw new Error(`Stream did not match this video (yt-dlp id ${got}, requested ${ytId}).`);
       }
+      durationSec = infoDurationSec(workDir);
       inputPath = pickRaw(workDir);
       if (!inputPath) throw new Error('Could not fetch an audio stream for this video.');
     } else {
@@ -279,6 +344,9 @@ async function recordJob(job, cookies) {
       inputPath = path.join(workDir, 'raw_direct_input');
       fs.writeFileSync(inputPath, Buffer.from(await res.arrayBuffer()));
     }
+    if (onProgress) {
+      onProgress({ stage: 'ffmpeg', percent: 58, message: `Converting to ${spec.format}…` });
+    }
     const outputFilePath = path.join(workDir, `master_output.${spec.extension}`);
     await runCmd(
       ffmpegBin(),
@@ -286,6 +354,8 @@ async function recordJob(job, cookies) {
         '-y',
         '-i',
         inputPath,
+        '-progress',
+        'pipe:1',
         ...spec.ffmpegArgs,
         '-metadata',
         `title=${title}`,
@@ -295,10 +365,31 @@ async function recordJob(job, cookies) {
         'album=Open Grace Music',
         outputFilePath,
       ],
-      { timeoutMs: 240_000 }
+      {
+        stallMs: 120_000,
+        maxMs: ffmpegTimeoutMs(durationSec || 600),
+        onOut: (chunk) => {
+          const t = parseFfmpegOutTimeSec(chunk);
+          if (t != null && onProgress) {
+            const den = durationSec > 0 ? durationSec : Math.max(t, 1);
+            const frac = Math.max(0, Math.min(1, t / den));
+            onProgress({
+              stage: 'ffmpeg',
+              percent: Math.min(90, 58 + Math.round(frac * 32)),
+              message: `Converting ${spec.format} ${Math.round(frac * 100)}%…`,
+            });
+          }
+        },
+      }
     );
     if (!fs.existsSync(outputFilePath) || fs.statSync(outputFilePath).size < 1000) {
       throw new Error('FFmpeg transcoding produced an invalid output file.');
+    }
+    const outBytes = fs.statSync(outputFilePath).size;
+    if (outBytes > MAX_HUB_UPLOAD_BYTES) {
+      const err = new Error(tooLargeMessage(spec.format, durationSec || 0));
+      err.code = 'FILE_TOO_LARGE';
+      throw err;
     }
     return {
       workDir,
@@ -398,10 +489,8 @@ async function claim(hub, secret, workerId) {
   return data.job || null;
 }
 
-async function uploadResult(hub, secret, workerId, jobId, filePath, spec, title, artist, ytId) {
-  const bytes = fs.readFileSync(filePath);
+function audioMetaHeaders(spec, title, artist, ytId) {
   const headers = {
-    ...authHeaders(secret, workerId),
     'Content-Type': spec.mimeType,
     'X-Audio-Format': spec.format,
     'X-Audio-Extension': spec.extension,
@@ -413,12 +502,41 @@ async function uploadResult(hub, secret, workerId, jobId, filePath, spec, title,
     'X-Audio-Source': 'pc-recorder',
   };
   if (ytId) headers['X-Audio-Id'] = ytId;
-  const res = await fetch(`${hub}/api/recorder/jobs/${encodeURIComponent(jobId)}/result`, {
-    method: 'POST',
-    headers,
-    body: bytes,
-  });
-  await assertWorkerOk(res, 'upload');
+  return headers;
+}
+
+async function uploadResult(hub, secret, workerId, jobId, filePath, spec, title, artist, ytId) {
+  const size = fs.statSync(filePath).size;
+  if (size > MAX_HUB_UPLOAD_BYTES) {
+    const err = new Error(tooLargeMessage(spec.format, 0));
+    err.code = 'FILE_TOO_LARGE';
+    throw err;
+  }
+  const base = `${hub}/api/recorder/jobs/${encodeURIComponent(jobId)}`;
+  const meta = { ...authHeaders(secret, workerId), ...audioMetaHeaders(spec, title, artist, ytId) };
+  const begin = await fetch(`${base}/result-begin`, { method: 'POST', headers: meta });
+  await assertWorkerOk(begin, 'result-begin');
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    let offset = 0;
+    const buf = Buffer.alloc(RESULT_CHUNK_BYTES);
+    while (offset < size) {
+      const n = fs.readSync(fd, buf, 0, Math.min(RESULT_CHUNK_BYTES, size - offset), offset);
+      if (n <= 0) break;
+      const chunk = buf.subarray(0, n);
+      const res = await fetch(`${base}/result-chunk`, {
+        method: 'POST',
+        headers: { ...authHeaders(secret, workerId), 'Content-Type': 'application/octet-stream' },
+        body: chunk,
+      });
+      await assertWorkerOk(res, 'result-chunk');
+      offset += n;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  const end = await fetch(`${base}/result-end`, { method: 'POST', headers: authHeaders(secret, workerId) });
+  await assertWorkerOk(end, 'result-end');
 }
 
 async function heartbeat(hub, secret, workerId) {
@@ -472,18 +590,32 @@ async function main() {
       console.log(`[recorder] job ${job.id} ${job.format} ${job.url}`);
       await postJson(hub, secret, workerId, `/api/recorder/jobs/${job.id}/progress`, {
         stage: 'extract',
-        percent: 20,
+        percent: 12,
         message: 'Fetching on this machine…',
       });
       let recorded;
       try {
-        recorded = await recordJob(job, cookies);
+        recorded = await recordJob(job, cookies, async (p) => {
+          try {
+            await postJson(hub, secret, workerId, `/api/recorder/jobs/${job.id}/progress`, p);
+          } catch {
+            // keep converting even if a progress ping fails
+          }
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        const code =
+          err && typeof err === 'object' && err.code === 'FILE_TOO_LARGE'
+            ? 'FILE_TOO_LARGE'
+            : /too long for|too large/i.test(message)
+              ? 'FILE_TOO_LARGE'
+              : /LOGIN_REQUIRED|sign in/i.test(message)
+                ? 'YOUTUBE_BOT_CHECK'
+                : 'EXTRACTION_FAILED';
         console.error(`[recorder] fail: ${message}`);
         await postJson(hub, secret, workerId, `/api/recorder/jobs/${job.id}/fail`, {
           error: message,
-          code: /LOGIN_REQUIRED|sign in/i.test(message) ? 'YOUTUBE_BOT_CHECK' : 'EXTRACTION_FAILED',
+          code,
         });
         continue;
       }

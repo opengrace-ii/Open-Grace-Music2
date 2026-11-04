@@ -37,7 +37,8 @@ class OnDeviceDownloadManager(private val context: Context) {
                 .build()
         }
 
-        const val CAPTURE_HINT = "Play the video, then retry Record."
+        const val CAPTURE_HINT = "Retry Record."
+        const val CAPTURE_ATTEMPTS = 3
 
         fun friendlyFailure(
             videoId: String,
@@ -62,7 +63,7 @@ class OnDeviceDownloadManager(private val context: Context) {
                     }
                 "different video" in lower || "did not match" in lower ->
                     "YouTube answered for a different video. Retry this exact URL."
-                hadCapture -> "Stream expired. $CAPTURE_HINT"
+                hadCapture -> "YouTube stream expired. Retrying a fresh URL failed. $CAPTURE_HINT"
                 else -> "Missed this video’s audio. $CAPTURE_HINT"
             }
         }
@@ -97,38 +98,63 @@ class OnDeviceDownloadManager(private val context: Context) {
 
     private fun run(videoId: String, callbackId: String, cancelled: AtomicBoolean, events: DownloadEvents) {
         WebViewStreamCapture.setRequested(videoId)
+        WebViewStreamCapture.forget(videoId)
         runCatching {
             val stored = YouTubeSessionStore.loadPersisted(context)
             if (stored.isNotBlank()) YouTubeSessionStore.applyHeaderToCookieManager(stored)
         }
         val downloader = RangedDownloader(http)
+        var hadCapture = false
+        var lastCaptureError: String? = null
 
-        events.onProgress(
-            callbackId,
-            JSONObject().put("stage", "capture").put("percent", 4)
-                .put("message", "Waiting for YouTube audio…")
-        )
-        val captured = waitForCapture(videoId, cancelled, events, callbackId)
-        if (captured != null) {
+        for (attempt in 1..CAPTURE_ATTEMPTS) {
+            if (cancelled.get()) throw OnDeviceException("Cancelled")
+            events.onProgress(
+                callbackId,
+                JSONObject().put("stage", if (attempt == 1) "capture" else "refresh").put("percent", 4)
+                    .put("message", if (attempt == 1) "Waiting for YouTube audio…" else "Getting a fresh stream…")
+            )
+            val captured = waitForCapture(videoId, cancelled, events, callbackId)
+            if (captured == null) continue
+            hadCapture = true
             try {
                 if (downloadCaptured(videoId, captured, callbackId, cancelled, events, downloader)) return
             } catch (e: Exception) {
                 if (cancelled.get()) throw OnDeviceException("Cancelled")
-                // Fall through: signed-in InnerTube, then JS server route.
+                lastCaptureError = e.message
+                WebViewStreamCapture.forgetUrl(captured.url)
+                WebViewStreamCapture.forget(videoId)
+                if (attempt < CAPTURE_ATTEMPTS && isRetryableStreamError(e)) {
+                    events.onProgress(
+                        callbackId,
+                        JSONObject().put("stage", "refresh").put("percent", 5)
+                            .put("message", "Stream expired — grabbing a new URL…")
+                    )
+                    continue
+                }
+                break
             }
         }
 
         val cookies = YouTubeSessionStore.mergedCookieHeader(context)
         val sessionConnected = YouTubeSessionStore.hasAuthCookies(cookies)
         val innerFailures = mutableListOf<String>()
+        lastCaptureError?.let { innerFailures.add(it) }
         // Capture miss + no YouTube session: fail fast so the PWA can use the PC recorder.
         if (sessionConnected) {
             if (tryInnerTube(videoId, cookies, callbackId, cancelled, events, downloader, innerFailures)) return
         }
 
         throw OnDeviceException(
-            friendlyFailure(videoId, captured != null, innerFailures.joinToString("; "), sessionConnected)
+            friendlyFailure(videoId, hadCapture, innerFailures.joinToString("; "), sessionConnected)
         )
+    }
+
+    private fun isRetryableStreamError(e: Exception): Boolean {
+        val m = e.message.orEmpty().lowercase()
+        return "403" in m || "401" in m || "404" in m || "expired" in m ||
+            "length" in m || "ended early" in m || "not audio" in m ||
+            "could not determine" in m
     }
 
     private fun tryInnerTube(

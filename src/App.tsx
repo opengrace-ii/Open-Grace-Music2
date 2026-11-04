@@ -55,6 +55,8 @@ import { resolveFreshListen } from './services/freshListenService';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FullPlayerModal } from './components/FullPlayerModal';
 import { DownloadDialog } from './components/DownloadDialog';
+import { RecordConfirmModal } from './components/RecordConfirmModal';
+import { FormatEstimatePicker } from './components/FormatEstimatePicker';
 import { YouTubeBrowserModal } from './components/YouTubeBrowserModal';
 import { LyricsModal } from './components/LyricsModal';
 import { AndroidProjectModal } from './components/AndroidProjectModal';
@@ -92,6 +94,13 @@ import {
   mimeForFormat,
 } from './utils/audioFormatLabel';
 import { saveAudioToDevice } from './services/saveToDevice';
+import {
+  estimateRecord,
+  mp3InsteadLine,
+  needsRecordConfirm,
+  recordConfirmPrompt,
+  shouldSkipOnDeviceLossless,
+} from './utils/recordEstimate';
 import { safeDownloadFilename } from './utils/downloadFilename';
 import {
   downloadYouTubeAudioOnDevice,
@@ -139,6 +148,12 @@ export default function App() {
     title: string;
     author: string;
     thumbnailUrl: string;
+    durationSec?: number;
+  } | null>(null);
+  const [recordConfirm, setRecordConfirm] = useState<{
+    prompt: string;
+    mp3Instead: string;
+    resolve: (choice: 'record' | 'mp3' | 'cancel') => void;
   } | null>(null);
   const [inlineValidationError, setInlineValidationError] = useState<string | null>(null);
   const [isValidatingInline, setIsValidatingInline] = useState(false);
@@ -440,6 +455,7 @@ export default function App() {
           title: data.title || 'Audio Stream',
           author: data.author || 'Open Grace Music',
           thumbnailUrl: data.thumbnailUrl || '',
+          durationSec: Number(data.durationSec) || 0,
         });
       } else {
         setInlinePreview(null);
@@ -858,7 +874,14 @@ export default function App() {
         }
         const pct = Math.max(0.04, Math.min(0.85, ((p.percent || 0) / 100) * 0.85));
         setDownloadProgress(pct);
-        if (stage === 'capture') {
+        if (stage === 'refresh') {
+          try {
+            playerEngine.nudgeYoutubeForCapture();
+          } catch {
+            // ignore
+          }
+          setDownloadStatus(p.message || 'Getting a fresh stream…');
+        } else if (stage === 'capture') {
           setDownloadStatus(p.message || 'Waiting for audio…');
         } else if (stage === 'download') {
           setDownloadStatus(p.message || 'Downloading…');
@@ -1014,7 +1037,48 @@ export default function App() {
       return;
     }
 
-    const formatObj = AUDIOPHILE_FORMATS.find((f) => f.id === format) || AUDIOPHILE_FORMATS[0];
+    const ytIdForEstimate = extractYouTubeId(trimmedUrl);
+    let durationSec = 0;
+    if (ytIdForEstimate && playerEngine.getPlayingYouTubeId() === ytIdForEstimate) {
+      durationSec = playerEngine.getDuration() || 0;
+    }
+    if (!durationSec && inlinePreview?.id && inlinePreview.id === (ytIdForEstimate || inlinePreview.id)) {
+      durationSec = Number(inlinePreview.durationSec) || 0;
+    }
+    if (!durationSec) {
+      try {
+        const res = await fetchWithTimeout(apiUrl(`/api/validate-url?url=${encodeURIComponent(trimmedUrl)}`), {
+          timeoutMs: 12_000,
+        });
+        const data = (await res.json()) as { durationSec?: number };
+        durationSec = Number(data.durationSec) || 0;
+      } catch {
+        // estimate prompt still works without duration
+      }
+    }
+
+    let chosenFormat = format;
+    let chosenBitrate = bitrateKbps;
+    const firstEst = estimateRecord(chosenFormat, durationSec, chosenBitrate);
+    if (needsRecordConfirm(firstEst)) {
+      const choice = await new Promise<'record' | 'mp3' | 'cancel'>((resolve) => {
+        setRecordConfirm({
+          prompt: recordConfirmPrompt(firstEst),
+          mp3Instead: mp3InsteadLine(durationSec, 320),
+          resolve,
+        });
+      });
+      setRecordConfirm(null);
+      if (choice === 'cancel') return;
+      if (choice === 'mp3') {
+        chosenFormat = 'MP3';
+        chosenBitrate = 320;
+      }
+    }
+
+    const formatObj = AUDIOPHILE_FORMATS.find((f) => f.id === chosenFormat) || AUDIOPHILE_FORMATS[0];
+    format = chosenFormat;
+    bitrateKbps = chosenBitrate;
 
     downloadCancelledRef.current = false;
     downloadAbortRef.current = new AbortController();
@@ -1042,7 +1106,11 @@ export default function App() {
 
     let recordedOk = false;
 
-    if (ytId && isOnDeviceDownloadAvailable()) {
+    const skipOnDevice = shouldSkipOnDeviceLossless(
+      format,
+      estimateRecord(format, durationSec, bitrateKbps)
+    );
+    if (ytId && isOnDeviceDownloadAvailable() && !skipOnDevice) {
       const r = await recordOnDevice(
         ytId,
         trimmedUrl,
@@ -1084,7 +1152,7 @@ export default function App() {
         artist: customArtist,
       });
 
-      await waitForConvertJob(
+      const doneJob = await waitForConvertJob(
         jobId,
         (status) => {
           setDownloadProgress(Math.max(0.05, Math.min(0.98, status.percent / 100)));
@@ -1112,14 +1180,13 @@ export default function App() {
               source: trimmedUrl,
             });
           }
-        },
-        480_000
+        }
       );
 
       setDownloadProgress(0.92);
       setDownloadStatus('Downloading mastered file...');
 
-      const response = await downloadConvertJobResult(jobId);
+      const response = await downloadConvertJobResult(jobId, doneJob.sizeBytes || 0);
 
       if (!response.ok) {
         throw await readConverterError(response);
@@ -1689,6 +1756,9 @@ export default function App() {
             recordSaved={downloadSaved}
             recorderOnline={recorderOnline}
             recorderSecretConfigured={recorderSecretConfigured}
+            selectedFormat={inlineFormat}
+            onSelectFormat={setInlineFormat}
+            mp3Bitrate={inlineMp3Bitrate}
             onCancelRecord={() => {
               downloadCancelledRef.current = true;
               downloadAbortRef.current?.abort();
@@ -1781,31 +1851,13 @@ export default function App() {
 
           {isNativeYouTubeLoginAvailable() ? <YouTubeConnectPanel compact /> : null}
 
-          {/* Tape Bias / Format Selector Keys */}
-          <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-            {AUDIOPHILE_FORMATS.map((fmt) => {
-              const selected = inlineFormat === fmt.id;
-              return (
-                <button
-                  key={fmt.id}
-                  type="button"
-                  disabled={isDownloading}
-                  onClick={() => setInlineFormat(fmt.id)}
-                  className={`cassette-btn flex-col items-start px-3 py-2 text-left ${
-                    selected ? 'cassette-btn-engaged' : ''
-                  }`}
-                >
-                  <div className="w-full flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold">{fmt.id}</span>
-                    <span className={`cassette-led ${selected ? 'cassette-led-on' : ''}`} />
-                  </div>
-                  <div className="text-[10px] font-mono text-[#9fa396] mt-0.5 truncate w-full">
-                    {fmt.badge}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <FormatEstimatePicker
+            selected={inlineFormat}
+            onSelect={setInlineFormat}
+            durationSec={Number(inlinePreview?.durationSec) || 0}
+            mp3Bitrate={inlineMp3Bitrate}
+            disabled={isDownloading}
+          />
 
           {studioFormatWarning(inlineFormat) && (
             <p className="text-[11px] font-mono text-[#e2c986] leading-snug">
@@ -2398,6 +2450,16 @@ export default function App() {
       />
 
       {/* Global Toast Notification System */}
+      {recordConfirm ? (
+        <RecordConfirmModal
+          prompt={recordConfirm.prompt}
+          mp3Instead={recordConfirm.mp3Instead}
+          onRecord={() => recordConfirm.resolve('record')}
+          onMp3={() => recordConfirm.resolve('mp3')}
+          onCancel={() => recordConfirm.resolve('cancel')}
+        />
+      ) : null}
+
       <Toast toasts={toasts} onDismiss={removeToast} />
     </div>
   );

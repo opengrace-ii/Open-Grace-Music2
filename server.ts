@@ -18,7 +18,12 @@ import {
   normalizeSecret,
   publicJobStatus,
   recorderPresence,
-  storeRecorderResult,
+  MAX_HUB_UPLOAD_BYTES,
+  appendRecorderUpload,
+  beginRecorderUpload,
+  finishRecorderUpload,
+  peekRecorderResult,
+  storeRecorderResultPath,
   takeRecorderResult,
   updateRecorderProgress,
   workerSecretMatches,
@@ -222,6 +227,32 @@ async function fetchYouTubeOEmbed(ytId: string): Promise<{
   return { title, author, thumbnailUrl };
 }
 
+async function fetchYoutubeDurationSec(ytId: string): Promise<number> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8_000);
+  try {
+    const resp = await fetch(`https://www.youtube.com/watch?v=${ytId}`, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    if (!resp.ok) return 0;
+    const html = await resp.text();
+    const quoted = html.match(/"lengthSeconds":\s*"(\d+)"/);
+    if (quoted) return Number(quoted[1]) || 0;
+    const ms = html.match(/"approxDurationMs":\s*"(\d+)"/);
+    if (ms) return Math.round(Number(ms[1]) / 1000) || 0;
+    return 0;
+  } catch {
+    return 0;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export { resolveFormatSpec };
 
 // API: Validate URL & Resolve Metadata (/api/validate-url and /api/media-info)
@@ -235,6 +266,7 @@ async function handleValidateUrl(req: express.Request, res: express.Response) {
     const ytId = extractYouTubeId(url);
     if (ytId) {
       const { title, author, thumbnailUrl } = await fetchYouTubeOEmbed(ytId);
+      const durationSec = await fetchYoutubeDurationSec(ytId);
       return res.json({
         valid: true,
         id: ytId,
@@ -245,6 +277,7 @@ async function handleValidateUrl(req: express.Request, res: express.Response) {
         title,
         author,
         thumbnailUrl,
+        durationSec,
         supportedFormats: [
           { id: 'FLAC', label: 'FLAC (24-bit / 96kHz Lossless)', ext: 'flac', badge: 'LOSSLESS STUDIO' },
           { id: 'ALAC', label: 'ALAC (24-bit Apple Lossless .m4a)', ext: 'm4a', badge: 'APPLE MASTER' },
@@ -406,44 +439,158 @@ app.post('/api/recorder/jobs/:jobId/fail', (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post('/api/recorder/jobs/:jobId/result', (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  const declared = parseInt(String(req.headers['content-length'] || '0'), 10) || 0;
+  if (declared > MAX_HUB_UPLOAD_BYTES) {
+    req.resume();
+    return res.status(413).json({
+      error: 'Recorded file is too large for the recorder hub. Try MP3 320.',
+      code: 'FILE_TOO_LARGE',
+    });
+  }
+  const meta: Record<string, string> = {};
+  for (const key of [
+    'content-type',
+    'x-audio-id',
+    'x-audio-title',
+    'x-audio-artist',
+    'x-audio-duration',
+    'x-audio-format',
+    'x-audio-extension',
+    'x-audio-sample-rate',
+    'x-audio-bit-depth',
+    'x-audio-bitrate-label',
+    'x-audio-codec',
+    'x-audio-container',
+    'x-audio-source',
+    'x-audio-thumbnail',
+  ]) {
+    const value = req.headers[key];
+    if (typeof value === 'string' && value) {
+      meta[key === 'content-type' ? 'Content-Type' : headerCanonical(key)] = value;
+    }
+  }
+  if (!meta['Content-Type']) meta['Content-Type'] = 'application/octet-stream';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-rec-'));
+  const ext = (meta['X-Audio-Extension'] || 'bin').replace(/[^a-z0-9]/gi, '') || 'bin';
+  const filePath = path.join(dir, `result.${ext}`);
+  const out = fs.createWriteStream(filePath);
+  let size = 0;
+  let tooLarge = false;
+  req.on('data', (chunk: Buffer) => {
+    size += chunk.length;
+    if (size > MAX_HUB_UPLOAD_BYTES) {
+      tooLarge = true;
+      req.destroy();
+      out.destroy();
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+      if (!res.headersSent) {
+        res.status(413).json({
+          error: 'Recorded file is too large for the recorder hub. Try MP3 320.',
+          code: 'FILE_TOO_LARGE',
+        });
+      }
+      return;
+    }
+    out.write(chunk);
+  });
+  req.on('error', () => {
+    out.destroy();
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+    if (!res.headersSent) res.status(400).json({ error: 'Upload failed' });
+  });
+  req.on('end', () => {
+    if (tooLarge) return;
+    out.end(() => {
+      const stored = storeRecorderResultPath(job, filePath, meta);
+      if (!stored.ok) {
+        try {
+          fs.rmSync(dir, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
+        if (!res.headersSent) return res.status(400).json({ error: stored.error });
+        return;
+      }
+      return res.json({ ok: true });
+    });
+  });
+});
+
+function recorderMetaFromHeaders(req: express.Request): Record<string, string> {
+  const meta: Record<string, string> = {};
+  for (const key of [
+    'content-type',
+    'x-audio-id',
+    'x-audio-title',
+    'x-audio-artist',
+    'x-audio-duration',
+    'x-audio-format',
+    'x-audio-extension',
+    'x-audio-sample-rate',
+    'x-audio-bit-depth',
+    'x-audio-bitrate-label',
+    'x-audio-codec',
+    'x-audio-container',
+    'x-audio-source',
+    'x-audio-thumbnail',
+  ]) {
+    const value = req.headers[key];
+    if (typeof value === 'string' && value) {
+      meta[key === 'content-type' ? 'Content-Type' : headerCanonical(key)] = value;
+    }
+  }
+  if (!meta['Content-Type']) meta['Content-Type'] = 'application/octet-stream';
+  return meta;
+}
+
+app.post('/api/recorder/jobs/:jobId/result-begin', (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const started = beginRecorderUpload(job, recorderMetaFromHeaders(req));
+  if (!started.ok) return res.status(400).json({ error: started.error });
+  return res.json({ ok: true });
+});
+
 app.post(
-  '/api/recorder/jobs/:jobId/result',
-  express.raw({ type: () => true, limit: '80mb' }),
+  '/api/recorder/jobs/:jobId/result-chunk',
+  express.raw({ type: () => true, limit: '8mb' }),
   (req, res) => {
     if (!requireWorkerAuth(req, res)) return;
     const job = getRecorderJob(String(req.params.jobId || ''));
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
+    if (!job) return res.status(404).json({ error: 'Job not found' });
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
-    const meta: Record<string, string> = {};
-    for (const key of [
-      'content-type',
-      'x-audio-id',
-      'x-audio-title',
-      'x-audio-artist',
-      'x-audio-duration',
-      'x-audio-format',
-      'x-audio-extension',
-      'x-audio-sample-rate',
-      'x-audio-bit-depth',
-      'x-audio-bitrate-label',
-      'x-audio-codec',
-      'x-audio-container',
-      'x-audio-source',
-      'x-audio-thumbnail',
-    ]) {
-      const value = req.headers[key];
-      if (typeof value === 'string' && value) {
-        meta[key === 'content-type' ? 'Content-Type' : headerCanonical(key)] = value;
-      }
+    const appended = appendRecorderUpload(job, bytes);
+    if (!appended.ok) {
+      const status = /too large/i.test(appended.error) ? 413 : 400;
+      return res.status(status).json({ error: appended.error, code: 'FILE_TOO_LARGE' });
     }
-    if (!meta['Content-Type']) meta['Content-Type'] = 'application/octet-stream';
-    const stored = storeRecorderResult(job, bytes, meta);
-    if (!stored.ok) return res.status(400).json({ error: stored.error });
-    return res.json({ ok: true });
+    return res.json({ ok: true, written: appended.written });
   }
 );
+
+app.post('/api/recorder/jobs/:jobId/result-end', (req, res) => {
+  if (!requireWorkerAuth(req, res)) return;
+  const job = getRecorderJob(String(req.params.jobId || ''));
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const finished = finishRecorderUpload(job);
+  if (!finished.ok) return res.status(400).json({ error: finished.error });
+  return res.json({ ok: true });
+});
 
 function headerCanonical(key: string): string {
   return key
@@ -465,11 +612,23 @@ app.get('/api/recorder/jobs/:jobId/file', (req, res) => {
   if (!job) {
     return res.status(404).json({ error: 'Recording job not found or expired' });
   }
-  const taken = takeRecorderResult(job);
+  const offsetRaw = parseInt(String(req.query.offset ?? ''), 10);
+  const chunked = Number.isFinite(offsetRaw) && offsetRaw >= 0;
+  const peeked = peekRecorderResult(job);
+  if (!peeked) {
+    return res.status(404).json({ error: 'Recorded file not ready yet' });
+  }
+  const taken = chunked ? { path: peeked.path, meta: peeked.meta } : takeRecorderResult(job);
   if (!taken) {
     return res.status(404).json({ error: 'Recorded file not ready yet' });
   }
   const stat = fs.statSync(taken.path);
+  const offset = chunked ? offsetRaw : 0;
+  const want = parseInt(String(req.query.limit ?? ''), 10);
+  const end = chunked
+    ? Math.min(stat.size - 1, offset + (Number.isFinite(want) && want > 0 ? want : 4 * 1024 * 1024) - 1)
+    : stat.size - 1;
+  const length = stat.size === 0 ? 0 : Math.max(0, end - offset + 1);
   for (const [key, value] of Object.entries(taken.meta)) {
     if (key !== 'Content-Type') res.setHeader(key, value);
   }
@@ -477,19 +636,25 @@ app.get('/api/recorder/jobs/:jobId/file', (req, res) => {
   const titleHeader = taken.meta['X-Audio-Title'];
   const safeName = titleHeader ? decodeURIComponent(titleHeader) : 'OpenGraceMusic_Track';
   res.setHeader('Content-Type', taken.meta['Content-Type'] || 'application/octet-stream');
-  res.setHeader('Content-Length', stat.size.toString());
+  res.setHeader('Content-Length', length.toString());
+  res.setHeader('X-Audio-Total-Bytes', String(stat.size));
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${encodeURIComponent(safeName.replace(/[^a-zA-Z0-9._ -]/g, '').trim() || 'track')}.${ext}"`
   );
-  const stream = fs.createReadStream(taken.path);
+  const consume = !chunked || (offset + length >= stat.size && String(req.query.keep || '') !== '1');
+  const stream = fs.createReadStream(taken.path, { start: offset, end: Math.max(offset, end) });
   const cleanup = () => {
+    if (!consume) return;
     try {
       fs.rmSync(path.dirname(taken.path), { recursive: true, force: true });
     } catch {
       // ignore
     }
   };
+  if (consume && chunked) {
+    takeRecorderResult(job);
+  }
   stream.on('close', cleanup);
   stream.on('error', cleanup);
   return stream.pipe(res);

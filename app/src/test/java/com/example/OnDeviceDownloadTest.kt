@@ -289,25 +289,43 @@ class OnDeviceDownloadTest {
             "session"
         )
         assertTrue(msg.contains("Missed") || msg.contains("audio"))
-        assertTrue(msg.contains("Play the video"))
+        assertTrue(msg.contains("Retry Record"))
         assertTrue(!msg.contains("ANDROID_VR"))
         assertTrue(!msg.contains("LOGIN_REQUIRED"))
         assertTrue(!msg.contains("WEB_EMBEDDED"))
         val expired = OnDeviceDownloadManager.friendlyFailure("Xc6Jlstj8GY", true, null)
-        assertTrue(expired.contains("expired") || expired.contains("Play the video"))
+        assertTrue(expired.contains("expired") || expired.contains("Retry Record"))
         assertTrue(msg.length < 160)
         assertTrue(expired.length < 160)
     }
 
     @Test
-    fun `initplayback SABR url binds to requested watch id`() {
+    fun `initplayback SABR url is not used as a ranged download`() {
         WebViewStreamCapture.clear()
         WebViewStreamCapture.setRequested("yYk7skapjFA")
         val url = "https://rr1---sn-abc.googlevideo.com/initplayback?source=youtube&id=o-sCPNstyleIdentifierNotWatch"
         val parsed = WebViewStreamCapture.parseVideoPlayback(url, emptyMap(), null)!!
+        assertTrue(!WebViewStreamCapture.isRangedDownloadable(parsed))
         WebViewStreamCapture.remember(parsed)
-        val found = WebViewStreamCapture.findFor("yYk7skapjFA")
-        assertEquals(parsed.url, found!!.url)
+        assertNull(WebViewStreamCapture.findFor("yYk7skapjFA"))
+        WebViewStreamCapture.clear()
+    }
+
+    @Test
+    fun `stale videoplayback url is not reused`() {
+        WebViewStreamCapture.clear()
+        WebViewStreamCapture.setCurrentlyPlaying("Xc6Jlstj8GY")
+        val parsed = WebViewStreamCapture.parseVideoPlayback(
+            samplePlayback,
+            emptyMap(),
+            "Xc6Jlstj8GY",
+            capturedAt = 1_000L,
+        )!!
+        WebViewStreamCapture.remember(parsed)
+        assertNull(WebViewStreamCapture.findFor("Xc6Jlstj8GY", now = 1_000L + WebViewStreamCapture.MAX_AGE_MS + 1))
+        assertEquals(parsed.url, WebViewStreamCapture.findFor("Xc6Jlstj8GY", now = 1_000L + 1_000L)?.url)
+        WebViewStreamCapture.forget("Xc6Jlstj8GY")
+        assertNull(WebViewStreamCapture.findFor("Xc6Jlstj8GY", now = 1_000L + 1_000L))
         WebViewStreamCapture.clear()
     }
 

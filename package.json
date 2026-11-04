@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.2",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -23,7 +23,8 @@
     "test:recorder-worker": "node scripts/test-recorder-worker.mjs",
     "test:version": "tsx scripts/test-version.ts",
     "test:activity-log": "tsx scripts/test-activity-log.ts",
-    "test:download-filename": "tsx scripts/test-download-filename.ts"
+    "test:download-filename": "tsx scripts/test-download-filename.ts",
+    "test:record-estimate": "tsx scripts/test-record-estimate.ts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

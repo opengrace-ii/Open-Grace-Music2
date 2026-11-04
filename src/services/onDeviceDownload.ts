@@ -115,9 +115,22 @@ export function downloadYouTubeAudioOnDevice(
     }
   });
 
-  const CAPTURE_TIMEOUT_MS = 50_000;
+  const CAPTURE_TIMEOUT_MS = 45_000;
+  const STALL_TIMEOUT_MS = 90_000;
+  const MAX_DOWNLOAD_MS = 2 * 60 * 60_000;
   const watchdog = new Promise<never>((_, reject) => {
     const started = Date.now();
+    let lastProgressAt = Date.now();
+    let stage = 'capture';
+    const orig = pending.get(callbackId);
+    if (orig) {
+      const innerOnProgress = orig.onProgress;
+      orig.onProgress = (p) => {
+        lastProgressAt = Date.now();
+        stage = p.stage || stage;
+        innerOnProgress(p);
+      };
+    }
     const t = setInterval(() => {
       if (isCancelled?.()) {
         clearInterval(t);
@@ -130,11 +143,27 @@ export function downloadYouTubeAudioOnDevice(
         clearInterval(t);
         return;
       }
-      if (Date.now() - started > CAPTURE_TIMEOUT_MS) {
+      const now = Date.now();
+      const captureWait = stage === 'capture' || stage === 'refresh' || stage === 'resolve';
+      if (captureWait && now - started > CAPTURE_TIMEOUT_MS && now - lastProgressAt > 8_000) {
         clearInterval(t);
         bridge.cancelDownload?.(callbackId);
         pending.delete(callbackId);
         reject(new OnDeviceError('On-device capture timed out.'));
+        return;
+      }
+      if (!captureWait && now - lastProgressAt > STALL_TIMEOUT_MS) {
+        clearInterval(t);
+        bridge.cancelDownload?.(callbackId);
+        pending.delete(callbackId);
+        reject(new OnDeviceError('On-device download stalled.'));
+        return;
+      }
+      if (now - started > MAX_DOWNLOAD_MS) {
+        clearInterval(t);
+        bridge.cancelDownload?.(callbackId);
+        pending.delete(callbackId);
+        reject(new OnDeviceError('On-device download timed out.'));
       }
     }, 400);
   });
@@ -165,7 +194,7 @@ export async function transcodeOnServer(
   apiUrl: (p: string) => string
 ): Promise<Blob> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4 * 60_000);
+  const timer = setTimeout(() => controller.abort(), 12 * 60_000);
   try {
     const res = await fetch(apiUrl(`/api/transcode?format=${format}`), {
       method: 'POST',

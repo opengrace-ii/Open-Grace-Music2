@@ -29,12 +29,15 @@ export interface RecorderJob {
   resultPath?: string;
   resultMeta?: Record<string, string>;
   createdAt: number;
+  lastActivityAt: number;
   claimedAt?: number;
   claimedBy?: string;
 }
 
-const JOB_TTL_MS = 20 * 60 * 1000;
-const RESULT_TTL_MS = 12 * 60 * 1000;
+const JOB_IDLE_TTL_MS = 25 * 60 * 1000;
+const JOB_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const RESULT_TTL_MS = 40 * 60 * 1000;
+export const MAX_HUB_UPLOAD_BYTES = 3 * 1024 * 1024 * 1024;
 const HEARTBEAT_ONLINE_MS = 25_000;
 const MAX_QUEUED = 24;
 
@@ -69,9 +72,10 @@ export function newRecorderJobId(): string {
 
 export function pruneRecorderJobs(now = Date.now()) {
   for (const [id, job] of jobs) {
+    const idle = now - (job.lastActivityAt || job.createdAt);
     const age = now - job.createdAt;
-    const ttl = job.resultPath ? RESULT_TTL_MS : JOB_TTL_MS;
-    if (age > ttl) {
+    const ttl = job.resultPath ? RESULT_TTL_MS : JOB_IDLE_TTL_MS;
+    if (idle > ttl || age > JOB_MAX_AGE_MS) {
       deleteJobFiles(job);
       jobs.delete(id);
     }
@@ -137,6 +141,7 @@ export function enqueueRecorderJob(
     percent: 4,
     message: 'Waiting for a recorder…',
     createdAt: Date.now(),
+    lastActivityAt: Date.now(),
   };
   jobs.set(job.id, job);
   const idx = waiters.findIndex((fn) => fn(job));
@@ -165,6 +170,7 @@ export function claimRecorderJob(workerId: string, waitMs = 0): Promise<Recorder
     ready.percent = 8;
     ready.message = 'Recorder picked up this song…';
     ready.claimedAt = Date.now();
+    ready.lastActivityAt = Date.now();
     ready.claimedBy = workerId;
     return Promise.resolve(ready);
   }
@@ -185,6 +191,7 @@ export function claimRecorderJob(workerId: string, waitMs = 0): Promise<Recorder
       job.percent = 8;
       job.message = 'Recorder picked up this song…';
       job.claimedAt = Date.now();
+      job.lastActivityAt = Date.now();
       job.claimedBy = workerId;
       resolve(job);
       return true;
@@ -201,6 +208,8 @@ export function updateRecorderProgress(
   if (patch.stage) job.stage = patch.stage;
   if (typeof patch.percent === 'number') job.percent = Math.max(0, Math.min(100, patch.percent));
   if (patch.message) job.message = patch.message;
+  job.lastActivityAt = Date.now();
+  if (job.claimedBy) noteWorkerHeartbeat(job.claimedBy);
 }
 
 export function failRecorderJob(job: RecorderJob, error: string, code = 'EXTRACTION_FAILED') {
@@ -209,6 +218,7 @@ export function failRecorderJob(job: RecorderJob, error: string, code = 'EXTRACT
   job.error = error;
   job.code = code;
   job.message = error;
+  job.lastActivityAt = Date.now();
 }
 
 export function storeRecorderResult(
@@ -222,21 +232,126 @@ export function storeRecorderResult(
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-rec-'));
   const ext = (meta['X-Audio-Extension'] || 'bin').replace(/[^a-z0-9]/gi, '') || 'bin';
   const filePath = path.join(dir, `result.${ext}`);
+  if (bytes.length > MAX_HUB_UPLOAD_BYTES) {
+    return { ok: false, error: 'Recorded file is too large for the recorder hub. Try MP3 320.' };
+  }
   fs.writeFileSync(filePath, bytes);
   job.stage = 'done';
   job.percent = 100;
   job.message = 'Ready — saving to Library';
   job.resultPath = filePath;
   job.resultMeta = meta;
+  job.lastActivityAt = Date.now();
   return { ok: true };
 }
 
-export function takeRecorderResult(job: RecorderJob): { path: string; meta: Record<string, string> } | null {
+export function storeRecorderResultPath(
+  job: RecorderJob,
+  filePath: string,
+  meta: Record<string, string>
+): { ok: true } | { ok: false; error: string } {
+  let size = 0;
+  try {
+    size = fs.statSync(filePath).size;
+  } catch {
+    return { ok: false, error: 'Recorded file was empty.' };
+  }
+  if (size < 1000) {
+    return { ok: false, error: 'Recorded file was empty.' };
+  }
+  if (size > MAX_HUB_UPLOAD_BYTES) {
+    return { ok: false, error: 'Recorded file is too large for the recorder hub. Try MP3 320.' };
+  }
+  job.stage = 'done';
+  job.percent = 100;
+  job.message = 'Ready — saving to Library';
+  job.resultPath = filePath;
+  job.resultMeta = meta;
+  job.lastActivityAt = Date.now();
+  return { ok: true };
+}
+
+export function peekRecorderResult(
+  job: RecorderJob
+): { path: string; meta: Record<string, string>; size: number } | null {
   if (job.stage !== 'done' || !job.resultPath) return null;
-  const resultPath = job.resultPath;
-  const meta = job.resultMeta || {};
+  try {
+    const size = fs.statSync(job.resultPath).size;
+    return { path: job.resultPath, meta: job.resultMeta || {}, size };
+  } catch {
+    return null;
+  }
+}
+
+export function takeRecorderResult(job: RecorderJob): { path: string; meta: Record<string, string> } | null {
+  const peeked = peekRecorderResult(job);
+  if (!peeked) return null;
   jobs.delete(job.id);
-  return { path: resultPath, meta };
+  return { path: peeked.path, meta: peeked.meta };
+}
+
+type PendingUpload = { path: string; dir: string; written: number; meta: Record<string, string> };
+const pendingUploads = new Map<string, PendingUpload>();
+
+export function beginRecorderUpload(
+  job: RecorderJob,
+  meta: Record<string, string>
+): { ok: true } | { ok: false; error: string } {
+  const existing = pendingUploads.get(job.id);
+  if (existing) {
+    try {
+      fs.rmSync(existing.dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+    pendingUploads.delete(job.id);
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-rec-'));
+  const ext = (meta['X-Audio-Extension'] || 'bin').replace(/[^a-z0-9]/gi, '') || 'bin';
+  const filePath = path.join(dir, `result.${ext}`);
+  fs.writeFileSync(filePath, Buffer.alloc(0));
+  pendingUploads.set(job.id, { path: filePath, dir, written: 0, meta });
+  job.lastActivityAt = Date.now();
+  return { ok: true };
+}
+
+export function appendRecorderUpload(
+  job: RecorderJob,
+  chunk: Buffer
+): { ok: true; written: number } | { ok: false; error: string } {
+  const pending = pendingUploads.get(job.id);
+  if (!pending) return { ok: false, error: 'Upload has not started.' };
+  if (pending.written + chunk.length > MAX_HUB_UPLOAD_BYTES) {
+    return { ok: false, error: 'Recorded file is too large for the recorder hub. Try MP3 320.' };
+  }
+  fs.appendFileSync(pending.path, chunk);
+  pending.written += chunk.length;
+  job.lastActivityAt = Date.now();
+  return { ok: true, written: pending.written };
+}
+
+export function finishRecorderUpload(job: RecorderJob): { ok: true } | { ok: false; error: string } {
+  const pending = pendingUploads.get(job.id);
+  if (!pending) return { ok: false, error: 'Upload has not started.' };
+  pendingUploads.delete(job.id);
+  const stored = storeRecorderResultPath(job, pending.path, pending.meta);
+  if (!stored.ok) {
+    try {
+      fs.rmSync(pending.dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+  return stored;
+}
+
+export function resultSizeBytes(job: RecorderJob): number {
+  if (!job.resultPath) return 0;
+  try {
+    return fs.statSync(job.resultPath).size;
+  } catch {
+    return 0;
+  }
 }
 
 export function publicJobStatus(job: RecorderJob) {
@@ -249,6 +364,7 @@ export function publicJobStatus(job: RecorderJob) {
     error: job.error,
     code: job.code,
     format: job.format,
+    sizeBytes: job.stage === 'done' ? resultSizeBytes(job) : 0,
   };
 }
 
@@ -262,6 +378,14 @@ export function waitingJobCount(): number {
 
 export function resetRecorderJobsForTests() {
   for (const job of jobs.values()) deleteJobFiles(job);
+  for (const pending of pendingUploads.values()) {
+    try {
+      fs.rmSync(pending.dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+  pendingUploads.clear();
   jobs.clear();
   waiters.length = 0;
   lastHeartbeat.clear();

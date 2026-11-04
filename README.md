@@ -77,7 +77,7 @@ Apps like **TubeMate** grab audio on the phone. **Open Grace Music** does the sa
 
 ### Record (APK first, then workers)
 
-**Android APK 1.5.1+:** Record prefers **on the phone** (googlevideo capture for that exact video id). If that fails, the APK uses the same **PC recorder** as the website when a worker is online. The Cassette Library (IndexedDB, plays offline) is unchanged. Extra copies on the phone go to shared **Music/Open Grace Music** (MediaStore), not Downloads. Connect YouTube on the phone if YouTube asks for a login. There is no screen share. The UI shows `v1.5.1 · <short commit> · APK 1.5.1 (14)` in **More** and the footer.
+**Android APK 1.5.2+:** Record prefers **on the phone** (fresh googlevideo URL). If that fails, the APK uses the PC recorder. Format tiles show size/time once duration is known. Long FLAC jobs keep running while progress is reported. Cassette Library is unchanged; extra copies go to **Music/Open Grace Music**. The UI shows `v1.5.2 · <short commit> · APK 1.5.2 (15)` in **More** and the footer.
 
 **Website / PWA:** a browser cannot fetch YouTube audio. Record sends a job to any online **recorder worker**. Workers poll Render over an outbound connection (home PC, office PC, extra machines — same `OGM_WORKER_SECRET`). If no worker is online, the recorder shows one line: **No recorder is online. Open the APK to record on this phone.**
 
@@ -117,7 +117,7 @@ Every recording, device-file import, conversion, and live listen is written to a
 
 The downloadable **`public/OpenGraceMusic.apk`** is a **WebView shell** (`MainActivity`) that loads the live PWA at
 **`https://open-grace-music2.onrender.com`** (Listen / Library / Tuner / Schedule / More). Baked default:
-`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 14 / versionName 1.5.1** (Connect YouTube + googlevideo intercept, PC-recorder fallback, shared **Music/Open Grace Music** export; **no MediaProjection / screen share** — **reinstall once**). 1.3.0’s InnerTube-only path 403s in 2026. 1.2.2 added the native file picker so LOAD DEVICE FILES works. Background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change.
+`BuildConfig.CONVERTER_BASE_URL` / `OGM_CONVERTER_BASE_URL`. Current ship version: **versionCode 15 / versionName 1.5.2** (Connect YouTube + googlevideo intercept, PC-recorder fallback, shared **Music/Open Grace Music** export; **no MediaProjection / screen share** — **reinstall once**). 1.3.0’s InnerTube-only path 403s in 2026. 1.2.2 added the native file picker so LOAD DEVICE FILES works. Background playback + media notification; clears WebView cache once per shell upgrade so Render redeploys show without reinstalling for every UI change.
 
 Compose screens under `ui/` remain in-tree for optional native tooling, but they are **not** the launcher UI in
 shipped APKs — that is why an old binary looked “stuck” on the gramophone-only layout.
@@ -160,11 +160,11 @@ app/src/main/java/com/example/
 
 ---
 
-### On-device YouTube recording (APK 1.5.1+ — reinstall once)
+### On-device YouTube recording (APK 1.5.2+ — reinstall once)
 
 Render's datacenter IP is bot-checked by YouTube, so server-side downloads often fail with "Sign in to confirm you're not a bot". **1.3.0** tried a hand-rolled InnerTube `player` call on the phone; in 2026 those clients return googlevideo URLs that **HTTP 403** without a real YouTube session (PO token / n-sig). The in-app YouTube embed already talks to YouTube as a real client — **1.3.1 captures that stream**. **1.3.2** adds a one-time **Connect YouTube** flow so the phone can show YouTube a real signed-in person (your own account, on Google’s pages).
 
-**You must reinstall the APK once** (versionCode 14 / 1.5.1). Then:
+**You must reinstall the APK once** (versionCode 15 / 1.5.2). Then:
 
 1. Optional but recommended if you hit LOGIN_REQUIRED / googlevideo 403: tap **Connect YouTube**. Sign in on **real Google/YouTube pages** inside the app. Open Grace Music never collects your password. Cookies stay on the phone.
 2. Play the video (tap **Play** if it is paused) so YouTube issues a real `googlevideo.com/videoplayback` request.
@@ -178,9 +178,9 @@ Render's datacenter IP is bot-checked by YouTube, so server-side downloads often
 
 | Surface | What Connect YouTube does | Where the session lives |
 | --- | --- | --- |
-| **APK 1.5.1+** | Native WebView on **real Google/YouTube pages**. Password never hits OGM. | Android `CookieManager` + private prefs. |
+| **APK 1.5.2+** | Native WebView on **real Google/YouTube pages**. Password never hits OGM. | Android `CookieManager` + private prefs. |
 | **Website / PWA** | Not used for Record. | — |
-| **Old APK (no bridge)** | Reinstall 1.5.1 for on-device Record + PC-recorder fallback. | — |
+| **Old APK (no bridge)** | Reinstall 1.5.2 for on-device Record + PC-recorder fallback. | — |
 
 **What file you get:** YouTube audio is already lossy, so the real container is kept and labelled honestly — **M4A (AAC)** (or **OPUS/WebM** if no AAC stream exists). If you picked **MP3**, the downloaded audio is converted on the phone (lamejs) from the lossy source. If you picked **FLAC / ALAC / WAV**, the already-downloaded bytes are POSTed to `POST /api/transcode?format=…` (server FFmpeg, no YouTube access, so no bot-check); if that is unreachable the real M4A is saved instead and the toast says so. DSD is not produced on-device. FLAC/WAV from YouTube is a lossless container around a lossy source — no quality is gained.
 
@@ -282,7 +282,7 @@ Use the in-app **INSTALL / Samsung Install** button for step-by-step help.
 
 ### Load device files / import folder
 
-- **APK 1.5.1 (versionCode 14) is required for Connect YouTube + on-device recording + PC-recorder fallback + Music/Open Grace Music export** (WebView login + googlevideo intercept; no screen-share capture; 1.3.0 InnerTube-only 403s). 1.2.2 / versionCode 5 is required for LOAD DEVICE FILES. These are native shell changes: **reinstall the APK once** (ordinary UI updates still come from the site). The PWA / Chrome works after a normal reload. Capture needs the video to **actually start playing in the app once** so YouTube issues a real stream. If capture fails, Record uses the PC recorder when online. Recorded/exported audio on the APK is written to shared **Music/Open Grace Music** (other players can see it); the Cassette Library is still IndexedDB. The website cannot pick a folder, so browser saves keep Downloads with a clean filename. The footer and **More** show `v1.5.1 · <commit>` (web) and `APK 1.5.1 (14)` in the shell.
+- **APK 1.5.2 (versionCode 15)** is required for fresh-stream capture retries, Music/Open Grace Music export, and long FLAC jobs. Format tiles show `FLAC 24/96 · ~1.4 GB · ~25 min` once duration is known. Reinstall the APK once. The footer and **More** show `v1.5.2 · <commit>` (web) and `APK 1.5.2 (15)` in the shell.
 - LOAD DEVICE FILES opens the system picker (multi-select audio). Imports run one at a time with an `Importing 12/80` counter, skip non-audio, skip duplicates (same name + size), store real blobs in IndexedDB (offline / background playback), and log each file as SAVED/FAILED in the Activity log.
 - **IMPORT FOLDER** (`webkitdirectory`) appears only in browsers that support it (desktop Chrome/Edge, some Android Chrome). The APK WebView cannot pick folders, and there is no native MediaStore scan: use multi-select there.
 

@@ -17,8 +17,8 @@ android {
     minSdk = 24
     targetSdk = 36
     // Bump on every downloadable APK refresh so phones do not silently keep an old install.
-    versionCode = 14
-    versionName = "1.5.1"
+    versionCode = 15
+    versionName = "1.5.2"
 
     // WebView start URL + converter default (same origin as the live PWA).
     val defaultConverterBaseUrl = "https://open-grace-music2.onrender.com"
