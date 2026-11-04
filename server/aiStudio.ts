@@ -6,7 +6,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GoogleGenAI } from '@google/genai';
 import { fetchYoutubeTranscript } from './youtubeTranscript.ts';
-import { ytDlpJsRuntimeArgs, youtubePlayerExtractorArgs, youtubeYtdlpAuthArgs } from './youtubeYtdlpAuth.ts';
+import { youtubeCookiesArgs } from './ytCookiesFile.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,7 +74,7 @@ async function extractShortMp3(
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ogm-ai-'));
   const outTemplate = path.join(workDir, 'clip.%(ext)s');
   const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const authArgs = youtubeYtdlpAuthArgs(workDir, auth?.cookies || '');
+  const authArgs = youtubeCookiesArgs(workDir, auth?.cookies || '');
   try {
     try {
       await execFileAsync(
@@ -95,8 +95,6 @@ async function extractShortMp3(
           'mp3',
           '--audio-quality',
           '7',
-          ...ytDlpJsRuntimeArgs(),
-          ...youtubePlayerExtractorArgs('android'),
           ...authArgs,
           '-o',
           outTemplate,

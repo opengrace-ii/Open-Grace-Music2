@@ -15,4 +15,6 @@ services:
         value: production
       - key: OGM_PUBLIC_BASE_URL
         sync: false
+      - key: OGM_WORKER_SECRET
+        sync: false
       # Do not set PORT — Render injects it automatically.

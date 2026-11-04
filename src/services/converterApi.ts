@@ -7,7 +7,9 @@ export type ConverterErrorCode =
   | 'EXTRACTION_FAILED'
   | 'FFMPEG_FAILED'
   | 'INVALID_RESPONSE'
-  | 'API_UNAVAILABLE';
+  | 'API_UNAVAILABLE'
+  | 'RECORDER_OFFLINE'
+  | 'RECORDER_REQUIRED';
 
 export class ConverterApiError extends Error {
   code: ConverterErrorCode;
@@ -56,7 +58,7 @@ export async function fetchWithTimeout(
       );
     }
     throw new ConverterApiError(
-      'Cannot reach converter. Check Render / your network, or set a self-hosted server URL in Settings.',
+      'Cannot reach Open Grace. Check your network, or set the site URL in Settings.',
       'NETWORK'
     );
   } finally {
@@ -69,7 +71,7 @@ export async function readConverterError(response: Response): Promise<ConverterA
   if (contentType.includes('application/json')) {
     try {
       const data = (await response.json()) as { error?: string; code?: ConverterErrorCode };
-      const code = data.code || 'EXTRACTION_FAILED';
+      const code = data.code || (response.status === 410 ? 'RECORDER_REQUIRED' : 'EXTRACTION_FAILED');
       return new ConverterApiError(data.error || `Server error (${response.status})`, code);
     } catch {
       // fall through
@@ -92,8 +94,7 @@ export function humanizeConverterError(err: unknown): { message: string; code: C
   }
   if (err instanceof TypeError && /fetch|network|failed/i.test(String(err.message))) {
     return {
-      message:
-        'Cannot reach converter. Render may be down, or set a self-hosted URL in Settings.',
+      message: 'Cannot reach Open Grace. The site may be down, or set a URL in Settings.',
       code: 'NETWORK',
     };
   }
@@ -114,7 +115,7 @@ export async function checkConverterApiAvailable(): Promise<boolean> {
   }
 }
 
-export type ConvertJobStage = 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
+export type ConvertJobStage = 'queued' | 'validate' | 'extract' | 'ffmpeg' | 'save' | 'done' | 'error';
 
 export interface ConvertJobStatus {
   jobId: string;
@@ -130,15 +131,35 @@ export interface StartConvertJobBody {
   url: string;
   format: string;
   bitrate?: number;
-  cookies?: string;
-  /** YouTube TV oauth refresh token from Connect YouTube (web). Never log. */
-  youtubeOauth?: string;
   title?: string;
   artist?: string;
 }
 
+export async function fetchRecorderPresence(): Promise<{
+  online: boolean;
+  workers: number;
+  lastSeenAt: number | null;
+}> {
+  try {
+    const res = await fetchWithTimeout(apiUrl('/api/recorder/presence'), { timeoutMs: 8_000 });
+    if (!res.ok) return { online: false, workers: 0, lastSeenAt: null };
+    const data = (await res.json()) as { online?: boolean; workers?: number; lastSeenAt?: number | null };
+    return {
+      online: !!data.online,
+      workers: Number(data.workers) || 0,
+      lastSeenAt: data.lastSeenAt ?? null,
+    };
+  } catch {
+    return { online: false, workers: 0, lastSeenAt: null };
+  }
+}
+
 export async function startConvertJob(body: StartConvertJobBody): Promise<{ jobId: string }> {
-  const res = await fetchWithTimeout(apiUrl('/api/convert-audio/start'), {
+  const presence = await fetchRecorderPresence();
+  if (!presence.online) {
+    throw new ConverterApiError('No recorder is online. Open the APK to record on this phone.', 'RECORDER_OFFLINE');
+  }
+  const res = await fetchWithTimeout(apiUrl('/api/recorder/jobs'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     timeoutMs: 30_000,
@@ -151,7 +172,7 @@ export async function startConvertJob(body: StartConvertJobBody): Promise<{ jobI
 }
 
 export async function fetchConvertJobStatus(jobId: string): Promise<ConvertJobStatus> {
-  const res = await fetchWithTimeout(apiUrl(`/api/convert-audio/job/${encodeURIComponent(jobId)}`), {
+  const res = await fetchWithTimeout(apiUrl(`/api/recorder/jobs/${encodeURIComponent(jobId)}`), {
     timeoutMs: 15_000,
   });
   if (!res.ok) {
@@ -161,7 +182,7 @@ export async function fetchConvertJobStatus(jobId: string): Promise<ConvertJobSt
 }
 
 export async function downloadConvertJobResult(jobId: string): Promise<Response> {
-  return fetchWithTimeout(apiUrl(`/api/convert-audio/job/${encodeURIComponent(jobId)}/download`), {
+  return fetchWithTimeout(apiUrl(`/api/recorder/jobs/${encodeURIComponent(jobId)}/file`), {
     timeoutMs: 240_000,
   });
 }

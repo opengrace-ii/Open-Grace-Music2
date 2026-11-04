@@ -25,6 +25,7 @@ declare global {
       /** APK 1.3.1+: WebView googlevideo capture + on-device download. */
       supportsOnDeviceDownload?: () => boolean;
       shellVersion?: () => string;
+      appVersionCode?: () => number;
       downloadYouTubeAudio?: (videoId: string, format: string, callbackId: string) => void;
       cancelDownload?: (callbackId: string) => void;
       releaseDownload?: (token: string) => void;

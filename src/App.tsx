@@ -10,7 +10,6 @@ import {
   FolderOpen,
   Clipboard,
   Loader2,
-  KeyRound,
   AlertCircle,
   Play,
   Pause,
@@ -42,14 +41,6 @@ import {
   deletePlaylist,
 } from './services/storage';
 import { convertBlobToMp3 } from './services/mp3Converter';
-import {
-  hasPastedYoutubeCookies,
-  loadSavedYoutubeCookies,
-  saveYoutubeCookies,
-  sanitizeCookieHeader,
-} from './services/youtubeCookies';
-import { loadYoutubeOauthRefreshToken } from './services/youtubeOauth';
-import { pullNativeYoutubeCookies, youtubeSessionStatus } from './services/youtubeSession';
 import { extractYouTubeId } from './services/mediaResolver';
 import { playerEngine } from './services/playerService';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -75,6 +66,7 @@ import { GramophoneDiscLogo } from './components/GramophoneDiscLogo';
 import { AppPageNav } from './components/AppPageNav';
 import { HomeListenDashboard } from './components/HomeListenDashboard';
 import { MorePage } from './components/MorePage';
+import { VersionStamp } from './components/VersionStamp';
 import { ActivityLogModal } from './components/ActivityLogModal';
 import { logActivity } from './services/activityLog';
 import {
@@ -89,6 +81,7 @@ import {
   studioFormatWarning,
   waitForConvertJob,
 } from './services/converterApi';
+import { isNativeYouTubeLoginAvailable } from './services/youtubeSession';
 import {
   bitrateKbpsForFormat,
   extensionForFormat,
@@ -102,11 +95,6 @@ import {
   onDeviceRoute,
   transcodeOnServer,
 } from './services/onDeviceDownload';
-import {
-  BROWSER_EXACT_ROUTE,
-  downloadExactYoutubeAudioInBrowser,
-  ExactVideoUnavailableError,
-} from './services/browserExactDownload';
 import { YouTubeConnectPanel } from './components/YouTubeConnectPanel';
 
 export default function App() {
@@ -139,8 +127,6 @@ export default function App() {
   const [inlineFormat, setInlineFormat] = useState<AudiophileFormatId>('MP3');
   const [inlineMp3Bitrate, setInlineMp3Bitrate] = useState<number>(320);
   const [inlineSaveToDevice, setInlineSaveToDevice] = useState(true);
-  const [inlineCookies, setInlineCookies] = useState('');
-  const [showInlineCookies, setShowInlineCookies] = useState(false);
   const [inlinePreview, setInlinePreview] = useState<{
     valid: boolean;
     isYouTube: boolean;
@@ -348,17 +334,12 @@ export default function App() {
   });
 
   useEffect(() => {
-    setInlineCookies(loadSavedYoutubeCookies());
     void (async () => {
       await loadLibrary();
       setPlaylists(await getAllPlaylists());
       setLibraryReady(true);
     })();
   }, []);
-
-  useEffect(() => {
-    saveYoutubeCookies(inlineCookies);
-  }, [inlineCookies]);
 
   useEffect(() => {
     playerEngine.setShowVideo(showVideo, true);
@@ -991,172 +972,11 @@ export default function App() {
     }
   };
 
-  /**
-   * Browser exact-ID download (Invidious/Piped). No tab capture. No wrong-song fallback.
-   */
-  const recordBrowserExact = async (
-    ytId: string,
-    trimmedUrl: string,
-    format: AudiophileFormatId,
-    bitrateKbps: number,
-    saveToDeviceFolder: boolean,
-    customTitle?: string,
-    customArtist?: string
-  ): Promise<{ ok: true } | { ok: false; reason: string; cancelled: boolean }> => {
-    const label = 'Record YouTube';
-    const fail = (reason: string, cancelled = false) => {
-      logActivity({
-        action: 'record',
-        label,
-        result: 'failed',
-        format,
-        detail: `route=${BROWSER_EXACT_ROUTE} · ${reason}`,
-        source: trimmedUrl,
-      });
-      return { ok: false as const, reason, cancelled };
-    };
-
-    try {
-      logActivity({
-        action: 'record',
-        label,
-        result: 'started',
-        format,
-        detail: `route=${BROWSER_EXACT_ROUTE} · exact id ${ytId}`,
-        source: trimmedUrl,
-      });
-      setDownloadStatus('Fetching this video…');
-      setDownloadProgress(0.1);
-
-      const exact = await downloadExactYoutubeAudioInBrowser(
-        ytId,
-        (percent, message) => {
-          setDownloadProgress(Math.max(0.1, Math.min(0.82, percent)));
-          setDownloadStatus(message);
-        },
-        { signal: downloadAbortRef.current?.signal }
-      );
-      if (downloadCancelledRef.current) {
-        return fail('Record cancelled.', true);
-      }
-      if (exact.videoId !== ytId) {
-        return fail(`Mirror returned video ${exact.videoId}, not ${ytId}.`);
-      }
-
-      let finalBlob = exact.blob;
-      let finalFormat = exact.format;
-      let finalMime = exact.mimeType;
-      let note = ` · ${exact.source}`;
-      const wantsTranscode = format === 'MP3' || format === 'FLAC' || format === 'ALAC' || format === 'WAV';
-      if (wantsTranscode) {
-        setDownloadProgress(0.84);
-        setDownloadStatus(`Converting downloaded ${exact.format} → ${format}…`);
-        try {
-          if (format === 'MP3') {
-            try {
-              finalBlob = await convertBlobToMp3(exact.blob, bitrateKbps, (pr) =>
-                setDownloadProgress(0.84 + pr * 0.1)
-              );
-            } catch {
-              finalBlob = await transcodeOnServer(exact.blob, 'MP3', apiUrl);
-            }
-            finalMime = 'audio/mpeg';
-            note = ` · MP3 from this video (${exact.source})`;
-          } else {
-            finalBlob = await transcodeOnServer(exact.blob, format, apiUrl);
-            finalMime = mimeForFormat(format);
-            note = ` · ${format} wrap of this video’s lossy audio (${exact.source})`;
-          }
-          finalFormat = format;
-        } catch {
-          finalBlob = exact.blob;
-          finalFormat = exact.format;
-          finalMime = exact.mimeType;
-          note = ` · saved this video as ${exact.format} (could not convert to ${format})`;
-        }
-      }
-
-      const title = customTitle || exact.title || `YouTube ${ytId}`;
-      const artist = customArtist || exact.artist || 'Open Grace Music';
-      const ext = extensionForFormat(finalFormat);
-      const track: Track = {
-        id: `yt_${ytId}_${finalFormat.toLowerCase()}`,
-        title,
-        artist,
-        album: `Open Grace · ${finalFormat}`,
-        duration: exact.durationSec || 0,
-        sizeBytes: finalBlob.size,
-        format: finalFormat,
-        mimeType: finalMime,
-        source: 'YOUTUBE',
-        storageStatus: 'PERSISTENT',
-        addedAt: Date.now(),
-        thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-        bitrateKbps:
-          finalFormat === 'MP3' ? bitrateKbpsForFormat('MP3', bitrateKbps) : exact.bitrateKbps,
-        isFavorite: false,
-        originalUrl: trimmedUrl,
-        ytVideoId: ytId,
-      };
-      if (!track.duration) {
-        track.duration = await new Promise<number>((resolve) => {
-          const u = URL.createObjectURL(finalBlob);
-          const probe = new Audio();
-          probe.onloadedmetadata = () => {
-            URL.revokeObjectURL(u);
-            resolve(probe.duration || 0);
-          };
-          probe.onerror = () => {
-            URL.revokeObjectURL(u);
-            resolve(0);
-          };
-          probe.src = u;
-        });
-      }
-
-      setDownloadProgress(0.97);
-      setDownloadStatus('Saving recorded audio to Library…');
-      const saved = await saveTrackToDB(track, finalBlob);
-      setTracks((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
-      if (saveToDeviceFolder) triggerBrowserDownload(finalBlob, title, ext);
-
-      setShowDownloadDialog(false);
-      setActivePage('library');
-      setInlineUrl('');
-      setInlinePreview(null);
-
-      logActivity({
-        action: 'record',
-        label: `Saved "${title}"`,
-        result: 'saved',
-        format: finalFormat,
-        sizeBytes: finalBlob.size,
-        detail: `route=${BROWSER_EXACT_ROUTE} · real .${ext} stored in Library · plays offline${note}`,
-        source: trimmedUrl,
-      });
-      addToast(`♪ Recorded "${title}" (${finalFormat}${note})`, 'success');
-      playTrack(saved);
-      return { ok: true };
-    } catch (err) {
-      const cancelled = downloadCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError');
-      if (cancelled) return fail('Record cancelled.', true);
-      const reason =
-        err instanceof ExactVideoUnavailableError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : 'Couldn’t fetch this exact video.';
-      return fail(reason);
-    }
-  };
-
-  // Real Audiophile Lossless & Hi-Res Download & Conversion Handler
   const handleStartDownload = async (
     url: string,
     format: AudiophileFormatId = 'MP3',
     bitrateKbps: number = 320,
     saveToDeviceFolder: boolean = true,
-    cookies?: string,
     customTitle?: string,
     customArtist?: string
   ) => {
@@ -1189,46 +1009,13 @@ export default function App() {
     let loggedStage = '';
 
     const insideApk = isInsideApk();
-    const pastedCookies = sanitizeCookieHeader(
-      cookies || inlineCookies || (insideApk ? pullNativeYoutubeCookies() : '') || loadSavedYoutubeCookies()
-    );
-    const hasCookies = hasPastedYoutubeCookies(pastedCookies);
     let onDeviceFailure: string | null = null;
-    let browserExactFailure: string | null = null;
-    let browserExactTried = false;
 
     const finishOk = () => {
       setIsDownloading(false);
       setDownloadProgress(0);
       setDownloadStatus('');
       setDownloadMeterLabel('');
-    };
-
-    const tryBrowserExact = async (): Promise<boolean> => {
-      if (!ytId || downloadCancelledRef.current) return false;
-      browserExactTried = true;
-      setDownloadProgress(0.1);
-      setDownloadStatus('Fetching this video…');
-      const r = await recordBrowserExact(
-        ytId,
-        trimmedUrl,
-        format,
-        bitrateKbps,
-        saveToDeviceFolder,
-        customTitle,
-        customArtist
-      );
-      if (r.ok) {
-        finishOk();
-        return true;
-      }
-      browserExactFailure = r.reason;
-      if (r.cancelled) {
-        setDownloadError('Record cancelled.');
-        finishOk();
-        return true;
-      }
-      return false;
     };
 
     if (ytId && isOnDeviceDownloadAvailable()) {
@@ -1247,39 +1034,25 @@ export default function App() {
       }
       onDeviceFailure = r.reason;
       setDownloadProgress(0.08);
-      setDownloadStatus('Trying server…');
+      setDownloadStatus('Trying a recorder worker…');
       logActivity({
         action: 'record',
         label: 'Record YouTube',
         result: 'progress',
         format,
-        detail: `route=server · falling back after on-device failure`,
+        detail: `route=recorder-worker · falling back after on-device failure`,
         source: trimmedUrl,
       });
     } else if (ytId && insideApk) {
       onDeviceFailure = 'this installed APK is too old to download on the phone (reinstall the latest APK)';
-    } else if (ytId && !hasCookies) {
-      // Web: Render datacenter is usually LOGIN_REQUIRED. Fetch this exact ID from the browser first.
-      if (await tryBrowserExact()) return;
-      setDownloadProgress(0.08);
-      setDownloadStatus('Trying converter…');
-      logActivity({
-        action: 'record',
-        label: 'Record YouTube',
-        result: 'progress',
-        format,
-        detail: `route=server · falling back after ${BROWSER_EXACT_ROUTE}`,
-        source: trimmedUrl,
-      });
     }
 
     try {
+      setDownloadStatus('Sending to a recorder worker…');
       const { jobId } = await startConvertJob({
         url: trimmedUrl,
         format,
         bitrate: format === 'MP3' ? bitrateKbps : bitrateKbps,
-        cookies: pastedCookies || undefined,
-        youtubeOauth: loadYoutubeOauthRefreshToken() || undefined,
         title: customTitle,
         artist: customArtist,
       });
@@ -1289,15 +1062,17 @@ export default function App() {
         (status) => {
           setDownloadProgress(Math.max(0.05, Math.min(0.98, status.percent / 100)));
           const stageLabel =
-            status.stage === 'validate'
-              ? 'VALIDATING'
-              : status.stage === 'extract'
-                ? 'EXTRACTING'
-                : status.stage === 'ffmpeg'
-                  ? 'FFMPEG MASTERING'
-                  : status.stage === 'save'
-                    ? 'SAVING'
-                    : 'PROCESSING';
+            status.stage === 'queued'
+              ? 'QUEUED'
+              : status.stage === 'validate'
+                ? 'VALIDATING'
+                : status.stage === 'extract'
+                  ? 'EXTRACTING'
+                  : status.stage === 'ffmpeg'
+                    ? 'FFMPEG MASTERING'
+                    : status.stage === 'save'
+                      ? 'SAVING'
+                      : 'PROCESSING';
           setDownloadStatus(`${stageLabel}: ${status.message}`);
           if (status.stage && status.stage !== loggedStage && status.stage !== 'done' && status.stage !== 'error') {
             loggedStage = status.stage;
@@ -1467,7 +1242,7 @@ export default function App() {
         result: 'saved',
         format: headerFormat,
         sizeBytes: audioBlob.size,
-        detail: `route=server · Offline .${extensionForFormat(headerFormat)} file stored in Library · plays with internet off`,
+        detail: `route=recorder-worker · Offline .${extensionForFormat(headerFormat)} file stored in Library · plays with internet off`,
         source: trimmedUrl,
       });
       addToast(`♪ Recorded "${headerTitle}" (${headerFormat}${honesty})`, 'success');
@@ -1477,31 +1252,16 @@ export default function App() {
         setDownloadError('Record cancelled.');
         return;
       }
-      if (ytId && !browserExactTried) {
-        if (await tryBrowserExact()) return;
-      }
       const { message, code } = humanizeConverterError(err);
-      const serverBlocked =
-        code === 'YOUTUBE_BOT_CHECK' || code === 'EXTRACTION_FAILED' || code === 'TIMEOUT';
-      const youtubeConnected = youtubeSessionStatus() === 'connected';
       const display = ytId
-        ? recordFailureSentence(
-            format,
-            browserExactFailure || message,
-            code,
-            onDeviceFailure,
-            youtubeConnected
-          )
+        ? recordFailureSentence(format, message, code, onDeviceFailure, insideApk)
         : message;
       logActivity({
         action: 'record',
         label: ytId ? 'Record YouTube' : 'Record URL',
         result: 'failed',
         format,
-        detail:
-          ytId && serverBlocked
-            ? `route=server · ${message}${onDeviceFailure ? ` · on-device: ${onDeviceFailure}` : ''}${browserExactFailure ? ` · ${BROWSER_EXACT_ROUTE}: ${browserExactFailure}` : ''}`
-            : message,
+        detail: `route=recorder-worker · ${message}${onDeviceFailure ? ` · on-device: ${onDeviceFailure}` : ''}`,
         source: trimmedUrl,
       });
       setDownloadError(display);
@@ -1881,7 +1641,6 @@ export default function App() {
                 inlineFormat,
                 inlineFormat === 'MP3' ? inlineMp3Bitrate : activeInlineFormatObj.bitrateKbps,
                 inlineSaveToDevice,
-                inlineCookies.trim() || undefined,
                 meta?.title,
                 meta?.author
               );
@@ -1945,9 +1704,7 @@ export default function App() {
           {converterApiOnline === false && (
             <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <p className="leading-snug">
-                Converter is unreachable. Record can still fetch this exact video in the browser.
-              </p>
+              <p className="leading-snug">Site API is unreachable. Record needs the Open Grace site plus the PC recorder.</p>
             </div>
           )}
 
@@ -1971,20 +1728,10 @@ export default function App() {
                 <span>AUTO-SAVE .{activeInlineFormatObj.extension.toUpperCase()}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setShowInlineCookies(!showInlineCookies)}
-                className={`cassette-btn px-2.5 py-1 text-[11px] font-mono ${
-                  showInlineCookies ? 'cassette-btn-engaged' : 'text-[#9fa396]'
-                }`}
-                title="Optional Studio Cookie Key"
-              >
-                <KeyRound className="w-3 h-3 text-[#e2c986]" />
-              </button>
             </div>
           </div>
 
-          <YouTubeConnectPanel compact />
+          {isNativeYouTubeLoginAvailable() ? <YouTubeConnectPanel compact /> : null}
 
           {/* Tape Bias / Format Selector Keys */}
           <div className="cassette-bank grid grid-cols-2 sm:grid-cols-5 gap-1.5">
@@ -2065,7 +1812,6 @@ export default function App() {
                     inlineFormat,
                     inlineFormat === 'MP3' ? inlineMp3Bitrate : activeInlineFormatObj.bitrateKbps,
                     inlineSaveToDevice,
-                    inlineCookies.trim() || undefined,
                     inlinePreview?.title,
                     inlinePreview?.author
                   )
@@ -2093,18 +1839,6 @@ export default function App() {
                   {br}K
                 </button>
               ))}
-            </div>
-          )}
-
-          {showInlineCookies && (
-            <div className="cassette-window p-3 rounded-xl">
-              <textarea
-                rows={2}
-                value={inlineCookies}
-                onChange={(e) => setInlineCookies(e.target.value)}
-                placeholder="Chrome youtube.com cookies (Netscape or header)"
-                className="w-full bg-transparent text-[11px] font-mono text-[#f0ece1] placeholder-[#686b60] focus:outline-none"
-              />
             </div>
           )}
 
@@ -2476,6 +2210,9 @@ export default function App() {
         </>
         )}
       </main>
+      <footer className="max-w-5xl mx-auto w-full px-4 sm:px-6 pb-3 relative z-10">
+        <VersionStamp />
+      </footer>
 
       {/* Docked Cassette Transport Bar */}
       <NowPlayingBar

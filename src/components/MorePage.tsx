@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getActivityLog, subscribeActivityLog } from '../services/activityLog';
 import { YouTubeConnectPanel } from './YouTubeConnectPanel';
+import { VersionStamp } from './VersionStamp';
 
 interface MorePageProps {
   converterApiOnline: boolean | null;
@@ -43,14 +44,15 @@ export const MorePage: React.FC<MorePageProps> = ({
       <div>
         <h2 className="font-serif-display text-xl font-bold text-[#f0ece1]">More</h2>
         <p className="text-xs font-mono text-[#9fa396] mt-0.5">Install, converter, and Android project</p>
+        <VersionStamp className="mt-2" />
       </div>
 
       {converterApiOnline === false && (
         <div className="p-3 rounded-xl bg-[#2a2416] border border-[#524929] flex items-start gap-2 text-xs text-[#fcd34d]">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <p className="leading-snug">
-            Converter is unreachable at {converterUrlLabel || '(no server set)'}. Record can still
-            fetch this exact video in the browser. Set a URL in Settings for server extract.
+            Site API is unreachable at {converterUrlLabel || '(no server set)'}. Record needs this
+            site plus the PC recorder (Settings).
           </p>
         </div>
       )}
