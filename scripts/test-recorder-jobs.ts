@@ -90,9 +90,9 @@ assert.doesNotMatch(missingSecret, /No recorder is online/);
 pass('missing hub secret is distinct from worker offline');
 
 const apkFail = recordFailureSentence('FLAC', 'ignored', 'RECORDER_OFFLINE', 'Missed this video’s audio. Play the video, then retry Record.', true);
-assert.match(apkFail, /Missed this video/);
+assert.equal(apkFail, 'Couldn’t save on this phone. No recorder is online.');
 assert.doesNotMatch(apkFail, /Open the APK/);
-pass('APK keeps on-device error, does not offer APK');
+pass('APK both-routes-failed copy is one line, no Open the APK');
 
 const connectedLogin = recordFailureSentence(
   'MP3',

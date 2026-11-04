@@ -823,7 +823,7 @@ export default function App() {
       playerEngine.setShowVideo(true);
       try {
         await playerEngine.playYouTubeId(ytId, { title: customTitle, artist: customArtist });
-        await new Promise((r) => setTimeout(r, 1600));
+        await new Promise((r) => setTimeout(r, 2800));
       } catch {
         // native wait still runs
       }
@@ -869,7 +869,7 @@ export default function App() {
             source: trimmedUrl,
           });
         }
-      });
+      }, () => downloadCancelledRef.current);
       route = onDeviceRoute(info.client);
 
       const title = customTitle || info.title || `YouTube ${ytId}`;
@@ -1047,7 +1047,7 @@ export default function App() {
       }
       onDeviceFailure = r.reason;
       setDownloadProgress(0.08);
-      setDownloadStatus('Trying a recorder worker…');
+      setDownloadStatus('Queued');
       logActivity({
         action: 'record',
         label: 'Record YouTube',

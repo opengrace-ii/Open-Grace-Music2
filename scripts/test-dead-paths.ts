@@ -52,6 +52,8 @@ pass('server exposes worker queue and 410s convert-audio');
 
 assert.match(read('src/App.tsx'), /isOnDeviceDownloadAvailable/);
 assert.match(read('src/App.tsx'), /startConvertJob/);
+assert.match(read('src/services/onDeviceDownload.ts'), /CAPTURE_TIMEOUT_MS/);
+assert.match(read('src/App.tsx'), /downloadCancelledRef/);
 assert.doesNotMatch(read('src/App.tsx'), /browser-exact|downloadExactYoutube/);
 pass('web Record is on-device then worker queue');
 

@@ -87,7 +87,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
             <strong className="text-[#eeeae2] font-medium">Do you need to reinstall the APK every time?</strong>{' '}
             <strong className="text-[#b8d99e] font-medium">No</strong> — once you have WebView shell{' '}
             <code className="text-[#b8d99e]">1.1+</code> / <code className="text-[#b8d99e]">versionCode 2+</code>{' '}
-            (ideally <code className="text-[#b8d99e]">1.4.0+</code> / <code className="text-[#b8d99e]">12+</code>),
+            (ideally <code className="text-[#b8d99e]">1.5.0+</code> / <code className="text-[#b8d99e]">13+</code>),
             UI and music features come from the <strong className="text-[#eeeae2] font-medium">live website</strong>{' '}
             after Render redeploys. Reopen the app (or tap Reload on the update toast). Reinstall the APK{' '}
             <strong className="text-[#eeeae2] font-medium">only</strong> when the native shell changes
@@ -178,7 +178,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Compose without the live PWA; 1–2 stop music when minimized).
             </li>
             <li>
-              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, 1.4.0 / versionCode 12) below.
+              Download <code className="text-[#b8d99e]">OpenGraceMusic.apk</code> (~25 MB, 1.5.0 / versionCode 13) below.
             </li>
             <li>
               Settings → Security → <strong>Install unknown apps</strong> → allow{' '}
@@ -194,7 +194,7 @@ export const InstallGuideModal: React.FC<InstallGuideModalProps> = ({
               Protect notice — tap <strong>Install anyway</strong> only if you trust this source.
             </li>
             <li>
-              Play the video, then Record. Phone capture still works on this APK. Web Record uses the PC recorder. Reinstall 1.4.0 once if this APK is older.
+              Play the video, then Record. If the phone cannot capture, Record uses the PC recorder. Reinstall 1.5.0 once if this APK is older.
             </li>
             <li>
               Allow <strong>Notifications</strong> (Android 13+) so background play can show

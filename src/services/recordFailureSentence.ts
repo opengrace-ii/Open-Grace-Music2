@@ -8,8 +8,14 @@ export function recordFailureSentence(
 ): string {
   const blob = `${serverMessage} ${onDeviceFailure || ''} ${code}`.toLowerCase();
   if (insideApk && onDeviceFailure) {
-    const short = onDeviceFailure.replace(/\s+/g, ' ').trim().slice(0, 160);
-    return `Couldn’t save this as ${format}. ${short}`;
+    if (code === 'WORKER_SECRET_MISSING' || /hub secret isn’t set|worker_secret_missing/.test(blob)) {
+      return 'Couldn’t save on this phone. Hub secret isn’t set (OGM_WORKER_SECRET).';
+    }
+    if (code === 'RECORDER_OFFLINE' || /no recorder is online|pc recorder is offline/.test(blob)) {
+      return 'Couldn’t save on this phone. No recorder is online.';
+    }
+    const short = (serverMessage || onDeviceFailure).replace(/\s+/g, ' ').trim().slice(0, 160);
+    return short ? `Couldn’t save this as ${format}. ${short}` : `Couldn’t save this as ${format}.`;
   }
   if (code === 'WORKER_SECRET_MISSING' || /hub secret isn’t set|worker_secret_missing/.test(blob)) {
     return 'Hub secret isn’t set (OGM_WORKER_SECRET).';

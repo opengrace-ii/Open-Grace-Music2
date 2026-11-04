@@ -15,14 +15,15 @@ export function readApkShellVersion(): ApkShellVersion | null {
     const versionName = String(b.shellVersion() || '').trim();
     if (!versionName) return null;
     const rawCode = b.appVersionCode?.();
-    const versionCode = typeof rawCode === 'number' && Number.isFinite(rawCode) ? rawCode : null;
+    const n = typeof rawCode === 'number' ? rawCode : Number(rawCode);
+    const versionCode = Number.isFinite(n) ? n : null;
     return { versionName, versionCode };
   } catch {
     return null;
   }
 }
 
-/** e.g. `v1.4.0 · a1b2c3d` or `v1.4.0 · a1b2c3d · APK 1.4.0 (12)` */
+/** e.g. `v1.5.0 · a1b2c3d` or `v1.5.0 · a1b2c3d · APK 1.5.0 (13)` */
 export function formatOgmVersionLabel(
   version = OGM_WEB_VERSION,
   sha = OGM_GIT_SHA,

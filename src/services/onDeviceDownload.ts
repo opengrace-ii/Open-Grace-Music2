@@ -96,7 +96,7 @@ export function downloadYouTubeAudioOnDevice(
   videoId: string,
   format: string,
   onProgress: (p: OnDeviceProgress) => void,
-  signal?: { cancelled: boolean }
+  isCancelled?: () => boolean
 ): Promise<OnDeviceResult> {
   installReceiver();
   const bridge = window.OgmAndroid;
@@ -115,16 +115,28 @@ export function downloadYouTubeAudioOnDevice(
     }
   });
 
+  const CAPTURE_TIMEOUT_MS = 50_000;
   const watchdog = new Promise<never>((_, reject) => {
+    const started = Date.now();
     const t = setInterval(() => {
-      if (signal?.cancelled) {
+      if (isCancelled?.()) {
         clearInterval(t);
         bridge.cancelDownload?.(callbackId);
         pending.delete(callbackId);
         reject(new OnDeviceError('Cancelled'));
+        return;
       }
-      if (!pending.has(callbackId)) clearInterval(t);
-    }, 500);
+      if (!pending.has(callbackId)) {
+        clearInterval(t);
+        return;
+      }
+      if (Date.now() - started > CAPTURE_TIMEOUT_MS) {
+        clearInterval(t);
+        bridge.cancelDownload?.(callbackId);
+        pending.delete(callbackId);
+        reject(new OnDeviceError('On-device capture timed out.'));
+      }
+    }, 400);
   });
 
   return Promise.race([nativePart, watchdog]).then(async (info) => {

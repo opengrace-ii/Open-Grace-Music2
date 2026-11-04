@@ -343,5 +343,5 @@ object WebViewStreamCapture {
     const val DEFAULT_UA =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    const val WAIT_FOR_STREAM_MS = 45_000L
+    const val WAIT_FOR_STREAM_MS = 18_000L
 }

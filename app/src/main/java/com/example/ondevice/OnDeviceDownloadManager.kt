@@ -121,7 +121,10 @@ class OnDeviceDownloadManager(private val context: Context) {
         val cookies = YouTubeSessionStore.mergedCookieHeader(context)
         val sessionConnected = YouTubeSessionStore.hasAuthCookies(cookies)
         val innerFailures = mutableListOf<String>()
-        if (tryInnerTube(videoId, cookies, callbackId, cancelled, events, downloader, innerFailures)) return
+        // Capture miss + no YouTube session: fail fast so the PWA can use the PC recorder.
+        if (sessionConnected) {
+            if (tryInnerTube(videoId, cookies, callbackId, cancelled, events, downloader, innerFailures)) return
+        }
 
         throw OnDeviceException(
             friendlyFailure(videoId, captured != null, innerFailures.joinToString("; "), sessionConnected)
